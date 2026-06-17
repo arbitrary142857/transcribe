@@ -2,7 +2,9 @@ import { Duration } from "./duration.js";
 import { KeySignature } from "./key-signature.js";
 import { Note, type NoteEvent, Rest } from "./note-event.js";
 import { Pitch } from "./pitch.js";
+import { SAMPLE_RATE, writeTone } from "./synthesis.js";
 import type { TimeSignature } from "./types.js";
+import { encodeWav } from "./wav.js";
 
 export class Melody {
   private events: NoteEvent[];
@@ -83,5 +85,38 @@ export class Melody {
       }
     }
     return true;
+  }
+
+  /** WAV file bytes (44.1 kHz, mono, 16-bit PCM) at the given quarter-note bpm. */
+  playback(bpm: number): Uint8Array {
+    if (bpm <= 0) {
+      throw new RangeError("bpm must be positive");
+    }
+
+    let totalSeconds = 0;
+    for (let i = 0; i < this.eventCount; i++) {
+      totalSeconds += this.getEvent(i).duration.inSeconds(bpm);
+    }
+
+    const samples = new Float32Array(Math.ceil(totalSeconds * SAMPLE_RATE));
+    let offsetSeconds = 0;
+
+    for (let i = 0; i < this.eventCount; i++) {
+      const event = this.getEvent(i);
+      const durationSeconds = event.duration.inSeconds(bpm);
+
+      if (event instanceof Note) {
+        writeTone(
+          samples,
+          Math.round(offsetSeconds * SAMPLE_RATE),
+          event.pitch.toFrequency(),
+          durationSeconds,
+        );
+      }
+
+      offsetSeconds += durationSeconds;
+    }
+
+    return encodeWav(samples, SAMPLE_RATE);
   }
 }

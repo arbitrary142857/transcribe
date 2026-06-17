@@ -39,6 +39,11 @@ export class Pitch {
     return this.toSemitone() + 12;
   }
 
+  /** Frequency in Hz; A4 = 440 Hz by default. */
+  toFrequency(a4Hz = 440): number {
+    return a4Hz * 2 ** ((this.toMidi() - 69) / 12);
+  }
+
   /** Pitch-class chroma: semitone within the octave, 0–11. */
   toChroma(): number {
     return ((this.toSemitone() % 12) + 12) % 12;

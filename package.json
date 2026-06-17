@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "demo": "tsc && node dist/demo/play-melody.js"
   },
   "devDependencies": {
+    "@types/node": "^25.9.3",
     "typescript": "^5.8.3"
   }
 }
