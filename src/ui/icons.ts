@@ -176,6 +176,181 @@ export function unpitchedIcon(): string {
 }
 
 /**
+ * Five staff lines, the ground the playback icons stand on.
+ *
+ * Kept faint but not ghostly: these icons are also drawn in white on a filled
+ * button, where anything lighter disappears into the fill.
+ */
+const STAFF_TOP = 10;
+const STAFF_GAP = 3;
+const STAFF_BOTTOM = STAFF_TOP + 4 * STAFF_GAP;
+
+function staffLines(from: number, to: number): string {
+  let drawn = "";
+  for (let i = 0; i < 5; i++) {
+    const y = STAFF_TOP + i * STAFF_GAP;
+    drawn += `<line x1="${from}" y1="${y}" x2="${to}" y2="${y}" stroke="currentColor" stroke-width="0.8" stroke-linecap="round" opacity="0.7" />`;
+  }
+  return drawn;
+}
+
+/**
+ * A pointer coming down onto a spot, saying "this instant, here".
+ *
+ * Held clear of what it points at. Sat directly on the barline the two merged
+ * into a single arrow, and the icon stopped being a staff with a mark on it.
+ */
+const pointer = (x: number) =>
+  `<path d="M${x} ${STAFF_TOP - 1.6} L${x - 3.2} ${STAFF_TOP - 6} L${x + 3.2} ${STAFF_TOP - 6} Z" fill="currentColor" />`;
+
+const barline = (x: number, width: number) =>
+  `<line x1="${x}" y1="${STAFF_TOP}" x2="${x}" y2="${STAFF_BOTTOM}" stroke="currentColor" stroke-width="${width}" stroke-linecap="butt" />`;
+
+/**
+ * Marking where the first bar begins: a pointer onto the opening barline.
+ *
+ * The staff runs off to the right of it, because what is being marked is the
+ * moment the music starts rather than a place in the middle of it.
+ */
+export function markStartIcon(): string {
+  return svg(staffLines(5, 24) + barline(5.6, 2.6) + pointer(5.6), 28);
+}
+
+/**
+ * Marking where the last bar ends: a pointer onto the final barline.
+ *
+ * Thin then thick, which is how the end of a piece is printed — so the icon says
+ * "the end" before anything else about it is read.
+ */
+export function markEndIcon(): string {
+  return svg(
+    staffLines(4, 23.4) + barline(20.2, 0.9) + barline(22.8, 2.6) + pointer(22.4),
+    28,
+  );
+}
+
+/**
+ * A metronome: the case, and the rod leaning out of it.
+ *
+ * The lean is the whole point — upright it would read as a tent — so the rod
+ * runs off to one side with its weight partway up.
+ */
+export function metronomeIcon(): string {
+  return svg(
+    `<path d="M8.4 20.5 L11.6 4.5 L14.4 4.5 L17.6 20.5 Z" fill="none" stroke="currentColor" stroke-width="${STROKE}" stroke-linejoin="round" />` +
+      `<line x1="9.6" y1="14.5" x2="16.4" y2="14.5" stroke="currentColor" stroke-width="0.9" opacity="0.55" />` +
+      `<line x1="13" y1="19" x2="16.6" y2="6.4" stroke="currentColor" stroke-width="${STROKE}" stroke-linecap="round" />` +
+      `<rect x="14.1" y="10.4" width="4" height="2.2" rx="0.5" transform="rotate(-16 16.1 11.5)" fill="currentColor" />`,
+  );
+}
+
+/**
+ * The marker that follows the music, shown standing on a note.
+ *
+ * One note under the marker and one clear of it, which is what says the marker
+ * moves. Solid enough to survive being drawn in white on a filled button, where
+ * the faint version it started as vanished into the fill.
+ */
+export function playheadIcon(): string {
+  return svg(
+    staffLines(2.5, 21.5) +
+      head(7.5, 13, true) +
+      head(17, 16, true) +
+      `<rect x="4.9" y="4.5" width="5.2" height="15" rx="1.3" fill="currentColor" opacity="0.5" />` +
+      `<line x1="7.5" y1="4.5" x2="7.5" y2="19.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />`,
+    24,
+  );
+}
+
+/**
+ * A padlock, closed: the tempo is held and edits move in step.
+ *
+ * The shackle sits proud of the body so the two read as lock parts rather than
+ * as a rounded rectangle with a hat.
+ */
+export function lockClosedIcon(): string {
+  return svg(
+    `<rect x="6.5" y="11" width="11" height="8.5" rx="1.6" fill="currentColor" />` +
+      `<path d="M8.8 11 V8.4 a3.2 3.2 0 0 1 6.4 0 V11" fill="none" stroke="currentColor" stroke-width="1.7" />`,
+  );
+}
+
+/** The same padlock with its shackle swung open: the tempo follows the marks. */
+export function lockOpenIcon(): string {
+  return svg(
+    `<rect x="6.5" y="11" width="11" height="8.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4" />` +
+      `<path d="M8.8 11 V8.4 a3.2 3.2 0 0 1 6.35 -0.6" fill="none" stroke="currentColor" stroke-width="1.7" />`,
+  );
+}
+
+export function playIcon(): string {
+  return svg(`<path d="M8 5.5 L19 12 L8 18.5 Z" fill="currentColor" />`);
+}
+
+export function pauseIcon(): string {
+  return svg(
+    `<rect x="7" y="5.5" width="3.6" height="13" rx="0.9" fill="currentColor" />` +
+      `<rect x="13.4" y="5.5" width="3.6" height="13" rx="0.9" fill="currentColor" />`,
+  );
+}
+
+/** Back to the top of the section: the bar it stops at, and the way there. */
+export function jumpBackIcon(): string {
+  return svg(
+    `<rect x="5.4" y="5.5" width="2.2" height="13" rx="0.7" fill="currentColor" />` +
+      `<path d="M19 5.5 L9.5 12 L19 18.5 Z" fill="currentColor" />`,
+  );
+}
+
+/**
+ * A circle almost closed, with one arrowhead carrying it round: what reaches
+ * the end starts again.
+ */
+export function loopIcon(): string {
+  return svg(
+    `<path d="M18.35 9.2 A7 7 0 1 0 19 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />` +
+      `<path d="M19.9 4.3 L19.55 10.1 L14.4 8.1 Z" fill="currentColor" />`,
+  );
+}
+
+/**
+ * An arrow curling back on itself: put this back the way it started.
+ *
+ * The loop icon's mirror twin — anticlockwise where the loop runs clockwise —
+ * so the two read as relatives, one that circles and one that returns.
+ */
+export function restoreIcon(): string {
+  return svg(
+    `<path d="M5.65 9.2 A7 7 0 1 1 5 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />` +
+      `<path d="M4.1 4.3 L4.45 10.1 L9.6 8.1 Z" fill="currentColor" />`,
+  );
+}
+
+/** The moment the selected note begins: a pointer onto its left edge. */
+export function noteStartIcon(): string {
+  return svg(
+    staffLines(3, 24) +
+      head(14, 16, true) +
+      stem(17.8, 6.5, 15.5) +
+      `<line x1="9.4" y1="8" x2="9.4" y2="20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />` +
+      pointer(9.4),
+    27,
+  );
+}
+
+/** The moment the selected note ends: a pointer onto its right edge. */
+export function noteEndIcon(): string {
+  return svg(
+    staffLines(3, 24) +
+      head(9.5, 16, true) +
+      stem(13.3, 6.5, 15.5) +
+      `<line x1="17.8" y1="8" x2="17.8" y2="20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />` +
+      pointer(17.8),
+    27,
+  );
+}
+
+/**
  * A tuplet bracket carrying its number, as it will be printed over the notes.
  *
  * The number alone says nothing about what the control does; the bracket is

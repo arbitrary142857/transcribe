@@ -43,6 +43,9 @@ try {
     keyboard: required("keyboard"),
     toolbar: required("toolbar"),
     keyboardArea: required("keyboard-area"),
+    video: required("video"),
+    playbackControls: required("playback-controls"),
+    scoreArea: required("score-area"),
   });
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);

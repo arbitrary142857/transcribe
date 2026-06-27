@@ -36,23 +36,14 @@ function normalized(
 }
 
 describe("normalize()", () => {
-  it("gives an empty melody one bar of rests to write into", () => {
-    assert.equal(normalized([]), "b4/w/r");
-  });
-
-  it("writes that opening bar to suit the meter", () => {
-    // Three quarters of silence, which is what a 3/4 bar holds.
-    assert.equal(normalized([], METER_3_4), "b4/h./r");
-  });
-
-  it("keeps one spare bar past the last note", () => {
+  it("keeps the length it was given", () => {
+    // The bar count is settled when a melody is made — it is what the video's
+    // timing marks were measured against — so normalizing must never add a
+    // bar past the music, and never take one away behind it.
     assert.equal(
       normalized([quarter(), quarter(), quarter(), quarter()]),
-      "c4/q, c4/q, c4/q, c4/q, b4/w/r",
+      "c4/q, c4/q, c4/q, c4/q",
     );
-  });
-
-  it("trims the spare bars back to one", () => {
     assert.equal(
       normalized([
         quarter(),
@@ -63,32 +54,47 @@ describe("normalize()", () => {
         new Rest(WHOLE),
         new Rest(WHOLE),
       ]),
-      "c4/q, c4/q, c4/q, c4/q, b4/w/r",
+      "c4/q, c4/q, c4/q, c4/q, b4/w/r, b4/w/r, b4/w/r",
     );
   });
 
-  it("drops every bar of rests when there is no music at all", () => {
-    assert.equal(normalized([new Rest(WHOLE), new Rest(WHOLE)]), "b4/w/r");
+  it("keeps bars that hold nothing but silence", () => {
+    assert.equal(
+      normalized([new Rest(WHOLE), new Rest(WHOLE)]),
+      "b4/w/r, b4/w/r",
+    );
+  });
+
+  it("leaves an empty melody empty", () => {
+    // The opening bars come from `emptyMelody`, which is told how many; a
+    // normalize that invented one would be deciding the length on its own.
+    assert.equal(normalized([]), "");
   });
 
   it("fills out a bar the music left half written", () => {
-    assert.equal(
-      normalized([quarter()]),
-      "c4/q, b4/q/r, b4/h/r, b4/w/r",
-    );
+    assert.equal(normalized([quarter()]), "c4/q, b4/q/r, b4/h/r");
   });
 
   it("merges neighbouring rests into how they should be written", () => {
     // Three quarter rests from beat two are a quarter rest and then a half.
     assert.equal(
       normalized([quarter(), new Rest(QUARTER), new Rest(QUARTER), new Rest(QUARTER)]),
-      "c4/q, b4/q/r, b4/h/r, b4/w/r",
+      "c4/q, b4/q/r, b4/h/r",
     );
   });
 
   it("never merges rests across a barline", () => {
     assert.equal(
       normalized([new Note(C4, HALF), new Rest(HALF), new Rest(WHOLE)]),
+      "c4/h, b4/h/r, b4/w/r",
+    );
+    assert.equal(
+      normalized([
+        new Note(C4, HALF),
+        new Rest(HALF),
+        new Rest(HALF),
+        new Rest(HALF),
+      ]),
       "c4/h, b4/h/r, b4/w/r",
     );
   });
@@ -109,7 +115,7 @@ describe("normalize()", () => {
     // The bracket's own rest keeps its ratio; only the plain rests are rewritten.
     assert.equal(
       melody.toString(),
-      "c4/8{3:2}, b4/8{3:2}/r, c4/8{3:2}, b4/q/r, b4/h/r, b4/w/r",
+      "c4/8{3:2}, b4/8{3:2}/r, c4/8{3:2}, b4/q/r, b4/h/r",
     );
     assert.deepEqual(
       melody.tupletSpans().map(({ start, count }) => ({ start, count })),
@@ -118,13 +124,13 @@ describe("normalize()", () => {
   });
 
   it("keeps ties across the events it adds", () => {
-    const melody = melodyOf([new Note(C4, HALF), new Note(C4, HALF)]);
+    const melody = melodyOf([new Note(C4, QUARTER), new Note(C4, QUARTER)]);
     melody.tie(0);
 
     normalize(melody);
 
     assert.equal(melody.isTiedToNext(0), true);
-    assert.equal(melody.toString(), "c4/h, c4/h, b4/w/r");
+    assert.equal(melody.toString(), "c4/q, c4/q, b4/h/r");
   });
 
   it("leaves an already-normalized melody untouched", () => {
@@ -163,7 +169,7 @@ describe("normalize()", () => {
   it("fills a short final bar in a meter of three", () => {
     assert.equal(
       normalized([quarter(), new Rest(QUARTER)], METER_3_4),
-      "c4/q, b4/q/r, b4/q/r, b4/h./r",
+      "c4/q, b4/q/r, b4/q/r",
     );
   });
 });

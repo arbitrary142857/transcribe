@@ -11,6 +11,7 @@ import {
   eventPositions,
   indexAtStart,
   indexCovering,
+  measureCountOf,
   totalLengthOf,
 } from "../dist/editor/position.js";
 
@@ -37,6 +38,30 @@ describe("barLengthOf()", () => {
     assert.equal(barLengthOf(METER_4_4).toString(), "1/1");
     assert.equal(barLengthOf(METER_3_4).toString(), "3/4");
     assert.equal(barLengthOf(METER_6_8).toString(), "3/4");
+  });
+});
+
+const WHOLE_REST = new Rest(new Duration(NoteValue.Whole));
+
+describe("measureCountOf()", () => {
+  it("is nothing for a melody with no events", () => {
+    assert.equal(measureCountOf(melodyOf([])), 0);
+  });
+
+  it("counts the bars the events fill", () => {
+    assert.equal(measureCountOf(melodyOf([WHOLE_REST])), 1);
+    assert.equal(measureCountOf(melodyOf([WHOLE_REST, WHOLE_REST])), 2);
+  });
+
+  it("counts a bar that is only partly written", () => {
+    assert.equal(measureCountOf(melodyOf([note()])), 1);
+    assert.equal(measureCountOf(melodyOf([WHOLE_REST, note()])), 2);
+  });
+
+  it("counts bars of the meter it is in, not whole notes", () => {
+    // Three quarters to the bar, so six of them are two bars.
+    const events = Array.from({ length: 6 }, note);
+    assert.equal(measureCountOf(melodyOf(events, METER_3_4)), 2);
   });
 });
 

@@ -1,4 +1,4 @@
-import { Fraction } from "../music/fraction.js";
+import { Fraction, whole } from "../music/fraction.js";
 import type { Melody } from "../music/melody.js";
 import type { TimeSignature } from "../music/types.js";
 
@@ -24,9 +24,7 @@ export type EventPosition = {
 
 /** Whole bars fitting entirely before `start`. */
 function barIndexOf(start: Fraction, barLength: Fraction): number {
-  return Math.floor(
-    (start.num * barLength.den) / (start.den * barLength.num),
-  );
+  return Math.floor(start.divide(barLength).toNumber());
 }
 
 /**
@@ -48,7 +46,7 @@ export function eventPositions(melody: Melody): EventPosition[] {
     positions.push({
       index,
       bar,
-      offset: start.difference(new Fraction(barLength.num * bar, barLength.den)),
+      offset: start.difference(barLength.multiply(whole(bar))),
       start,
       length,
     });
@@ -68,6 +66,21 @@ export function eventPositions(melody: Melody): EventPosition[] {
 export function indexAtStart(melody: Melody, start: Fraction): number | undefined {
   return eventPositions(melody).find((position) => position.start.equals(start))
     ?.index;
+}
+
+/**
+ * How many bars the melody spans.
+ *
+ * A bar the events only partly fill still counts as a bar: this is asked of
+ * melodies mid-edit, and refusing to count a half-written bar would make the
+ * answer disappear exactly when something is being written into it.
+ */
+export function measureCountOf(melody: Melody): number {
+  const total = totalLengthOf(melody);
+  if (total.compare(ZERO) <= 0) {
+    return 0;
+  }
+  return Math.ceil(total.divide(barLengthOf(melody.timeSignature)).toNumber());
 }
 
 /** How much of a whole note the melody's events fill in total. */

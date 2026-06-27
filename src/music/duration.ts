@@ -1,4 +1,4 @@
-import { Fraction } from "./fraction.js";
+import { Fraction, whole } from "./fraction.js";
 import { Tuplet } from "./tuplet.js";
 import type { TimeSignature } from "./types.js";
 
@@ -60,9 +60,8 @@ export class Duration {
   }
 
   inSeconds(bpm: number): number {
-    const { num, den } = this.asWholeNoteFraction();
     const wholeNoteSeconds = (4 * 60) / bpm;
-    return (num / den) * wholeNoteSeconds;
+    return this.asWholeNoteFraction().toNumber() * wholeNoteSeconds;
   }
 
   /** VexFlow duration token for the written note value, e.g. `q` or `16`. */
@@ -154,10 +153,6 @@ export function writeLength(length: Fraction): Duration[] {
   return written;
 }
 
-const scale = (length: Fraction, by: number) =>
-  new Fraction(length.num * by, length.den);
-const divide = (length: Fraction, by: number) =>
-  new Fraction(length.num, length.den * by);
 const minOf = (a: Fraction, b: Fraction) => (a.compare(b) <= 0 ? a : b);
 const maxOf = (a: Fraction, b: Fraction) => (a.compare(b) >= 0 ? a : b);
 
@@ -181,6 +176,17 @@ function readBeats({ beats, beatUnit }: TimeSignature): Beats {
     beat: new Fraction(compound ? 3 : 1, beatUnit),
     compound,
   };
+}
+
+/**
+ * How long one beat of this meter lasts, as a share of a whole note.
+ *
+ * The beat a player feels, not the one the numerator names — 3/8 of a whole
+ * note in 6/8, a quarter in 4/4. Shared with the metronome so that the pulse it
+ * clicks and the pulse the rests are grouped by are the same pulse.
+ */
+export function beatLengthOf(meter: TimeSignature): Fraction {
+  return readBeats(meter).beat;
 }
 
 /**
@@ -213,15 +219,16 @@ function childSpans(
   const againstBeat = length.compare(beats.beat);
   let sizes: Fraction[];
   if (againstBeat > 0) {
-    const count = (length.num * beats.beat.den) / (length.den * beats.beat.num);
-    sizes = groupBeats(count).map((n) => scale(beats.beat, n));
+    const count = length.divide(beats.beat).toNumber();
+    sizes = groupBeats(count).map((n) => beats.beat.multiply(whole(n)));
   } else if (againstBeat === 0 && beats.compound) {
     // A compound beat's silence is a dotted rest, or a quarter rest and then an
     // eighth — so it divides two thirds and one, not into three equal parts.
-    const third = divide(length, 3);
-    sizes = [scale(third, 2), third];
+    const third = length.divide(whole(3));
+    sizes = [third.multiply(whole(2)), third];
   } else {
-    sizes = [divide(length, 2), divide(length, 2)];
+    const half = length.divide(whole(2));
+    sizes = [half, half];
   }
 
   const spans: [Fraction, Fraction][] = [];

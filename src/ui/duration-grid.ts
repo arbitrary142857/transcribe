@@ -22,11 +22,12 @@ const DOT_ROWS = [0, 1];
 const DOT_NAMES = ["", "dotted "];
 
 /**
- * The key that writes each plain value, longest to shortest.
+ * The digit that writes each value, longest to shortest.
  *
- * Only the undotted row gets one. Digits run out, and the pairings left over
- * for the dotted values — a second row of digits, or shifted ones that type
- * punctuation — would be worse than reaching for the button.
+ * The same digit serves both rows: plain writes the plain value, and with
+ * Shift held it writes the dotted one. The editor matches on the physical
+ * key, not the typed character — Shift+1 types "!" on most layouts, and the
+ * shortcut must not care.
  */
 const KEYS = ["1", "2", "3", "4", "5"] as const;
 
@@ -45,8 +46,8 @@ export type DurationGridOptions = {
 };
 
 export type DurationGrid = {
-  /** Write the duration a shortcut names, if that cell is available. */
-  press(key: string): boolean;
+  /** Write the duration a digit names — the dotted one with `dotted` — if that cell is available. */
+  press(key: string, dotted: boolean): boolean;
   /**
    * Grey the cells that will not fit; `undefined` greys them all.
    *
@@ -100,18 +101,16 @@ export function createDurationGrid(
 
   for (const dots of DOT_ROWS) {
     VALUES.forEach(({ value }, column) => {
-      const key = dots === 0 ? KEYS[column] : undefined;
+      const key = KEYS[column];
+      const printed = dots === 0 ? key : `⇧${key}`;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "duration-cell";
       button.dataset.value = String(value);
       button.dataset.dots = String(dots);
       button.innerHTML =
-        (key ? `<kbd class="cell-key">${key}</kbd>` : "") +
-        noteIcon(value, dots);
-      button.title = key
-        ? `${nameOf(value, dots)} (${key})`
-        : nameOf(value, dots);
+        `<kbd class="cell-key">${printed}</kbd>` + noteIcon(value, dots);
+      button.title = `${nameOf(value, dots)} (${printed})`;
       button.setAttribute("aria-label", nameOf(value, dots));
       button.addEventListener("click", () => onPick(durationOf(value, dots)));
 
@@ -140,8 +139,11 @@ export function createDurationGrid(
   grid.addEventListener("mouseleave", () => onExplain(undefined));
 
   return {
-    press(key) {
-      const cell = cells.find((candidate) => candidate.key === key);
+    press(key, dotted) {
+      const cell = cells.find(
+        (candidate) =>
+          candidate.key === key && candidate.dots === (dotted ? 1 : 0),
+      );
       if (!cell || cell.button.disabled) {
         return false;
       }

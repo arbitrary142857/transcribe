@@ -20,10 +20,21 @@
     <div id="toolbar" hidden>
       <div id="toolbar-inner">
         <div id="signatures"></div>
-        <div id="controls">
-          <div id="durations"></div>
-          <div id="tuplets"></div>
-          <div id="actions"></div>
+        <div id="toolbar-body">
+          <div id="controls">
+            <div id="durations"></div>
+            <div id="tuplets"></div>
+            <div id="actions"></div>
+          </div>
+          <!-- Everything to do with the video, set apart from the controls
+               that write the music down: the player itself, and the controls
+               that drive it. Filled in once the link has been given and never
+               rebuilt after, so nothing an edit does sends the player back to
+               the start. -->
+          <div id="playback">
+            <div id="playback-controls"></div>
+            <div id="video"></div>
+          </div>
         </div>
         <p id="status" role="status"></p>
       </div>
@@ -35,7 +46,12 @@
       <div id="setup"></div>
 
       <div id="workspace" hidden>
-        <div id="score"></div>
+        <!-- The score has every one of its children replaced on each redraw,
+             so the marker that follows the video is a neighbour of it rather
+             than a child, and this is what holds the two together. -->
+        <div id="score-area">
+          <div id="score"></div>
+        </div>
       </div>
     </main>
 

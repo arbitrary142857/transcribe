@@ -35,6 +35,41 @@ describe("Fraction", () => {
     );
   });
 
+  it("divide()", () => {
+    assert.deepEqual(
+      new Fraction(1, 2).divide(new Fraction(1, 4)),
+      new Fraction(2, 1),
+    );
+    assert.deepEqual(
+      new Fraction(3, 4).divide(new Fraction(1, 8)),
+      new Fraction(6, 1),
+    );
+    assert.deepEqual(
+      new Fraction(1, 12).divide(new Fraction(1, 4)),
+      new Fraction(1, 3),
+    );
+  });
+
+  it("divide(): keeps the denominator positive", () => {
+    assert.deepEqual(
+      new Fraction(1, 2).divide(new Fraction(-1, 4)),
+      new Fraction(-2, 1),
+    );
+  });
+
+  it("toNumber()", () => {
+    assert.equal(new Fraction(1, 2).toNumber(), 0.5);
+    assert.equal(new Fraction(6, 8).toNumber(), 0.75);
+    assert.equal(new Fraction(0, 4).toNumber(), 0);
+    assert.equal(new Fraction(-1, 4).toNumber(), -0.25);
+  });
+
+  it("toNumber(): how many of one length fit in another", () => {
+    // Three triplet eighths to the quarter, four quarters to the whole note.
+    assert.equal(new Fraction(1, 4).divide(new Fraction(1, 12)).toNumber(), 3);
+    assert.equal(new Fraction(1, 1).divide(new Fraction(1, 4)).toNumber(), 4);
+  });
+
   it("difference()", () => {
     assert.deepEqual(
       new Fraction(3, 4).difference(new Fraction(1, 2)),

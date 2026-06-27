@@ -14,10 +14,12 @@ import { Rest, UnpitchedNote } from "../music/note-event.js";
 import type { Pitch } from "../music/pitch.js";
 import { spellForMelodyEvent, spellMidi, spellingContext } from "../music/spelling.js";
 import { createMelodyView, type MelodyView } from "../render/melody-view.js";
+import type { MelodyRenderResult } from "../render/render-melody.js";
 import { createDurationGrid } from "./duration-grid.js";
 import { restIcon, tieIcon, unpitchedIcon, untieIcon } from "./icons.js";
 import { createTupletMenu } from "./tuplet-menu.js";
 import { createPianoKeyboard, rangeForClef } from "./piano-keyboard.js";
+import { isTypingTarget } from "./typing-guard.js";
 
 export type EditorElements = {
   score: HTMLElement;
@@ -32,6 +34,8 @@ export type EditorElements = {
 
 export type Editor = {
   readonly melody: Melody;
+  /** The selected event right now, if one is selected. */
+  selection(): number | undefined;
   destroy(): void;
 };
 
@@ -64,6 +68,18 @@ export function createEditor(
     pitchOnly?: boolean;
     /** Called after any edit, so the surrounding controls can catch up. */
     onEdit?: () => void;
+    /** Called with each drawing of the score, for anything drawn over it. */
+    onRender?: (rendered: MelodyRenderResult) => void;
+    /** Called when the selection moves, with the selected event if any. */
+    onSelect?: (index: number | undefined) => void;
+    /**
+     * Where the selection starts out.
+     *
+     * The editor is torn down and rebuilt for every undo, mode switch and key
+     * change, and the person mid-edit has not moved: their selection must not
+     * either. An index past the melody's end is clamped by the view.
+     */
+    initialSelection?: number;
   } = {},
 ): Editor {
   const clef = options.clef ?? "treble";
@@ -73,6 +89,7 @@ export function createEditor(
   const view: MelodyView = createMelodyView(melody, {
     elementId: elements.score.id,
     clef,
+    onRender: options.onRender,
   });
 
   let explanation: string | undefined;
@@ -404,6 +421,10 @@ export function createEditor(
     if (event.metaKey || event.ctrlKey || event.altKey) {
       return;
     }
+    // A digit typed into a timestamp box is a digit, not a duration.
+    if (isTypingTarget(event)) {
+      return;
+    }
     switch (event.key) {
       case "ArrowLeft":
       case "ArrowRight":
@@ -424,30 +445,36 @@ export function createEditor(
         if (pitchOnly) return;
         untieSelected();
         break;
-      default:
-        // A digit writes the length it is printed on, when that length fits.
-        if (pitchOnly || !grid?.press(event.key)) {
+      default: {
+        // A digit writes the length it is printed on — the dotted one with
+        // Shift held — when that length fits. Matched on the physical key,
+        // because Shift+1 types "!" and the shortcut must not care.
+        const digit = /^Digit([1-5])$/.exec(event.code)?.[1];
+        if (pitchOnly || !digit || !grid?.press(digit, event.shiftKey)) {
           return;
         }
+      }
     }
     // Only once a key has been handled, so the page still scrolls otherwise.
     event.preventDefault();
   }
 
-  view.onSelectionChange(() => {
+  view.onSelectionChange((anchor) => {
     report(undefined);
     syncControls();
+    options.onSelect?.(anchor);
     // Useful while working on the editor, not worth a permanent line of the
     // panel: the stave already says where the selection is.
     console.log(describeSelection());
   });
   window.addEventListener("keydown", onKeyDown);
 
-  view.select(0);
+  view.select(Math.min(options.initialSelection ?? 0, melody.eventCount - 1));
   syncControls();
 
   return {
     melody,
+    selection: () => view.getAnchor(),
     destroy() {
       window.removeEventListener("keydown", onKeyDown);
       view.destroy();

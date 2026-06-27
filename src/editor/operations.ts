@@ -1,5 +1,5 @@
 import { Duration, writeLength, writtenValue } from "../music/duration.js";
-import { Fraction } from "../music/fraction.js";
+import { Fraction, whole } from "../music/fraction.js";
 import type { KeySignature } from "../music/key-signature.js";
 import { Melody } from "../music/melody.js";
 import { Note, type NoteEvent, Rest, UnpitchedNote } from "../music/note-event.js";
@@ -17,16 +17,31 @@ const ZERO = new Fraction(0, 1);
 /** What a duration control writes: a note, or silence. */
 export type WriteKind = "note" | "rest";
 
-const times = (length: Fraction, by: number) =>
-  new Fraction(length.num * by, length.den);
 const minOf = (a: Fraction, b: Fraction) => (a.compare(b) <= 0 ? a : b);
 
-/** A melody in the shape the editor keeps it in, with nothing written yet. */
+/**
+ * A melody of `bars` bars with nothing written yet.
+ *
+ * The count is for the life of the piece: editing fills these bars in and
+ * writes over them, but never adds one or takes one away — the count was
+ * chosen against the video's timing marks, and a length that changed
+ * afterwards would leave those marks measuring something else.
+ */
 export function emptyMelody(
   keySignature: KeySignature,
   timeSignature: TimeSignature,
+  bars = 1,
 ): Melody {
   const melody = new Melody(keySignature, timeSignature, []);
+  melody.replaceEvents(
+    0,
+    0,
+    restsBetween(
+      melody,
+      ZERO,
+      barLengthOf(timeSignature).multiply(whole(bars)),
+    ),
+  );
   normalize(melody);
   return melody;
 }
@@ -76,7 +91,7 @@ function writableSpanAt(
         .reduce((total, member) => total.add(member.length), ZERO)
         .add(positions[bracket.start]!.start)
     : // A bar that is somehow already overfull must not offer room it lacks.
-      times(barLengthOf(melody.timeSignature), position.bar + 1);
+      barLengthOf(melody.timeSignature).multiply(whole(position.bar + 1));
 
   const toBoundary = boundary.difference(position.start);
   const cramped = toNextNote.compare(toBoundary) < 0;

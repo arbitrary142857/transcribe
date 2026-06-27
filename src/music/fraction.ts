@@ -10,6 +10,9 @@ export function gcd(a: number, b: number): number {
   return x;
 }
 
+/** `n` as a fraction, for the many places a length is scaled by a whole number. */
+export const whole = (n: number): Fraction => new Fraction(n, 1);
+
 export class Fraction {
   constructor(
     public readonly num: number,
@@ -41,6 +44,20 @@ export class Fraction {
     ).reduce();
   }
 
+  /**
+   * Returns this ÷ other, reduced.
+   *
+   * Read as "how many of `other` fit in this", which is the question most of the
+   * callers are actually asking: how many beats to a bar, how many triplet
+   * eighths to a quarter.
+   */
+  divide(other: Fraction): Fraction {
+    return new Fraction(
+      this.num * other.den,
+      this.den * other.num,
+    ).reduce();
+  }
+
   /** Returns this − other, reduced. */
   difference(other: Fraction): Fraction {
     return new Fraction(
@@ -56,6 +73,17 @@ export class Fraction {
 
   equals(other: Fraction): boolean {
     return this.compare(other) === 0;
+  }
+
+  /**
+   * The value as a plain number.
+   *
+   * Everything musical is kept exact — a triplet eighth is 1/12, not 0.08333 —
+   * so this is the one-way door out to wall-clock seconds and screen pixels,
+   * where a float is what is wanted anyway.
+   */
+  toNumber(): number {
+    return this.num / this.den;
   }
 
   toString(): string {

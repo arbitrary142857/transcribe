@@ -98,7 +98,7 @@ describe("divideIntoTuplet()", () => {
 
     assert.equal(
       melody.toString(),
-      "c4/8{3:2}, c4/8{3:2}, c4/8{3:2}, b4/q/r, b4/h/r, b4/w/r",
+      "c4/8{3:2}, c4/8{3:2}, c4/8{3:2}, b4/q/r, b4/h/r",
     );
     assert.equal(splitIntoMeasures(melody).length, before);
   });
@@ -127,7 +127,7 @@ describe("divideIntoTuplet()", () => {
 
     assert.equal(
       melody.toString(),
-      "x/q, b4/8{3:2}/r, b4/8{3:2}/r, b4/8{3:2}/r, b4/h/r, b4/w/r",
+      "x/q, b4/8{3:2}/r, b4/8{3:2}/r, b4/8{3:2}/r, b4/h/r",
     );
   });
 
@@ -138,7 +138,7 @@ describe("divideIntoTuplet()", () => {
 
     assert.equal(
       melody.toString(),
-      "c4/q{3:2}, c4/q{3:2}, c4/q{3:2}, b4/h/r, b4/w/r",
+      "c4/q{3:2}, c4/q{3:2}, c4/q{3:2}, b4/h/r",
     );
   });
 
@@ -189,7 +189,7 @@ describe("undivideTuplet()", () => {
     undivideTuplet(melody, 2);
 
     // The bracket was made of rests, so a rest is what comes back.
-    assert.equal(melody.toString(), "x/q, b4/q/r, b4/h/r, b4/w/r");
+    assert.equal(melody.toString(), "x/q, b4/q/r, b4/h/r");
   });
 
   it("leaves no bracket behind", () => {
@@ -217,7 +217,7 @@ describe("editing inside a bracket", () => {
 
     assert.equal(
       melody.toString(),
-      "c4/8{3:2}, b4/8{3:2}/r, c4/8{3:2}, b4/q/r, b4/h/r, b4/w/r",
+      "c4/8{3:2}, b4/8{3:2}/r, c4/8{3:2}, b4/q/r, b4/h/r",
     );
     assert.deepEqual(
       melody.tupletSpans().map(({ start, count }) => ({ start, count })),
@@ -253,7 +253,7 @@ describe("editing inside a bracket", () => {
 
     assert.equal(
       melody.toString(),
-      "c4/q{3:2}, c4/8{3:2}, b4/q/r, b4/h/r, b4/w/r",
+      "c4/q{3:2}, c4/8{3:2}, b4/q/r, b4/h/r",
     );
     assert.deepEqual(
       melody.tupletSpans().map(({ start, count }) => ({ start, count })),
@@ -284,7 +284,7 @@ describe("editing inside a bracket", () => {
     writeAt(melody, 0, new Duration(NoteValue.Quarter, 1, Tuplet.Triplet), "note");
 
     assert.deepEqual(melody.tupletSpans(), []);
-    assert.equal(melody.toString(), "c4/q, b4/q/r, b4/h/r, b4/w/r");
+    assert.equal(melody.toString(), "c4/q, b4/q/r, b4/h/r");
     assert.doesNotThrow(() => splitIntoMeasures(melody));
   });
 

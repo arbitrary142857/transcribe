@@ -53,6 +53,30 @@ describe("emptyMelody()", () => {
     assert.equal(emptyMelody(KEY, METER_4_4).toString(), "b4/w/r");
     assert.equal(emptyMelody(KEY, METER_3_4).toString(), "b4/h./r");
   });
+
+  it("opens on as many bars as it is told", () => {
+    assert.equal(
+      emptyMelody(KEY, METER_4_4, 3).toString(),
+      "b4/w/r, b4/w/r, b4/w/r",
+    );
+    assert.equal(
+      emptyMelody(KEY, METER_3_4, 2).toString(),
+      "b4/h./r, b4/h./r",
+    );
+  });
+
+  it("keeps that many bars through writing and erasing", () => {
+    // The count is what the video's timing marks were measured against, so no
+    // edit may change it: writing into the last bar must not add one, and
+    // erasing the only note must not take any away.
+    const melody = emptyMelody(KEY, METER_4_4, 2);
+    const written = writeAt(melody, melody.eventCount - 1, QUARTER, "note");
+    assert.equal(barCount(melody), 2);
+
+    convertToRestAt(melody, written);
+    assert.equal(barCount(melody), 2);
+    assert.equal(melody.toString(), "b4/w/r, b4/w/r");
+  });
 });
 
 describe("availableSpaceAt()", () => {
@@ -139,7 +163,7 @@ describe("writeAt()", () => {
 
     writeAt(melody, 0, QUARTER, "note");
 
-    assert.equal(melody.toString(), "x/q, b4/q/r, b4/h/r, b4/w/r");
+    assert.equal(melody.toString(), "x/q, b4/q/r, b4/h/r");
   });
 
   it("writes a note with no pitch yet, for pitching later", () => {
@@ -163,7 +187,7 @@ describe("writeAt()", () => {
 
     writeAt(melody, 0, HALF, "note");
 
-    assert.equal(melody.toString(), "c4/h, b4/h/r, b4/w/r");
+    assert.equal(melody.toString(), "c4/h, b4/h/r");
   });
 
   it("shrinks a note, handing the room back as rests", () => {
@@ -171,7 +195,7 @@ describe("writeAt()", () => {
 
     writeAt(melody, 0, QUARTER, "note");
 
-    assert.equal(melody.toString(), "c4/q, b4/q/r, b4/h/r, b4/w/r");
+    assert.equal(melody.toString(), "c4/q, b4/q/r, b4/h/r");
   });
 
   it("keeps a note's pitch when only its length changes", () => {
@@ -197,7 +221,7 @@ describe("writeAt()", () => {
 
     writeAt(melody, 0, WHOLE, "note");
 
-    assert.equal(melody.toString(), "x/w, b4/w/r");
+    assert.equal(melody.toString(), "x/w");
   });
 
   it("throws RangeError for a duration longer than the room available", () => {
@@ -232,7 +256,7 @@ describe("writeAt()", () => {
     writeAt(melody, 1, HALF, "note");
 
     assert.equal(melody.isTiedToNext(0), true);
-    assert.equal(melody.toString(), "c4/q, c4/h, b4/q/r, b4/w/r");
+    assert.equal(melody.toString(), "c4/q, c4/h, b4/q/r");
   });
 
   it("drops a tie the new event can no longer honour", () => {
@@ -252,7 +276,7 @@ describe("convertToRestAt()", () => {
 
     convertToRestAt(melody, 1);
 
-    assert.equal(melody.toString(), "c4/q, b4/q/r, c4/q, c4/q, b4/w/r");
+    assert.equal(melody.toString(), "c4/q, b4/q/r, c4/q, c4/q");
   });
 
   it("never moves a barline", () => {
@@ -264,13 +288,14 @@ describe("convertToRestAt()", () => {
     assert.equal(barCount(melody), before);
   });
 
-  it("erases backwards at the end, where trailing silence is not music", () => {
+  it("merges the silence it leaves with the rests around it", () => {
     const melody = editable([quarter(), quarter()]);
 
     convertToRestAt(melody, 1);
 
-    // The second note was the last, so the silence it left is spare bar again.
-    assert.equal(melody.toString(), "c4/q, b4/q/r, b4/h/r, b4/w/r");
+    // The second note was the last; its silence joins the bar's trailing rests
+    // without the bar count moving.
+    assert.equal(melody.toString(), "c4/q, b4/q/r, b4/h/r");
   });
 
   it("is undone by writing a note back over it", () => {

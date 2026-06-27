@@ -6,6 +6,7 @@ import {
   type ElementStyle,
   Factory,
   Formatter,
+  type Stave,
   type StaveNote,
   type StaveTie,
   Stem,
@@ -24,6 +25,9 @@ const HIT_PADDING = 3;
 
 /** Half a notehead's height; note bounds report head centres, not edges. */
 const NOTEHEAD_RADIUS = 6;
+
+/** Breathing room above and below a line, so a marker down it is not a tight collar. */
+const LINE_MARGIN = 6;
 
 /**
  * Room to reserve at the head of each line for the clef, the key signature's
@@ -124,12 +128,27 @@ export type NoteHitRegion = {
   h: number;
 };
 
+/** Where one event was drawn: which line of music, and how far along it. */
+export type EventAnchor = { readonly line: number; readonly x: number };
+
+/**
+ * How tall one line of music stands, in the svg's own coordinates.
+ *
+ * Taken from the staff and everything hanging off it rather than from the five
+ * lines alone, so a marker drawn down a line covers its ledger notes too.
+ */
+export type ScoreLineBox = { readonly top: number; readonly bottom: number };
+
 export type MelodyRenderResult = {
   svg: SVGSVGElement;
   /** Indexed by melody event index; rests included, so indices line up. */
   notes: readonly StaveNote[];
   /** Notes only — rests have no region and so are inert to clicks. */
   regions: readonly NoteHitRegion[];
+  /** Indexed by melody event index, like `notes`. */
+  anchors: readonly EventAnchor[];
+  /** One per line of music, top to bottom. */
+  lines: readonly ScoreLineBox[];
 };
 
 /** Attach a rhythmic/visual dot (VexFlow Tutorial Step 3). */
@@ -392,6 +411,10 @@ export function renderMelody(
       startY + lines.length * staveHeight,
     );
 
+  // Kept per line rather than per bar: what is wanted later is how tall a line
+  // of music stands, and every bar on a line shares that.
+  const staveOfLine: Stave[] = [];
+
   for (let i = 0; i < measures.length; i++) {
     const placement = placements[i]!;
     const system = factory.System({
@@ -403,6 +426,9 @@ export function renderMelody(
       voices: [built[i]!.voice],
       options: { leftBar: placement.startsLine },
     });
+    if (placement.startsLine) {
+      staveOfLine.push(stave);
+    }
     if (placement.startsLine) {
       stave.addClef(clef);
       stave.addKeySignature(keySpec);
@@ -516,6 +542,28 @@ export function renderMelody(
     }
   }
 
+  // Where each event ended up, for anything drawn over the score. The x is the
+  // middle of the notehead rather than its left edge, so a marker put here sits
+  // on the note rather than beside it.
+  const anchors: EventAnchor[] = notes.map((note, i) => ({
+    line: lineOfEvent[i] ?? 0,
+    x: (note.getNoteHeadBeginX() + note.getNoteHeadEndX()) / 2,
+  }));
+
+  // Each line's height: the staff, opened out to take in whatever its notes
+  // reach to. Ledger lines and long stems are what make this worth measuring
+  // rather than assuming — a bar with a high note is taller than an empty one.
+  const lineBoxes: ScoreLineBox[] = staveOfLine.map((stave, line) => {
+    let top = stave.getYForLine(0);
+    let bottom = stave.getYForLine(4);
+    for (const region of regions) {
+      if (lineOfEvent[region.melodyIndex] !== line) continue;
+      top = Math.min(top, region.y);
+      bottom = Math.max(bottom, region.y + region.h);
+    }
+    return { top: top - LINE_MARGIN, bottom: bottom + LINE_MARGIN };
+  });
+
   const svg = element.querySelector("svg");
   if (!svg) {
     throw new Error("VexFlow did not produce an svg element");
@@ -531,7 +579,7 @@ export function renderMelody(
   svg.style.width = "100%";
   svg.style.height = "auto";
 
-  return { svg, notes, regions };
+  return { svg, notes, regions, anchors, lines: lineBoxes };
 }
 
 /**

@@ -1,5 +1,5 @@
 import { notateRest } from "../music/duration.js";
-import { Fraction } from "../music/fraction.js";
+import { Fraction, whole } from "../music/fraction.js";
 import type { Melody } from "../music/melody.js";
 import { type NoteEvent, Rest } from "../music/note-event.js";
 import {
@@ -11,8 +11,6 @@ import {
 
 const ZERO = new Fraction(0, 1);
 
-const times = (length: Fraction, by: number) =>
-  new Fraction(length.num * by, length.den);
 const minOf = (a: Fraction, b: Fraction) => (a.compare(b) <= 0 ? a : b);
 
 /** Rests written for `[from, to)`, cut at each barline it crosses. */
@@ -26,10 +24,8 @@ export function restsBetween(
   let cursor = from;
 
   while (cursor.compare(to) < 0) {
-    const bar = Math.floor(
-      (cursor.num * barLength.den) / (cursor.den * barLength.num),
-    );
-    const barStart = times(barLength, bar);
+    const bar = Math.floor(cursor.divide(barLength).toNumber());
+    const barStart = barLength.multiply(whole(bar));
     const chunkEnd = minOf(barStart.add(barLength), to);
     for (const duration of notateRest(
       chunkEnd.difference(cursor),
@@ -45,40 +41,23 @@ export function restsBetween(
 }
 
 /**
- * Fill any bar the music left half written, and leave exactly one bar of rests
- * past the last note.
+ * Fill out the bar the events leave half written, and nothing more.
  *
- * That spare bar is where the next note goes: it is what makes the score grow
- * without anything ever being inserted, since writing into it is an ordinary
- * edit and a fresh spare appears behind it.
+ * The melody's length is set when it is made and kept thereafter: bars are
+ * never added past the music and never taken away behind it, because the bar
+ * count is chosen up front — it is what the timing marks were measured
+ * against, and a length that moved underneath them would un-measure them.
+ * The count therefore lives in the event list itself, which is what lets undo,
+ * saving and key changes carry it without knowing it exists.
  */
 function fitBars(melody: Melody): void {
   const barLength = barLengthOf(melody.timeSignature);
-  const positions = eventPositions(melody);
-
-  let lastMusicBar: number | undefined;
-  for (const position of positions) {
-    if (!(melody.getEvent(position.index) instanceof Rest)) {
-      lastMusicBar = position.bar;
-    }
-  }
-
-  // One bar past the one the last note sits in, or a single bar when there is
-  // no music yet at all.
-  const target = times(barLength, (lastMusicBar ?? -1) + 2);
   const total = totalLengthOf(melody);
-  const overshoot = total.compare(target);
 
-  if (overshoot > 0) {
-    // Everything past the music is rests, and `target` is a barline, so this
-    // never cuts an event in half.
-    const first = positions.find(
-      (position) => position.start.compare(target) >= 0,
-    );
-    if (first) {
-      melody.replaceEvents(first.index, melody.eventCount - first.index, []);
-    }
-  } else if (overshoot < 0) {
+  const bars = Math.ceil(total.divide(barLength).toNumber());
+  const target = barLength.multiply(whole(bars));
+
+  if (total.compare(target) < 0) {
     melody.replaceEvents(
       melody.eventCount,
       0,
@@ -150,8 +129,8 @@ function renotateRests(melody: Melody): void {
 
 /**
  * Put the melody back into the shape the editor guarantees: every bar exactly
- * full, silence written the way a copyist would write it, and one spare bar of
- * rests waiting past the last note.
+ * full, silence written the way a copyist would write it, and the length it
+ * was given kept.
  *
  * Every editing operation ends here, which is what keeps `splitIntoMeasures`
  * from ever having anything to complain about — and so what keeps the user from

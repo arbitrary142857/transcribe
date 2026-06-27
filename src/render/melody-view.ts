@@ -66,7 +66,16 @@ function hitTest(
  */
 export function createMelodyView(
   melody: Melody,
-  options: RenderMelodyOptions = {},
+  options: RenderMelodyOptions & {
+    /**
+     * Called with each fresh drawing of the score.
+     *
+     * An option rather than something subscribed to afterwards, because the
+     * first draw happens while this function is still running — a listener
+     * added on the way out would miss it.
+     */
+    onRender?: (rendered: MelodyRenderResult) => void;
+  } = {},
 ): MelodyView {
   const elementId = options.elementId ?? "output";
   const element = document.getElementById(elementId);
@@ -136,6 +145,7 @@ export function createMelodyView(
       hovered: only(hoverAnchor),
       ghost: trailingRests(),
     });
+    options.onRender?.(rendered);
   }
 
   /** Convert client coordinates into the svg's own user space. */
