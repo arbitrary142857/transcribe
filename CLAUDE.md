@@ -11,3 +11,15 @@ when doing it.
 ## Prefer `undefined` over `null`
 
 Absent values are `undefined`. Use `null` only where an API requires it.
+
+## Check the VexFlow docs, don't recall them
+
+For any VexFlow API signature or behaviour question, consult the VexFlow wiki,
+examples, docs or GitHub rather than relying on memory — the API changed across
+major versions and training data may reflect an older one. This project is on
+VexFlow 5.
+
+Its `.d.ts` files do not always tell the truth either: `Stem.getBoundingBox()`
+is declared but throws `NotImplemented`. When behaviour matters, check the
+implementation in `node_modules/vexflow/build/esm/src/` — one of the few reasons
+to read `node_modules/`, and say so when doing it.

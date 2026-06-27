@@ -1,92 +1,144 @@
-import { sampleMelodies, type SampleMelodyId } from "./melodies/samples.js";
+import { abMajorPhrase } from "./melodies/ab-major-phrase.js";
 import {
   IncompleteMeasureError,
   MeasureOverflowError,
   TupletAcrossBarlineError,
   UngroupedTupletError,
 } from "./music/measure.js";
-import { renderMelody } from "./render/render-melody.js";
+import { Note } from "./music/note-event.js";
+import type { Pitch } from "./music/pitch.js";
+import {
+  spellForMelodyEvent,
+  spellingContext,
+  spellMidi,
+} from "./music/spelling.js";
+import { createMelodyView } from "./render/melody-view.js";
+import { createPianoKeyboard, rangeForClef } from "./ui/piano-keyboard.js";
 
-/** Extra width on the first bar for clef / key / time (matches render defaults). */
-const FIRST_BAR_EXTRA = 60;
-const DEFAULT_BAR_WIDTH = 200;
+const CLEF = "treble";
 
-const statusEl = document.getElementById("status");
-const barWidthInput = document.getElementById(
-  "bar-width",
-) as HTMLInputElement | null;
-const barWidthValue = document.getElementById("bar-width-value");
-const buttons = document.querySelectorAll<HTMLButtonElement>(
-  "button[data-melody]",
-);
+const keyboardElement = document.getElementById("keyboard");
 
-let activeMelodyId: SampleMelodyId | undefined;
-
-function currentBarWidth(): number {
-  const raw = barWidthInput ? Number(barWidthInput.value) : DEFAULT_BAR_WIDTH;
-  return Number.isFinite(raw) ? raw : DEFAULT_BAR_WIDTH;
-}
-
-function setStatus(message: string): void {
-  if (statusEl) statusEl.textContent = message;
-}
-
-function setPressed(activeId: SampleMelodyId | undefined): void {
-  for (const button of buttons) {
-    const id = button.dataset.melody;
-    button.setAttribute("aria-pressed", id === activeId ? "true" : "false");
+/** Report the errors `splitIntoMeasures` raises, which are the ones worth naming. */
+function describe(error: unknown): string {
+  if (
+    error instanceof MeasureOverflowError ||
+    error instanceof IncompleteMeasureError ||
+    error instanceof TupletAcrossBarlineError ||
+    error instanceof UngroupedTupletError
+  ) {
+    return error.message;
   }
+  return error instanceof Error ? error.message : String(error);
 }
 
-function showMelody(id: SampleMelodyId): void {
-  activeMelodyId = id;
-  setPressed(id);
-  setStatus("");
-  const barWidth = currentBarWidth();
-  try {
-    const sample = sampleMelodies[id];
-    renderMelody(sample.create(), {
-      barWidth,
-      firstWidth: barWidth + FIRST_BAR_EXTRA,
-      clef: "clef" in sample ? sample.clef : "treble",
-    });
-  } catch (error) {
-    const output = document.getElementById("output");
-    output?.replaceChildren();
-    if (
-      error instanceof MeasureOverflowError ||
-      error instanceof IncompleteMeasureError ||
-      error instanceof TupletAcrossBarlineError ||
-      error instanceof UngroupedTupletError
-    ) {
-      setStatus(error.message);
+/**
+ * Make sure the score fonts are usable before anything is measured.
+ *
+ * Bar widths come from measuring the glyphs, and a canvas measures a font it
+ * does not have yet against a fallback — so without this the first layout is
+ * built from the wrong numbers and every bar shifts as soon as anything
+ * redraws. `document.fonts.ready` alone is not enough: it reports "loaded"
+ * while these faces are still unrequested.
+ */
+async function loadScoreFonts(): Promise<void> {
+  if (!document.fonts) {
+    return;
+  }
+  await Promise.all([
+    document.fonts.load("30pt Bravura"),
+    document.fonts.load("10pt Academico"),
+  ]);
+  await document.fonts.ready;
+}
+
+const melody = abMajorPhrase();
+
+try {
+  await loadScoreFonts();
+  const view = createMelodyView(melody, { elementId: "score", clef: CLEF });
+  const range = rangeForClef(CLEF);
+
+  /**
+   * How a pitch is named on the keyboard: spelled against the key signature
+   * alone. Pressing a key spells against the bar it lands in as well, which
+   * only differs when an earlier accidental in that bar is still in force.
+   */
+  const nameInKey = (midi: number): Pitch =>
+    spellMidi(midi, spellingContext(melody.keySignature, []));
+
+  const keyboard = keyboardElement
+    ? createPianoKeyboard(keyboardElement, {
+        clef: CLEF,
+        spell: nameInKey,
+        onPick: setPitchTo,
+      })
+    : undefined;
+
+  /** Retune the selected note, spelling it to suit the key and the bar. */
+  function setPitchTo(midi: number): void {
+    const anchor = view.getAnchor();
+    if (anchor === undefined) {
+      console.log("Select a note on the stave first.");
       return;
     }
-    setStatus(error instanceof Error ? error.message : String(error));
-  }
-}
-
-for (const button of buttons) {
-  button.addEventListener("click", () => {
-    const id = button.dataset.melody;
-    if (id && id in sampleMelodies) {
-      showMelody(id as SampleMelodyId);
+    if (!(melody.getEvent(anchor) instanceof Note)) {
+      console.log("A rest has no pitch to change.");
+      return;
     }
-  });
-}
+    if (midi < range.lowest || midi > range.highest) {
+      return;
+    }
 
-if (barWidthInput) {
-  const syncLabel = (): void => {
-    if (barWidthValue) barWidthValue.textContent = String(currentBarWidth());
-  };
-  syncLabel();
-  barWidthInput.addEventListener("input", () => {
-    syncLabel();
-    if (activeMelodyId) showMelody(activeMelodyId);
-  });
-}
+    const chosen = spellForMelodyEvent(melody, anchor, midi);
+    melody.setPitch(anchor, chosen);
+    view.refresh();
+    keyboard?.highlight(midi);
+    console.log(`Set note ${anchor} to ${chosen}.`);
+  }
 
-const initial = new URLSearchParams(window.location.search).get("melody");
-if (initial && initial in sampleMelodies) {
-  showMelody(initial as SampleMelodyId);
+  /** The pitch of the selected note, if one is selected and it is not a rest. */
+  function selectedPitch(): Pitch | undefined {
+    const anchor = view.getAnchor();
+    if (anchor === undefined) return undefined;
+    const event = melody.getEvent(anchor);
+    return event instanceof Note ? event.pitch : undefined;
+  }
+
+  view.onSelectionChange((anchor) => {
+    const pitch = selectedPitch();
+    keyboard?.highlight(pitch?.toMidi());
+    if (anchor === undefined) {
+      console.log("Selection cleared.");
+      return;
+    }
+    const size = view.getSelection().size;
+    const tied = size > 1 ? ` (tied group of ${size})` : "";
+    console.log(`Selected note ${anchor}: ${pitch ?? "rest"}${tied}.`);
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return;
+    }
+    switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowRight":
+        view.moveSelection(event.key === "ArrowRight" ? 1 : -1);
+        break;
+      case "ArrowUp":
+      case "ArrowDown": {
+        const pitch = selectedPitch();
+        if (!pitch) return;
+        setPitchTo(pitch.toMidi() + (event.key === "ArrowUp" ? 1 : -1));
+        break;
+      }
+      default:
+        return;
+    }
+    // Only once a key has been handled, so the page still scrolls otherwise.
+    event.preventDefault();
+  });
+} catch (error) {
+  console.error(describe(error));
 }

@@ -1,15 +1,26 @@
 :root {
   color-scheme: light;
   --page-bg: #f7f5f1;
+  --ink: #1c1a17;
+  --rule: #cfc8bd;
+  /* Read by the renderer to colour a selected note and its ties. */
+  --note-selected: #b4432c;
+  --note-hovered: #d09a86;
+  --white-key-width: 56px;
+  --black-key-width: 36px;
+  --white-key-height: 152px;
+  --black-key-height: 95px;
+  --keyboard-padding: 0.75rem;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   background: var(--page-bg);
+  color: var(--ink);
   font-family: Georgia, "Times New Roman", serif;
 }
 
@@ -17,70 +28,129 @@ main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
   padding: 1.5rem;
 }
 
-h1 {
-  margin: 0;
-  font-size: 1.1rem;
-  font-weight: normal;
-  letter-spacing: 0.04em;
-  color: #333;
+#score {
+  /* Width comes from the layout, never from the score drawn inside it — the
+     renderer justifies bars to this width, so the two must not chase each
+     other. Too narrow to hold the widest line, the score scales down to fit
+     rather than scrolling. */
+  width: 100%;
+  max-width: 1200px;
 }
 
-.controls {
+/* ---- Piano keyboard ---- */
+
+/* Sits under the score, matching its width rather than running the full width
+   of the window. */
+#keyboard {
+  width: calc(100% - 3rem);
+  max-width: 1200px;
+  margin: 0 auto 1.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: #efeae2;
+  overflow: hidden;
+}
+
+.keyboard-scroller {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--keyboard-padding) 0;
+  /* The shaded edges say it scrolls; the bar itself would only crowd it. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.keyboard-scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.keyboard-keys {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  justify-content: center;
+  align-items: flex-start;
+  height: var(--white-key-height);
+  /* Width comes from the white keys; black keys are positioned over them. */
+  width: max-content;
+  margin: 0 var(--keyboard-padding);
 }
 
-button {
+.key {
+  padding: 0;
   font: inherit;
-  font-size: 0.95rem;
-  padding: 0.4rem 0.9rem;
-  border: 1px solid #bbb;
-  background: #fff;
-  color: #222;
+  /* Without this a button takes the platform's own text colour, which on iOS
+     is the system blue rather than anything inherited. */
+  color: var(--ink);
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
   cursor: pointer;
-}
-
-button:hover {
-  background: #f0eee8;
-}
-
-button[aria-pressed="true"] {
-  border-color: #333;
-  background: #ebe7df;
-}
-
-.bar-width {
   display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 0.9rem;
-  color: #444;
 }
 
-.bar-width input[type="range"] {
-  width: 12rem;
+.key-white {
+  width: var(--white-key-width);
+  height: var(--white-key-height);
+  flex: 0 0 auto;
+  background: #fffdf9;
+  border: 1px solid #b3aa9d;
+  border-radius: 0 0 4px 4px;
+  padding-bottom: 10px;
 }
 
-.bar-width output {
-  min-width: 2.5rem;
-  font-variant-numeric: tabular-nums;
+.key-white:hover {
+  background: #f3ece0;
 }
 
-#status {
-  min-height: 1.25rem;
-  margin: 0;
-  font-size: 0.9rem;
-  color: #a33;
+.key-black {
+  position: absolute;
+  top: 0;
+  /* Straddle the boundary between the white keys on either side. */
+  left: calc(
+    var(--white-index) * var(--white-key-width) - var(--black-key-width) / 2
+  );
+  width: var(--black-key-width);
+  height: var(--black-key-height);
+  background: #2b2723;
+  border: 1px solid #15120f;
+  border-radius: 0 0 4px 4px;
+  color: #f4efe6;
+  padding-bottom: 8px;
+  z-index: 1;
 }
 
-#output {
-  min-width: 200px;
-  min-height: 120px;
-  background: var(--page-bg);
+.key-black:hover {
+  background: #423a33;
+}
+
+/* A label, not a control: the whole key is the button, and the name never
+   spills past the key it belongs to. */
+.key-name {
+  font-size: 0.76rem;
+  line-height: 1.15;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.key-black .key-name {
+  font-size: 0.66rem;
+}
+
+/* The pitch of whichever note is selected on the stave. */
+.key-white.key-selected {
+  background: var(--note-selected);
+  border-color: var(--note-selected);
+  color: #fffdf9;
+}
+
+.key-black.key-selected {
+  background: var(--note-selected);
+  border-color: #7d2d1d;
 }

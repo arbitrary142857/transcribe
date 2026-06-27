@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- IMPORTANT: Set the character set to UTF-8. Otherwise you may get weird symbols on the score. -->
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Melody Rendering</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>VexFlow Melody Rendering</h1>
+      <div class="controls">
+        <button type="button" data-melody="scale">C major scale</button>
+        <button type="button" data-melody="tied">Tied phrase (G major)</button>
+        <button type="button" data-melody="rests">Rests &amp; accidentals</button>
+        <button type="button" data-melody="chromatic">Chromatic (D major)</button>
+        <button type="button" data-melody="chromatic68">Chromatic 6/8 (bass)</button>
+        <button type="button" data-melody="tuplets">Tuplets (C major)</button>
+      </div>
+      <label class="bar-width">
+        Bar width
+        <input
+          id="bar-width"
+          type="range"
+          min="150"
+          max="280"
+          step="1"
+          value="200"
+        />
+        <output id="bar-width-value" for="bar-width">200</output>
+      </label>
+      <p id="status" aria-live="polite"></p>
+      <div id="output"></div>
+    </main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

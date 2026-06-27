@@ -1,6 +1,7 @@
 import type { Accidental, LetterName } from "./types.js";
 
-const LETTER_SEMITONE: Record<LetterName, number> = {
+/** Semitone of each natural letter above C, within one octave. */
+export const LETTER_SEMITONE: Record<LetterName, number> = {
   C: 0,
   D: 2,
   E: 4,

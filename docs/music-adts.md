@@ -24,6 +24,13 @@ import {
 } from "./music/measure.js";
 
 import { Fraction } from "./music/fraction.js";
+
+import {
+  spellingContext,
+  spellForMelodyEvent,
+  spellMidi,
+  enharmonicSpellings,
+} from "./music/spelling.js";
 ```
 
 ---
@@ -233,6 +240,8 @@ new KeySignature(tonic: Pitch, mode: Mode)
 | ------ | ------- | ----------- |
 | `isEqual(other)` | `boolean` | Same mode and exact tonic spelling (including octave). |
 | `isEnharmonicallyEqual(other)` | `boolean` | Same mode and enharmonically equivalent tonic (octave ignored via chroma). |
+| `fifths()` | `number` | Position on the circle of fifths: positive counts sharps, negative flats. C major is 0, G major 1, A♭ major −4, C♯ major 7. |
+| `alterationFor(letter)` | `Accidental` | The alteration this key applies to `letter`, in every octave. A♭ major returns −1 for B, E, A and D, and 0 for G, C and F. Throws `RangeError` for keys needing more than a double accidental, which only absurd tonics such as B♯♯ major reach. |
 
 ### Example
 
@@ -240,6 +249,72 @@ new KeySignature(tonic: Pitch, mode: Mode)
 new KeySignature(new Pitch("A", 0, 4), "major");   // A major
 new KeySignature(new Pitch("F", 1, 4), "major");   // F♯ major
 new KeySignature(new Pitch("D", -1, 4), "minor");  // D♭ minor
+
+const aFlat = new KeySignature(new Pitch("A", -1, 4), "major");
+aFlat.fifths();              // -4 — four flats
+aFlat.alterationFor("B");    // -1
+aFlat.alterationFor("G");    //  0
+```
+
+---
+
+## Spelling
+
+Choosing *how to write* a pitch that is already decided. Every function here
+ranges only over enharmonically equivalent spellings, so the sound never
+changes — clicking a B natural in A♭ major still gives a B natural; the only
+question is whether to write it as B♮, C♭ or A♯♯.
+
+Import from `src/music/spelling.js` (also re-exported from `src/music/index.js`).
+
+### `SpellingContext`
+
+The accidental environment at one point inside one measure: the key, plus the
+alteration last sounded for each letter in each octave earlier in that measure.
+Accidentals do not carry across a barline, so a context is only ever built from
+a single measure.
+
+```typescript
+type SpellingContext = {
+  readonly key: KeySignature;
+  readonly alterations: ReadonlyMap<string, Accidental>;  // keyed `"F4"`
+};
+```
+
+### Functions
+
+| Function | Returns | Description |
+| -------- | ------- | ----------- |
+| `spellingContext(key, precedingEvents)` | `SpellingContext` | Fold the events of one measure that precede the note in question. Rests are skipped. Every `Note` is recorded, not only ones that printed an accidental: once a note has sounded, the alteration in effect for its letter and octave *is* its accidental. |
+| `alterationInEffect(context, letter, octave)` | `Accidental` | What a player currently applies to that letter in that octave, falling back to `key.alterationFor(letter)`. |
+| `requiresAccidental(context, pitch)` | `boolean` | Whether writing `pitch` here would print an accidental. |
+| `enharmonicSpellings(semitone, maxAccidental?)` | `Pitch[]` | Every spelling of an absolute semitone (C0 = 0), in letter order C to B. `maxAccidental` defaults to 2; pass 1 to exclude double accidentals. The octave follows the letter rather than the sound, so semitone 47 yields both B3 and C♭4. |
+| `spellSemitone(semitone, context)` | `Pitch` | The spelling printing the fewest accidentals here. Always a fresh `Pitch`. |
+| `spellMidi(midi, context)` | `Pitch` | As `spellSemitone`, for a MIDI number (C4 = 60). |
+| `spellForMelodyEvent(melody, index, midi)` | `Pitch` | The spelling to hand to `melody.setPitch(index, …)`. Resolves the tied group containing `index` and spells against the measure holding the group's **first** note, since that is where the accidental would be printed. |
+
+### How a spelling is chosen
+
+Candidates are ranked lexicographically, lower winning:
+
+1. whether it prints an accidental at all,
+2. whether it is a double accidental,
+3. whether it runs against the key's flat/sharp direction,
+4. how far it is from natural.
+
+Rule 1 dominates, which is what makes the choice key-aware: in E major an F♯
+prints nothing while a G♭ would, so F♯ wins; in D♭ major the key already flats
+G, so the same sound comes out as G♭. Rules 2 and 4 are why a B natural in
+A♭ major stays a plain B rather than becoming C♭ or A♯♯ — all three cost one
+accidental, so the plainest spelling wins.
+
+Only the notes **before** the target in its measure are consulted. Looking ahead
+would make an earlier note's spelling depend on later ones, so re-picking the
+same pitch after a later edit would silently respell an earlier note.
+
+```typescript
+const context = spellingContext(C_MAJOR, [new Note(new Pitch("E", -1, 4), QUARTER)]);
+spellMidi(63, context);   // E♭4 — the earlier E♭ makes it free; D♯ would print
 ```
 
 ---
