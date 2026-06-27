@@ -6,11 +6,14 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsc && tsc -p tsconfig.test.json && node --test dist-test/**/*.test.js",
-    "demo": "tsc && node dist/demo/play-melody.js"
+    "demo": "tsc && node dist/demo/play-melody.js",
+    "dev": "vite",
+    "build:web": "vite build"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^8.1.5"
   },
   "dependencies": {
     "vexflow": "5.0.0"

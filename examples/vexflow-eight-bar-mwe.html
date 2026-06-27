@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- IMPORTANT: Set the character set to UTF-8. Otherwise you may get weird symbols on the score. -->
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VexFlow MWE — Eight-Bar Phrase</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #f7f5f1;
+        font-family: Georgia, 'Times New Roman', serif;
+      }
+      main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.5rem;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: normal;
+        letter-spacing: 0.04em;
+        color: #333;
+      }
+      #output {
+        background: #fff;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Eight-bar phrase (VexFlow 5 MWE) — with complex tuplets</h1>
+      <div id="output"></div>
+    </main>
+
+    <!-- VexFlow 5 core + fonts (see https://vexflow.github.io/vexflow-examples/guides/getting-started/) -->
+    <script src="https://cdn.jsdelivr.net/npm/vexflow@5.0.0/build/cjs/vexflow-core.js"></script>
+    <script>
+      /* global VexFlow */
+      VexFlow.loadFonts('Bravura', 'Academico').then(() => {
+        VexFlow.setFonts('Bravura', 'Academico');
+
+        // Tuplet options use camelCase in VexFlow 5 (numNotes / notesOccupied).
+        // See https://github.com/0xfe/vexflow/wiki/Tuplets
+        const { Factory, Dot, BarlineType, Tuplet } = VexFlow;
+
+        const factory = new Factory({
+          renderer: { elementId: 'output', width: 980, height: 300 },
+        });
+
+        /** Attach a rhythmic/visual dot (VexFlow Tutorial Step 3). */
+        function dotted(staveNote) {
+          Dot.buildAndAttach([staveNote], { all: true });
+          return staveNote;
+        }
+
+        /**
+         * One measure per System/Stave, juxtaposed (Wiki Tutorial Step 7).
+         * Returns the measure's notes so ties can reference them.
+         * Beams / tuplets should be created on `factory` *before* calling this
+         * (beams before tuplets, so default bracketing is correct).
+         */
+        function addMeasure({ x, y, width, notes, clef, key, time, endBar }) {
+          const system = factory.System({ x, y, width });
+          const voice = factory.Voice({ time: '4/4' }).addTickables(notes);
+          const stave = system.addStave({
+            voices: [voice],
+            options: { leftBar: Boolean(clef || key || time) },
+          });
+          if (clef) stave.addClef(clef);
+          if (key) stave.addKeySignature(key);
+          if (time) stave.addTimeSignature(time);
+          if (endBar !== undefined) stave.setEndBarType(endBar);
+          return notes;
+        }
+
+        // Layout: 4 bars/line, 2 lines. First bar of each line is wider (clef/key/time).
+        const line1Y = 20;
+        const line2Y = 150;
+        const firstWidth = 260;
+        const barWidth = 200;
+        const tupletBarWidth = 260; // denser nested-tuplet bar
+        const startX = 10;
+
+        // ── Line 1 (accidentals, beams, dots, ties) ─────────────────────────
+        // Bar 1: beamed 8ths + accidental + dotted quarter
+        const m1a = factory.StaveNote({ keys: ['g/4'], duration: '8' });
+        const m1b = factory.StaveNote({ keys: ['a/4'], duration: '8' });
+        const m1c = factory.StaveNote({ keys: ['b/4'], duration: '8' });
+        const m1d = factory
+          .StaveNote({ keys: ['c/5'], duration: '8' })
+          .addModifier(factory.Accidental({ type: '#' }));
+        const m1e = dotted(factory.StaveNote({ keys: ['d/5'], duration: 'qd' }));
+        const m1f = factory.StaveNote({ keys: ['e/5'], duration: '8' });
+        factory.Beam({ notes: [m1a, m1b, m1c, m1d] });
+        addMeasure({
+          x: startX,
+          y: line1Y,
+          width: firstWidth,
+          notes: [m1a, m1b, m1c, m1d, m1e, m1f],
+          clef: 'treble',
+          key: 'G',
+          time: '4/4',
+        });
+
+        // Bar 2: beamed 16ths + beamed 8ths + half that ties across the barline
+        const m2a = factory.StaveNote({ keys: ['d/5'], duration: '16' });
+        const m2b = factory.StaveNote({ keys: ['e/5'], duration: '16' });
+        const m2c = factory.StaveNote({ keys: ['f/5'], duration: '16' });
+        const m2d = factory.StaveNote({ keys: ['g/5'], duration: '16' });
+        const m2e = factory.StaveNote({ keys: ['a/5'], duration: '8' });
+        const m2f = factory.StaveNote({ keys: ['b/5'], duration: '8' });
+        const m2g = factory.StaveNote({ keys: ['c/5'], duration: 'h' });
+        factory.Beam({ notes: [m2a, m2b, m2c, m2d] });
+        factory.Beam({ notes: [m2e, m2f] });
+        const bar2 = addMeasure({
+          x: startX + firstWidth,
+          y: line1Y,
+          width: barWidth,
+          notes: [m2a, m2b, m2c, m2d, m2e, m2f, m2g],
+        });
+
+        // Bar 3: continuation of cross-barline tie + beamed 8ths
+        const m3a = factory.StaveNote({ keys: ['c/5'], duration: 'h' });
+        const m3b = factory.StaveNote({ keys: ['b/4'], duration: '8' });
+        const m3c = factory.StaveNote({ keys: ['a/4'], duration: '8' });
+        const m3d = factory.StaveNote({ keys: ['g/4'], duration: '8' });
+        const m3e = factory.StaveNote({ keys: ['f/4'], duration: '8' });
+        factory.Beam({ notes: [m3b, m3c, m3d, m3e] });
+        const bar3 = addMeasure({
+          x: startX + firstWidth + barWidth,
+          y: line1Y,
+          width: barWidth,
+          notes: [m3a, m3b, m3c, m3d, m3e],
+        });
+
+        // Bar 4: dotted quarter + within-bar tie
+        const m4a = dotted(factory.StaveNote({ keys: ['g/4'], duration: 'qd' }));
+        const m4b = factory.StaveNote({ keys: ['a/4'], duration: '8' });
+        const m4c = factory.StaveNote({ keys: ['b/4'], duration: 'q' });
+        const m4d = factory.StaveNote({ keys: ['b/4'], duration: 'q' });
+        const bar4 = addMeasure({
+          x: startX + firstWidth + 2 * barWidth,
+          y: line1Y,
+          width: barWidth,
+          notes: [m4a, m4b, m4c, m4d],
+        });
+
+        // ── Line 2 (complex tuplets) ─────────────────────────────────────────
+        // Bar 5: beamed quintuplet 16ths (5:4) + three quarters
+        const m5q = [
+          factory.StaveNote({ keys: ['c/5'], duration: '16' }),
+          factory.StaveNote({ keys: ['d/5'], duration: '16' }),
+          factory.StaveNote({ keys: ['e/5'], duration: '16' }),
+          factory.StaveNote({ keys: ['f/5'], duration: '16' }),
+          factory.StaveNote({ keys: ['g/5'], duration: '16' }),
+        ];
+        const m5a = factory.StaveNote({ keys: ['a/5'], duration: 'q' });
+        const m5b = factory
+          .StaveNote({ keys: ['b/4'], duration: 'q' })
+          .addModifier(factory.Accidental({ type: 'b' }));
+        const m5c = factory.StaveNote({ keys: ['d/5'], duration: 'q' });
+        factory.Beam({ notes: m5q });
+        factory.Tuplet({
+          notes: m5q,
+          options: {
+            numNotes: 5,
+            notesOccupied: 4,
+            ratioed: true,
+            bracketed: true,
+          },
+        });
+        addMeasure({
+          x: startX,
+          y: line2Y,
+          width: firstWidth,
+          notes: [...m5q, m5a, m5b, m5c],
+          clef: 'treble',
+          key: 'G',
+        });
+
+        // Bar 6: septuplet 16ths (7:4, ratio shown) + half + quarter
+        const m6s = [
+          factory.StaveNote({ keys: ['b/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['a/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['g/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['f/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['e/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['d/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['c/4'], duration: '16' }),
+        ];
+        const m6a = factory.StaveNote({ keys: ['d/4'], duration: 'h' });
+        const m6b = factory.StaveNote({ keys: ['g/4'], duration: 'q' });
+        factory.Beam({ notes: m6s });
+        factory.Tuplet({
+          notes: m6s,
+          options: {
+            numNotes: 7,
+            notesOccupied: 4,
+            ratioed: true,
+            bracketed: true,
+          },
+        });
+        addMeasure({
+          x: startX + firstWidth,
+          y: line2Y,
+          width: barWidth,
+          notes: [...m6s, m6a, m6b],
+        });
+
+        // Bar 7: nested tuplets over a mixed collection (Wiki Tuplets example).
+        // Outer 3:2 over the first phrase; inner 5:4 quintuplet + inner triplet;
+        // then a 5:3 quintuplet of unequal spacing; closing eighth triplet.
+        const n = [
+          factory.StaveNote({ keys: ['c/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['d/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['e/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['f/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['g/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['a/4'], duration: 'q' }),
+          factory.StaveNote({ keys: ['b/4'], duration: 'q' }),
+          factory.StaveNote({ keys: ['c/5'], duration: '8' }),
+          factory.StaveNote({ keys: ['b/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['a/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['g/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['f/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['e/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['d/4'], duration: '16' }),
+          factory.StaveNote({ keys: ['c/4'], duration: '8' }),
+          factory.StaveNote({ keys: ['b/3'], duration: '8' }),
+          factory.StaveNote({ keys: ['c/4'], duration: '8' }),
+        ];
+        // Beams first (affects default tuplet bracketing).
+        factory.Beam({ notes: n.slice(0, 5) });
+        factory.Beam({ notes: n.slice(8, 13) });
+        factory.Beam({ notes: n.slice(14, 17) });
+        // Outer ratioed tuplet over a mixed-duration collection
+        factory.Tuplet({
+          notes: n.slice(0, 8),
+          options: { numNotes: 3, notesOccupied: 2, ratioed: true, bracketed: true },
+        });
+        // Nested quintuplet under the outer tuplet (below the staff)
+        factory.Tuplet({
+          notes: n.slice(0, 5),
+          options: {
+            numNotes: 5,
+            notesOccupied: 4,
+            location: Tuplet.LOCATION_BOTTOM,
+            bracketed: true,
+          },
+        });
+        // Nested triplet on the quarter + eighth under the outer tuplet
+        factory.Tuplet({
+          notes: n.slice(6, 8),
+          options: {
+            numNotes: 3,
+            notesOccupied: 2,
+            location: Tuplet.LOCATION_BOTTOM,
+          },
+        });
+        // Complex 5:3 over five 16ths (ratio shown by default when |5-3|>1)
+        factory.Tuplet({
+          notes: n.slice(8, 13),
+          options: { numNotes: 5, notesOccupied: 3, ratioed: true },
+        });
+        // Closing eighth-note triplet
+        factory.Tuplet({
+          notes: n.slice(14, 17),
+          options: { numNotes: 3, notesOccupied: 2 },
+        });
+        addMeasure({
+          x: startX + firstWidth + barWidth,
+          y: line2Y,
+          width: tupletBarWidth,
+          notes: n,
+        });
+
+        // Bar 8: beamed 8ths + final half; end barline
+        const m8a = factory.StaveNote({ keys: ['g/4'], duration: '8' });
+        const m8b = factory.StaveNote({ keys: ['a/4'], duration: '8' });
+        const m8c = factory.StaveNote({ keys: ['b/4'], duration: '8' });
+        const m8d = factory.StaveNote({ keys: ['c/5'], duration: '8' });
+        const m8e = factory
+          .StaveNote({ keys: ['d/5'], duration: 'h' })
+          .addModifier(factory.Accidental({ type: 'n' }));
+        factory.Beam({ notes: [m8a, m8b, m8c, m8d] });
+        addMeasure({
+          x: startX + firstWidth + barWidth + tupletBarWidth,
+          y: line2Y,
+          width: barWidth,
+          notes: [m8a, m8b, m8c, m8d, m8e],
+          endBar: BarlineType.END,
+        });
+
+        // Ties (Factory StaveTie; Wiki Tutorial Step 5)
+        factory.StaveTie({
+          from: bar4[2],
+          to: bar4[3],
+          firstIndexes: [0],
+          lastIndexes: [0],
+        });
+        factory.StaveTie({
+          from: bar2[6],
+          to: bar3[0],
+          firstIndexes: [0],
+          lastIndexes: [0],
+        });
+
+        factory.draw();
+      });
+    </script>
+  </body>
+</html>
