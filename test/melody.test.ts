@@ -8,6 +8,7 @@ import {
   NoteValue,
   Pitch,
   Rest,
+  Tuplet,
   type NoteEvent,
 } from "../dist/music/index.js";
 
@@ -439,5 +440,246 @@ describe("Melody Ties", () => {
     assert.equal(untied.isEqual(singleHalf), false);
     assert.equal(tied.isEqual(singleHalf), false);
     assert.equal(untied.isEnharmonicallyEqual(tied), false);
+  });
+});
+
+const EIGHTH_TRIPLET = new Duration(NoteValue.Eighth, 0, Tuplet.Triplet);
+const QUARTER_TRIPLET = new Duration(NoteValue.Quarter, 0, Tuplet.Triplet);
+
+/** Six eighth-note triplets: two groupable runs of three. */
+function makeTripletMelody(): Melody {
+  return makeDefaultMelody([
+    new Note(C4, EIGHTH_TRIPLET),
+    new Note(D4, EIGHTH_TRIPLET),
+    new Note(E4, EIGHTH_TRIPLET),
+    new Note(F4, EIGHTH_TRIPLET),
+    new Note(G4, EIGHTH_TRIPLET),
+    new Note(C4, EIGHTH_TRIPLET),
+  ]);
+}
+
+describe("Melody Tuplets", () => {
+  it("groupTuplet()", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+    melody.groupTuplet(3, 3);
+
+    assert.deepEqual(melody.tupletSpans(), [
+      { start: 0, count: 3, tuplet: Tuplet.Triplet },
+      { start: 3, count: 3, tuplet: Tuplet.Triplet },
+    ]);
+  });
+
+  it("groupTuplet(): does not modify the events", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+
+    for (let i = 0; i < melody.eventCount; i++) {
+      assert.equal(melody.getEvent(i).duration.isEqual(EIGHTH_TRIPLET), true);
+    }
+  });
+
+  it("groupTuplet(): throws RangeError when count is below 2 or noninteger", () => {
+    const melody = makeTripletMelody();
+
+    for (const count of [1, 2.5]) {
+      assert.throws(
+        () => melody.groupTuplet(0, count),
+        (err: unknown) =>
+          err instanceof RangeError &&
+          err.message === "count must be an integer greater than 1",
+      );
+    }
+  });
+
+  it("groupTuplet(): throws RangeError when the span runs past the end", () => {
+    const melody = makeTripletMelody();
+
+    assert.throws(
+      () => melody.groupTuplet(4, 3),
+      (err: unknown) =>
+        err instanceof RangeError &&
+        err.message ===
+          "Cannot group 3 events into a tuplet at index 4: the melody has 6 events",
+    );
+  });
+
+  it("groupTuplet(): throws TypeError when the first event has no tuplet", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(D4, EIGHTH_TRIPLET),
+      new Note(E4, EIGHTH_TRIPLET),
+    ]);
+
+    assert.throws(
+      () => melody.groupTuplet(0, 3),
+      (err: unknown) =>
+        err instanceof TypeError &&
+        err.message ===
+          "Cannot group a tuplet at index 0: the event has no tuplet duration",
+    );
+  });
+
+  it("groupTuplet(): throws TypeError on mismatched ratios", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, EIGHTH_TRIPLET),
+      new Note(D4, EIGHTH_TRIPLET),
+      new Note(E4, new Duration(NoteValue.Eighth, 0, Tuplet.Quintuplet)),
+    ]);
+
+    assert.throws(
+      () => melody.groupTuplet(0, 3),
+      (err: unknown) =>
+        err instanceof TypeError &&
+        err.message ===
+          "Cannot group a tuplet at index 0: event 2 does not have the same tuplet ratio",
+    );
+  });
+
+  it("groupTuplet(): throws RangeError when the group is incomplete", () => {
+    const melody = makeTripletMelody();
+
+    assert.throws(
+      () => melody.groupTuplet(0, 2), // two thirds of a triplet
+      (err: unknown) =>
+        err instanceof RangeError &&
+        err.message ===
+          "Cannot group a tuplet at index 0: the 3:2 group is incomplete, sounding 1/6 of a whole note",
+    );
+  });
+
+  it("groupTuplet(): accepts a complete group of mixed durations", () => {
+    // A triplet written as quarter + eighth still fills three eighth units.
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER_TRIPLET),
+      new Note(D4, EIGHTH_TRIPLET),
+    ]);
+    melody.groupTuplet(0, 2);
+
+    assert.deepEqual(melody.tupletSpans(), [
+      { start: 0, count: 2, tuplet: Tuplet.Triplet },
+    ]);
+  });
+
+  it("groupTuplet(): throws RangeError on overlapping spans", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+
+    assert.throws(
+      () => melody.groupTuplet(2, 3),
+      (err: unknown) =>
+        err instanceof RangeError &&
+        err.message ===
+          "Cannot group a tuplet at index 2: event 2 is already in a tuplet",
+    );
+  });
+
+  it("ungroupTuplet()", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+    melody.groupTuplet(3, 3);
+    melody.ungroupTuplet(0);
+
+    assert.deepEqual(melody.tupletSpans(), [
+      { start: 3, count: 3, tuplet: Tuplet.Triplet },
+    ]);
+  });
+
+  it("ungroupTuplet(): no-op when no span starts there", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+    melody.ungroupTuplet(1);
+
+    assert.equal(melody.tupletSpans().length, 1);
+  });
+
+  it("getTupletSpan()", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+
+    for (const index of [0, 1, 2]) {
+      assert.deepEqual(melody.getTupletSpan(index), {
+        start: 0,
+        count: 3,
+        tuplet: Tuplet.Triplet,
+      });
+    }
+  });
+
+  it("getTupletSpan(): lone span of Tuplet.None when ungrouped", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+
+    assert.deepEqual(melody.getTupletSpan(4), {
+      start: 4,
+      count: 1,
+      tuplet: Tuplet.None,
+    });
+  });
+
+  it("getTupletSpan(): throws RangeError when out of range", () => {
+    const melody = makeTripletMelody();
+
+    assert.throws(
+      () => melody.getTupletSpan(6),
+      (err: unknown) =>
+        err instanceof RangeError && err.message === "No event at index 6",
+    );
+  });
+
+  it("tupletSpans(): ordered by start index", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(3, 3);
+    melody.groupTuplet(0, 3);
+
+    assert.deepEqual(
+      melody.tupletSpans().map((span) => span.start),
+      [0, 3],
+    );
+  });
+
+  it("setDuration(): allowed inside a span when the ratio matches", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+    melody.setDuration(1, QUARTER_TRIPLET);
+
+    assert.equal(melody.getEvent(1).duration.isEqual(QUARTER_TRIPLET), true);
+  });
+
+  it("setDuration(): throws TypeError when it would break a span", () => {
+    const melody = makeTripletMelody();
+    melody.groupTuplet(0, 3);
+
+    assert.throws(
+      () => melody.setDuration(1, QUARTER),
+      (err: unknown) =>
+        err instanceof TypeError &&
+        err.message ===
+          "Cannot set duration at index 1: the event is grouped in a 3:2 tuplet",
+    );
+  });
+
+  it("isEqual(): returns false on differing tuplet grouping", () => {
+    const ungrouped = makeTripletMelody();
+    const grouped = makeTripletMelody();
+    grouped.groupTuplet(0, 3);
+    grouped.groupTuplet(3, 3);
+    const groupedAsSix = makeTripletMelody();
+    groupedAsSix.groupTuplet(0, 6);
+
+    assert.equal(ungrouped.isEqual(grouped), false);
+    assert.equal(grouped.isEqual(groupedAsSix), false);
+    assert.equal(ungrouped.isEnharmonicallyEqual(grouped), false);
+  });
+
+  it("toString(): shows the tuplet ratio on each event", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, EIGHTH_TRIPLET),
+      new Note(D4, EIGHTH_TRIPLET),
+      new Rest(EIGHTH_TRIPLET),
+    ]);
+    melody.groupTuplet(0, 3);
+
+    assert.equal(melody.toString(), "c4/8{3:2}, d4/8{3:2}, b4/8{3:2}/r");
   });
 });

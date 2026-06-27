@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { Duration, NoteValue } from "../dist/music/duration.js";
 import { Note, Rest } from "../dist/music/note-event.js";
 import { Pitch } from "../dist/music/pitch.js";
+import { Tuplet } from "../dist/music/tuplet.js";
 
 const C4 = new Pitch("C", 0, 4);
 const F_SHARP_4 = new Pitch("F", 1, 4);
@@ -10,6 +11,7 @@ const G_FLAT_4 = new Pitch("G", -1, 4);
 const QUARTER = new Duration(NoteValue.Quarter);
 const DOTTED_QUARTER = new Duration(NoteValue.Quarter, 1);
 const HALF = new Duration(NoteValue.Half);
+const EIGHTH_TRIPLET = new Duration(NoteValue.Eighth, 0, Tuplet.Triplet);
 
 describe("Note", () => {
   it("isEqual()", () => {
@@ -45,6 +47,7 @@ describe("Note", () => {
   it("toString()", () => {
     assert.equal(new Note(C4, QUARTER).toString(), "c4/q");
     assert.equal(new Note(F_SHARP_4, DOTTED_QUARTER).toString(), "f#4/q.");
+    assert.equal(new Note(C4, EIGHTH_TRIPLET).toString(), "c4/8{3:2}");
   });
 });
 
@@ -74,6 +77,7 @@ describe("Rest", () => {
   it("toString()", () => {
     assert.equal(new Rest(QUARTER).toString(), "b4/q/r");
     assert.equal(new Rest(HALF).toString(), "b4/h/r");
-    assert.equal(new Rest(DOTTED_QUARTER).toString(), "b4/q/r.");
+    assert.equal(new Rest(DOTTED_QUARTER).toString(), "b4/q./r");
+    assert.equal(new Rest(EIGHTH_TRIPLET).toString(), "b4/8{3:2}/r");
   });
 });

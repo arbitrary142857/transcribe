@@ -34,6 +34,13 @@ export class Fraction {
     ).reduce();
   }
 
+  multiply(other: Fraction): Fraction {
+    return new Fraction(
+      this.num * other.num,
+      this.den * other.den,
+    ).reduce();
+  }
+
   /** Returns this − other, reduced. */
   difference(other: Fraction): Fraction {
     return new Fraction(

@@ -1,32 +1,25 @@
 import { Fraction } from "./fraction.js";
+import { Tuplet } from "./tuplet.js";
 
 /** Each value is the denominator of 1/n of a whole note. */
 export const NoteValue = {
   Whole: 1,
   Half: 2,
-  HalfTriplet: 3,
   Quarter: 4,
-  QuarterTriplet: 6,
   Eighth: 8,
-  EighthTriplet: 12,
   Sixteenth: 16,
-  SixteenthTriplet: 24,
   ThirtySecond: 32,
 } as const;
 
 type NoteValueType = (typeof NoteValue)[keyof typeof NoteValue];
 
-/** VexFlow EasyScore duration token (without leading slash). */
+/** VexFlow duration token for each note value. */
 const VEXFLOW_DURATION: Record<NoteValueType, string> = {
   [NoteValue.Whole]: "w",
   [NoteValue.Half]: "h",
-  [NoteValue.HalfTriplet]: "h",
   [NoteValue.Quarter]: "q",
-  [NoteValue.QuarterTriplet]: "q",
   [NoteValue.Eighth]: "8",
-  [NoteValue.EighthTriplet]: "8",
   [NoteValue.Sixteenth]: "16",
-  [NoteValue.SixteenthTriplet]: "16",
   [NoteValue.ThirtySecond]: "32",
 };
 
@@ -34,6 +27,7 @@ export class Duration {
   constructor(
     public value: NoteValueType,
     public dots = 0,
+    public tuplet: Tuplet = Tuplet.None,
   ) {
     if (!Number.isInteger(this.dots) || this.dots < 0) {
       throw new RangeError("dots must be a non-negative integer");
@@ -41,7 +35,11 @@ export class Duration {
   }
 
   isEqual(other: Duration): boolean {
-    return this.value === other.value && this.dots === other.dots;
+    return (
+      this.value === other.value &&
+      this.dots === other.dots &&
+      this.tuplet.isEqual(other.tuplet)
+    );
   }
 
   /** Length as a fraction of a whole note, for playback timing. */
@@ -52,7 +50,7 @@ export class Duration {
       num *= 2 ** (this.dots + 1) - 1;
       den *= 2 ** this.dots;
     }
-    return new Fraction(num, den).reduce();
+    return new Fraction(num, den).multiply(this.tuplet.asFraction());
   }
 
   /** Same sounding length, possibly with different notation. */
@@ -66,8 +64,14 @@ export class Duration {
     return (num / den) * wholeNoteSeconds;
   }
 
-  /** EasyScore duration suffix, e.g. `/q` or `/q..`. */
+  /** VexFlow duration token for the written note value, e.g. `q` or `16`. */
+  vexFlowToken(): string {
+    return VEXFLOW_DURATION[this.value];
+  }
+
+  /** Written length and tuplet ratio, e.g. `/q`, `/q..`, or `/8{3:2}`. */
   toString(): string {
-    return `/${VEXFLOW_DURATION[this.value]}${".".repeat(this.dots)}`;
+    const ratio = this.tuplet.isNone() ? "" : `{${this.tuplet}}`;
+    return `/${this.vexFlowToken()}${".".repeat(this.dots)}${ratio}`;
   }
 }

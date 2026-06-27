@@ -1,6 +1,7 @@
 import { Fraction } from "./fraction.js";
 import type { Melody } from "./melody.js";
 import type { NoteEvent } from "./note-event.js";
+import type { TupletSpan } from "./tuplet.js";
 
 const ZERO = new Fraction(0, 1);
 
@@ -30,6 +31,27 @@ export class IncompleteMeasureError extends Error {
   }
 }
 
+export class TupletAcrossBarlineError extends Error {
+  constructor(
+    public readonly spanStartIndex: number,
+    public readonly measureStartIndex: number,
+  ) {
+    super(
+      `Tuplet starting at melody index ${spanStartIndex} extends past the end of the measure starting at index ${measureStartIndex}`,
+    );
+    this.name = "TupletAcrossBarlineError";
+  }
+}
+
+export class UngroupedTupletError extends Error {
+  constructor(public readonly eventIndex: number) {
+    super(
+      `Event at melody index ${eventIndex} has a tuplet duration but is not grouped into a tuplet; call groupTuplet`,
+    );
+    this.name = "UngroupedTupletError";
+  }
+}
+
 export class Measure {
   constructor(
     public readonly startIndex: number,
@@ -37,6 +59,7 @@ export class Measure {
     public readonly tiedToNext: ReadonlySet<number>,
     public readonly tiedToPrevBar: boolean,
     public readonly tiedToNextBar: boolean,
+    public readonly tuplets: readonly TupletSpan[],
   ) {}
 }
 
@@ -52,6 +75,36 @@ function buildLocalTiedToNext(
     }
   }
   return tied;
+}
+
+/**
+ * Tuplet spans rebased to measure-local indices. Every tuplet duration must be
+ * grouped, and no group may run past the barline: VexFlow needs one `Tuplet`
+ * per bracket to make the measure's ticks add up.
+ */
+function buildLocalTuplets(
+  melody: Melody,
+  startIndex: number,
+  eventCount: number,
+): readonly TupletSpan[] {
+  const spans: TupletSpan[] = [];
+  for (let j = 0; j < eventCount; j++) {
+    const span = melody.getTupletSpan(startIndex + j);
+    if (span.tuplet.isNone()) {
+      if (!melody.getEvent(startIndex + j).duration.tuplet.isNone()) {
+        throw new UngroupedTupletError(startIndex + j);
+      }
+      continue;
+    }
+    if (span.start !== startIndex + j) {
+      continue;
+    }
+    if (j + span.count > eventCount) {
+      throw new TupletAcrossBarlineError(span.start, startIndex);
+    }
+    spans.push({ start: j, count: span.count, tuplet: span.tuplet });
+  }
+  return spans;
 }
 
 export function splitIntoMeasures(melody: Melody): Measure[] {
@@ -87,6 +140,7 @@ export function splitIntoMeasures(melody: Melody): Measure[] {
           buildLocalTiedToNext(melody, measureStartIndex, eventCount),
           measureStartIndex !== 0 && melody.isTiedToPrev(measureStartIndex),
           melody.isTiedToNext(measureStartIndex + lastLocalIndex),
+          buildLocalTuplets(melody, measureStartIndex, eventCount),
         ),
       );
 

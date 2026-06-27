@@ -24,6 +24,17 @@ describe("Fraction", () => {
     );
   });
 
+  it("multiply()", () => {
+    assert.deepEqual(
+      new Fraction(1, 8).multiply(new Fraction(2, 3)),
+      new Fraction(1, 12),
+    );
+    assert.deepEqual(
+      new Fraction(3, 4).multiply(new Fraction(1, 1)),
+      new Fraction(3, 4),
+    );
+  });
+
   it("difference()", () => {
     assert.deepEqual(
       new Fraction(3, 4).difference(new Fraction(1, 2)),

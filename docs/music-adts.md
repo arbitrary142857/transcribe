@@ -7,6 +7,7 @@ import {
   Pitch,
   Duration,
   NoteValue,
+  Tuplet,
   KeySignature,
   Note,
   Rest,
@@ -18,6 +19,8 @@ import {
   splitIntoMeasures,
   MeasureOverflowError,
   IncompleteMeasureError,
+  TupletAcrossBarlineError,
+  UngroupedTupletError,
 } from "./music/measure.js";
 
 import { Fraction } from "./music/fraction.js";
@@ -102,7 +105,7 @@ fSharp.toString();                   // "F#4"
 
 ## `NoteValue`
 
-Named constants for note lengths. Each numeric value is the **denominator of 1/n of a whole note** (e.g. `4` → quarter note → 1/4 of a whole).
+Named constants for **written** note shapes. Each numeric value is the **denominator of 1/n of a whole note** (e.g. `4` → quarter note → 1/4 of a whole). Every value is a power of two; performing a note faster or slower than written is a `Tuplet`, not a `NoteValue`.
 
 ### Constants
 
@@ -110,55 +113,99 @@ Named constants for note lengths. Each numeric value is the **denominator of 1/n
 | ---- | ----- | ----------------- |
 | `Whole` | 1 | 1/1 |
 | `Half` | 2 | 1/2 |
-| `HalfTriplet` | 3 | 1/3 |
 | `Quarter` | 4 | 1/4 |
-| `QuarterTriplet` | 6 | 1/6 |
 | `Eighth` | 8 | 1/8 |
-| `EighthTriplet` | 12 | 1/12 |
 | `Sixteenth` | 16 | 1/16 |
-| `SixteenthTriplet` | 24 | 1/24 |
 | `ThirtySecond` | 32 | 1/32 |
-
-Triplet entries are one note within a standard triplet group (three notes in the time of two).
 
 ---
 
-## `Duration`
+## `Tuplet`
 
-A notated note or rest length: a `NoteValue` plus optional augmentation dots.
+A ratio applied to a written duration: `numNotes` notes played in the time of `inTimeOf` notes of the same written value. This mirrors VexFlow's `numNotes` / `notesOccupied` and prints the same way on a bracket.
 
 ### Fields
 
-| Field   | Type        | Description                              |
-| ------- | ----------- | ---------------------------------------- |
-| `value` | `NoteValue` | Base note length (see table above)       |
-| `dots`  | `number`    | Number of augmentation dots (default 0)  |
+| Field       | Type     | Description                                 |
+| ----------- | -------- | ------------------------------------------- |
+| `numNotes`  | `number` | How many notes are written                  |
+| `inTimeOf`  | `number` | How many they are performed in the time of  |
 
 ### Constructor
 
 ```typescript
-new Duration(value: NoteValue, dots?: number)
+new Tuplet(numNotes: number, inTimeOf: number)
 ```
 
-Throws `RangeError` if `dots` is negative or not an integer.
+Throws `RangeError` if either argument is not a positive integer.
 
-Each dot adds half of the **original** note value (one dot → ×3/2, two dots → ×7/4, etc.).
+### Constants
+
+| Name | Ratio | Meaning |
+| ---- | ----- | ------- |
+| `Tuplet.None` | 1:1 | No tuplet — the written duration is unchanged |
+| `Tuplet.Triplet` | 3:2 | Three notes in the time of two |
+| `Tuplet.Quintuplet` | 5:4 | Five notes in the time of four |
+
+`Tuplet.None` is the absence of a tuplet, so `Duration.tuplet` is never `null`.
 
 ### Methods
 
 | Method | Returns | Description |
 | ------ | ------- | ----------- |
-| `isEqual(other)` | `boolean` | Same `value` and `dots` (exact notation). |
-| `asWholeNoteFraction()` | `Fraction` | Length as a reduced fraction of a whole note. |
+| `isNone()` | `boolean` | Whether the ratio leaves the written duration unchanged (`numNotes === inTimeOf`). |
+| `asFraction()` | `Fraction` | `inTimeOf / numNotes` — the factor applied to a written duration. |
+| `isEqual(other)` | `boolean` | Same `numNotes` and `inTimeOf`. Not reduced first: 6:4 does not equal 3:2. |
+| `toString()` | `string` | `"3:2"`, as VexFlow prints it on the bracket. |
+
+### `TupletSpan`
+
+A plain type (not a class) describing one bracket: `{ start: number; count: number; tuplet: Tuplet }`. Returned by `Melody.getTupletSpan` / `Melody.tupletSpans` (indices into the melody) and carried on `Measure.tuplets` (indices local to the measure).
+
+---
+
+## `Duration`
+
+A notated note or rest length: a `NoteValue`, optional augmentation dots, and a `Tuplet` ratio.
+
+### Fields
+
+| Field    | Type        | Description                                    |
+| -------- | ----------- | ---------------------------------------------- |
+| `value`  | `NoteValue` | Written note length (see table above)          |
+| `dots`   | `number`    | Number of augmentation dots (default 0)        |
+| `tuplet` | `Tuplet`    | Performance ratio (default `Tuplet.None`)      |
+
+### Constructor
+
+```typescript
+new Duration(value: NoteValue, dots?: number, tuplet?: Tuplet)
+```
+
+Throws `RangeError` if `dots` is negative or not an integer.
+
+Each dot adds half of the **original** note value (one dot → ×3/2, two dots → ×7/4, etc.). The tuplet ratio is applied last, so a triplet eighth is `1/8 × 2/3 = 1/12` of a whole note.
+
+### Methods
+
+| Method | Returns | Description |
+| ------ | ------- | ----------- |
+| `isEqual(other)` | `boolean` | Same `value`, `dots`, and `tuplet` (exact notation). |
+| `asWholeNoteFraction()` | `Fraction` | Sounding length as a reduced fraction of a whole note, tuplet ratio included. |
 | `sameLengthAs(other)` | `boolean` | Same sounding length, possibly different notation. |
 | `inSeconds(bpm)` | `number` | Wall-clock duration at the given quarter-note BPM. |
+| `vexFlowToken()` | `string` | VexFlow duration token for the written value, e.g. `"q"` or `"16"`. Ignores dots and tuplets. |
+| `toString()` | `string` | Written length and ratio, e.g. `"/q"`, `"/q.."`, `"/8{3:2}"`. |
+
+`toString()` is a readable debug format, not a VexFlow input string. VexFlow's EasyScore grammar has no tuplet syntax at all — tuplets exist only as objects built alongside the notes — so no token could round-trip a tuplet. Rendering uses `vexFlowToken()` and the `Factory` API instead.
 
 ### Example
 
 ```typescript
-new Duration(NoteValue.Quarter);           // quarter note
-new Duration(NoteValue.Quarter, 1);        // dotted quarter
-new Duration(NoteValue.EighthTriplet);     // one eighth-note triplet
+new Duration(NoteValue.Quarter);                          // quarter note
+new Duration(NoteValue.Quarter, 1);                       // dotted quarter
+new Duration(NoteValue.Eighth, 0, Tuplet.Triplet);        // one eighth-note triplet
+new Duration(NoteValue.Sixteenth, 0, Tuplet.Quintuplet);  // one sixteenth quintuplet
 ```
 
 ---
@@ -289,7 +336,7 @@ Events are copied into internal storage; the passed array is not aliased.
 | Method | Description |
 | ------ | ----------- |
 | `setPitch(index, pitch)` | Replace the pitch of a `Note`. If the event is in a tied group, the same pitch is applied to every `Note` in that group, preserving each event's duration. Throws `TypeError` on a `Rest`. |
-| `setDuration(index, duration)` | Replace the duration of a `Note` or `Rest`. |
+| `setDuration(index, duration)` | Replace the duration of a `Note` or `Rest`. Throws `TypeError` if the event is in a tuplet group and `duration.tuplet` differs from that group's ratio. |
 
 Key and time signatures cannot be changed after construction.
 
@@ -311,12 +358,43 @@ To change the pitch of a single event within a tied group, call `untie()` first;
 
 Ties may cross barlines. When a melody is split into measures (see [`splitIntoMeasures`](#splitintomeasures)), within-measure ties appear in each measure's local `tiedToNext`, while cross-barline ties appear as `tiedToNextBar` / `tiedToPrevBar` on adjacent measures.
 
+### Tuplets
+
+The two halves of a tuplet live in different places. The **ratio** lives on each event's `Duration` — a `Duration` is always the length it claims to be, with no outside context needed. The **grouping** (which consecutive events share one bracket) lives on the `Melody`, because it is a notation choice, not a property of any single note: six eighth-note triplets in a row could be two brackets or one.
+
+`groupTuplet` only records the grouping. It reads the ratio off the events themselves and never modifies them.
+
+| Method | Returns | Description |
+| ------ | ------- | ----------- |
+| `groupTuplet(startIndex, count)` | `void` | Bracket `count` consecutive events starting at `startIndex`. Throws `RangeError` if `count < 2` or is not an integer, if the span runs past the end of the melody, if any covered event is already in a group, or if the group is **incomplete** (see below). Throws `TypeError` if the first event's duration has no tuplet, or if the covered events do not all share the same ratio. |
+| `ungroupTuplet(startIndex)` | `void` | Remove the group starting at `startIndex`, if present. Safe no-op otherwise. Event durations keep their ratios. |
+| `getTupletSpan(index)` | `TupletSpan` | The group containing `index`. When the event is not grouped, returns the lone span `{ start: index, count: 1, tuplet: Tuplet.None }`. Throws `RangeError` if `index` is out of range. |
+| `tupletSpans()` | `TupletSpan[]` | Every group, ordered by `start`. Ungrouped events are not listed. |
+
+A group is **complete** when its total sounding length can be notated without the tuplet — that is, when the denominator of that length is a power of two. Three eighth-note triplets fill a quarter (3 × 1/12 = 1/4); five sixteenth quintuplets fill a quarter (5 × 1/20 = 1/4). Any shorter run leaves a denominator the ratio never divides out, so `groupTuplet` rejects it.
+
+The rule is stated in lengths rather than note counts so mixed durations work: a triplet written as a quarter plus an eighth is two events, not three, but still fills three eighth units (1/6 + 1/12 = 1/4) and is accepted.
+
+Every event whose duration carries a tuplet must be grouped: an ungrouped one is caught by [`splitIntoMeasures`](#splitintomeasures) as an `UngroupedTupletError`, since VexFlow needs one bracket object per group to make a measure's ticks add up. Groups may not cross barlines.
+
+```typescript
+const melody = new Melody(KEY, { beats: 4, beatUnit: 4 }, [
+  new Note(new Pitch("C", 0, 5), new Duration(NoteValue.Eighth, 0, Tuplet.Triplet)),
+  new Note(new Pitch("D", 0, 5), new Duration(NoteValue.Eighth, 0, Tuplet.Triplet)),
+  new Note(new Pitch("E", 0, 5), new Duration(NoteValue.Eighth, 0, Tuplet.Triplet)),
+  // ...
+]);
+
+melody.groupTuplet(0, 3);   // one 3:2 bracket over the first three events
+melody.getTupletSpan(1);    // { start: 0, count: 3, tuplet: Tuplet.Triplet }
+```
+
 ### Equality
 
 | Method | Description |
 | ------ | ----------- |
-| `isEqual(other)` | Exact equality: key, meter, every event (spelling and notation), and tie structure at every index. |
-| `isEnharmonicallyEqual(other)` | Same sounding melody: enharmonic pitches, same-length durations, enharmonically equivalent key, and the same tie structure. |
+| `isEqual(other)` | Exact equality: key, meter, every event (spelling and notation), and tie and tuplet structure at every index. |
+| `isEnharmonicallyEqual(other)` | Same sounding melody: enharmonic pitches, same-length durations, enharmonically equivalent key, and the same tie and tuplet structure. |
 
 ### Playback
 
@@ -398,6 +476,7 @@ new Fraction(num: number, den: number)
 | ------ | ------- | ----------- |
 | `reduce()` | `Fraction` | Lowest terms with a positive denominator. |
 | `add(other)` | `Fraction` | Sum, reduced. |
+| `multiply(other)` | `Fraction` | Product, reduced. |
 | `difference(other)` | `Fraction` | This minus `other`, reduced. |
 | `compare(other)` | `number` | Negative / zero / positive for `<` / `=` / `>`. |
 | `equals(other)` | `boolean` | Same rational value (e.g. 1/2 equals 2/4). |
@@ -420,6 +499,7 @@ Import from `src/music/measure.js`.
 | `tiedToNext` | `ReadonlySet<number>` | **Local** indices (0-based within `events`) where the event is tied to the next event *inside this measure*. Same shape/semantics as `Melody`'s internal ties, but scoped to the measure. Cross-barline ties are **not** listed here. |
 | `tiedToPrevBar` | `boolean` | Whether this measure's first event is tied to the previous measure's last event. Always `false` for the first measure. |
 | `tiedToNextBar` | `boolean` | Whether this measure's last event is tied to the next measure's first event. Always `false` for the last measure (and whenever there is no following event). |
+| `tuplets` | `readonly TupletSpan[]` | Tuplet groups in this measure, with `start` rebased to a **local** index. Ungrouped events are not listed, and no group ever crosses a barline. Consumed directly by the renderer to build one VexFlow `Tuplet` per bracket. |
 
 ### Constructor
 
@@ -430,6 +510,7 @@ new Measure(
   tiedToNext: ReadonlySet<number>,
   tiedToPrevBar: boolean,
   tiedToNextBar: boolean,
+  tuplets: readonly TupletSpan[],
 )
 ```
 
@@ -453,7 +534,7 @@ Divides a melody's flat event sequence into bars using `melody.timeSignature`.
 4. If an event would make the total **strictly greater** than \(N\), throw `MeasureOverflowError`.
 5. If the melody ends with a partially filled measure (total \(> 0\) but \(< N\)), throw `IncompleteMeasureError`. Partial final measures are **not** auto-padded with rests.
 
-Tie status never affects length math: a tied note always contributes its own notated duration. Ties only affect `tiedToNext`, `tiedToPrevBar`, and `tiedToNextBar` on the resulting measures.
+Tie status never affects length math: a tied note always contributes its own notated duration. Ties only affect `tiedToNext`, `tiedToPrevBar`, and `tiedToNextBar` on the resulting measures. Tuplets do not need special handling either — `asWholeNoteFraction()` already returns the sounding length — but the grouping is validated and rebased into each measure's `tuplets`.
 
 ### Errors
 
@@ -461,6 +542,8 @@ Tie status never affects length math: a tied note always contributes its own not
 | ----- | ---- | -------------- |
 | `MeasureOverflowError` | An event pushes the running total past \(N\). | `eventIndex`, `measureStartIndex`, `overflow` (`Fraction`) |
 | `IncompleteMeasureError` | The melody ends mid-measure. | `measureStartIndex`, `filled` (`Fraction`), `needed` (`Fraction`) |
+| `TupletAcrossBarlineError` | A tuplet group extends past the end of the measure it starts in. | `spanStartIndex`, `measureStartIndex` |
+| `UngroupedTupletError` | An event's duration carries a tuplet but no `groupTuplet` call covers it. | `eventIndex` |
 
 Distinguish with `instanceof`; they are separate classes.
 

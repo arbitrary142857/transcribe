@@ -1,7 +1,7 @@
 import { Duration } from "./duration.js";
 import { Pitch } from "./pitch.js";
 
-/** Staff position placeholder for EasyScore rests (VexFlow ignores the pitch). */
+/** Staff position placeholder for rests (the pitch carries no meaning). */
 const REST_PLACEHOLDER = "b4";
 
 export type NoteEvent = Note | Rest;
@@ -31,7 +31,7 @@ export class Note {
     );
   }
 
-  /** EasyScore note token, e.g. `"e4/q"` or `"f#4/h."`. */
+  /** Note token, e.g. `"e4/q"`, `"f#4/h."`, or `"c5/8{3:2}"`. */
   toString(): string {
     return `${this.pitch}${this.duration}`;
   }
@@ -54,8 +54,8 @@ export class Rest {
     return this.duration.sameLengthAs(other.duration);
   }
 
-  /** EasyScore rest token, e.g. `"b4/q/r"` or `"b4/h/r.."`. */
+  /** Rest token, e.g. `"b4/q/r"`, `"b4/h../r"`, or `"b4/8{3:2}/r"`. */
   toString(): string {
-    return `${REST_PLACEHOLDER}${new Duration(this.duration.value).toString()}/r${".".repeat(this.duration.dots)}`;
+    return `${REST_PLACEHOLDER}${this.duration}/r`;
   }
 }
