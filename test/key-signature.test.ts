@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { KeySignature } from "../dist/music/key-signature.js";
+import { KeySignature, keyForFifths } from "../dist/music/key-signature.js";
 import { Pitch } from "../dist/music/pitch.js";
 
 describe("KeySignature", () => {
@@ -112,5 +112,59 @@ describe("KeySignature", () => {
     assert.equal(new KeySignature(new Pitch("D", -1, 4), "minor").toString(), "Dbm");
     assert.equal(new KeySignature(new Pitch("E", 2, 4), "major").toString(), "E##");
     assert.equal(new KeySignature(new Pitch("C", -2, 4), "minor").toString(), "Cbbm");
+  });
+});
+
+describe("keyForFifths()", () => {
+  it("is the inverse of fifths(), for every signature in both modes", () => {
+    for (let fifths = -7; fifths <= 7; fifths++) {
+      for (const mode of ["major", "minor"] as const) {
+        assert.equal(
+          keyForFifths(fifths, mode).fifths(),
+          fifths,
+          `${fifths} ${mode}`,
+        );
+      }
+    }
+  });
+
+  it("names the major keys around the circle", () => {
+    const named = (fifths: number) => keyForFifths(fifths, "major").toString();
+
+    assert.equal(named(0), "C");
+    assert.equal(named(1), "G");
+    assert.equal(named(4), "E");
+    assert.equal(named(6), "F#");
+    assert.equal(named(7), "C#");
+    assert.equal(named(-1), "F");
+    assert.equal(named(-2), "Bb");
+    assert.equal(named(-6), "Gb");
+    assert.equal(named(-7), "Cb");
+  });
+
+  it("names the relative minor sharing each signature", () => {
+    const named = (fifths: number) => keyForFifths(fifths, "minor").toString();
+
+    assert.equal(named(0), "Am");
+    assert.equal(named(1), "Em");
+    assert.equal(named(6), "D#m");
+    assert.equal(named(7), "A#m");
+    assert.equal(named(-1), "Dm");
+    assert.equal(named(-6), "Ebm");
+    assert.equal(named(-7), "Abm");
+  });
+
+  it("gives a major key and its relative minor the same accidentals", () => {
+    for (let fifths = -7; fifths <= 7; fifths++) {
+      const major = keyForFifths(fifths, "major");
+      const minor = keyForFifths(fifths, "minor");
+      for (const letter of ["C", "D", "E", "F", "G", "A", "B"] as const) {
+        assert.equal(
+          major.alterationFor(letter),
+          minor.alterationFor(letter),
+          `${fifths}: ${letter}`,
+        );
+      }
+    }
   });
 });

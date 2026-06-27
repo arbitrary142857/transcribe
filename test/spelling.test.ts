@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { Duration, NoteValue } from "../dist/music/duration.js";
 import { KeySignature } from "../dist/music/key-signature.js";
 import { Melody } from "../dist/music/melody.js";
-import { Note, Rest } from "../dist/music/note-event.js";
+import { Note, Rest, UnpitchedNote } from "../dist/music/note-event.js";
 import { Pitch } from "../dist/music/pitch.js";
 import {
   alterationInEffect,
@@ -87,6 +87,35 @@ describe("Spelling", () => {
     ]);
 
     assert.equal(alterationInEffect(context, "F", 4), 1);
+  });
+
+  it("spellingContext(): ignores notes awaiting a pitch", () => {
+    // Rhythm-first entry leaves these all through a bar. Were they to record
+    // anything, every one of them would claim its stand-in pitch had sounded,
+    // and later notes would be spelled against alterations nobody wrote.
+    const context = spellingContext(A_FLAT_MAJOR, [
+      new UnpitchedNote(QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    // The key still decides, exactly as it would in an empty bar.
+    assert.equal(alterationInEffect(context, "B", 4), -1);
+    assert.equal(
+      alterationInEffect(context, "B", 4),
+      alterationInEffect(spellingContext(A_FLAT_MAJOR, []), "B", 4),
+    );
+  });
+
+  it("spellMidi(): is unaffected by earlier notes awaiting a pitch", () => {
+    const bare = spellingContext(A_FLAT_MAJOR, []);
+    const afterUnpitched = spellingContext(A_FLAT_MAJOR, [
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    assert.equal(
+      spellMidi(71, afterUnpitched).toString(),
+      spellMidi(71, bare).toString(),
+    );
   });
 
   it("requiresAccidental(): compares against what is in effect", () => {

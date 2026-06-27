@@ -74,3 +74,26 @@ export class KeySignature {
     return this.mode === "minor" ? `${name}m` : name;
   }
 }
+
+/** Letters in circle-of-fifths order, so index 0 is `LETTER_FIFTHS` of -1. */
+const FIFTHS_LETTERS: readonly LetterName[] = ["F", "C", "G", "D", "A", "E", "B"];
+
+/**
+ * The key at a position on the circle of fifths — the inverse of `fifths()`.
+ *
+ * One signature names two keys, a major and its relative minor, and both print
+ * exactly the same accidentals; `keyForFifths(0, …)` is C major or A minor.
+ * That is what lets a key be chosen by pointing at a signature and then saying
+ * which of the two it is.
+ */
+export function keyForFifths(fifths: number, mode: Mode): KeySignature {
+  // Undo the minor's three-fifths offset, then split what is left into a letter
+  // and however many times the seven letters have been gone round.
+  const position = fifths + (mode === "minor" ? MINOR_OFFSET : 0);
+  const accidental = Math.floor((position + 1) / 7);
+  const letter = FIFTHS_LETTERS[position - 7 * accidental + 1];
+  if (!letter || accidental < -2 || accidental > 2) {
+    throw new RangeError(`No ${mode} key sits ${fifths} fifths from C`);
+  }
+  return new KeySignature(new Pitch(letter, accidental as Accidental, 4), mode);
+}

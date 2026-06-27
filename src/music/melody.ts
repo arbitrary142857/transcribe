@@ -2,7 +2,7 @@ import { Duration } from "./duration.js";
 import { Fraction } from "./fraction.js";
 import { findTiedChain } from "./tieChain.js";
 import { KeySignature } from "./key-signature.js";
-import { Note, type NoteEvent, Rest } from "./note-event.js";
+import { Note, type NoteEvent, Rest, UnpitchedNote } from "./note-event.js";
 import { Pitch } from "./pitch.js";
 import { SAMPLE_RATE, writeTone } from "./synthesis.js";
 import { Tuplet, type TupletSpan } from "./tuplet.js";
@@ -51,16 +51,121 @@ export class Melody {
   }
 
   setPitch(index: number, pitch: Pitch): void {
-    const event = this.getEvent(index);
-    if (!(event instanceof Note)) {
+    if (this.getEvent(index) instanceof Rest) {
       throw new TypeError("Cannot set pitch on a rest");
     }
     for (const i of this.getTiedGroup(index)) {
       const member = this.getEvent(i);
-      if (member instanceof Note) {
+      if (!(member instanceof Rest)) {
         this.events[i] = new Note(pitch, member.duration);
       }
     }
+  }
+
+  /**
+   * Return a note to awaiting a pitch, keeping its rhythm.
+   *
+   * Applied to the whole tied group like `setPitch`, since a tied run is one
+   * sound and so is pitched or unpitched as a whole.
+   */
+  clearPitch(index: number): void {
+    if (this.getEvent(index) instanceof Rest) {
+      throw new TypeError("Cannot clear the pitch of a rest");
+    }
+    for (const i of this.getTiedGroup(index)) {
+      const member = this.getEvent(i);
+      if (!(member instanceof Rest)) {
+        this.events[i] = new UnpitchedNote(member.duration);
+      }
+    }
+  }
+
+  /** Whether every note has a pitch, so the melody is finished enough to save. */
+  isFullyPitched(): boolean {
+    return !this.events.some((event) => event instanceof UnpitchedNote);
+  }
+
+  /**
+   * Replace one event, leaving the structure around it standing.
+   *
+   * Swapping an event for another of the same length is not restructuring, so
+   * the tuplet bracket it belongs to and the ties either side of it survive —
+   * unlike `replaceEvents`, which has to assume the worst. Only ties the new
+   * event cannot honour are dropped, since a tie asserts two events are one
+   * sound and silence can never be part of one.
+   */
+  setEvent(index: number, event: NoteEvent): void {
+    this.assertEventIndex(index);
+    this.events[index] = event;
+
+    for (const tieIndex of [index - 1, index]) {
+      if (tieIndex >= 0 && tieIndex < this.eventCount - 1 && !this.canTie(tieIndex)) {
+        this.tiedToNext.delete(tieIndex);
+      }
+    }
+  }
+
+  /**
+   * Replace `deleteCount` events from `start` with `events`, keeping ties and
+   * tuplet groups attached to the events they were made for.
+   *
+   * Both are held by index, so a bare splice would silently reattach them to
+   * whatever slid into place. Anything wholly before the range is left alone and
+   * anything wholly after is shifted; anything the range touches is dropped,
+   * because a tie asserts two neighbours are one sound and a bracket covers
+   * consecutive events, and neither survives an end being replaced or a gap
+   * opening inside it. To change an event and keep both, use `setDuration`,
+   * which replaces in place rather than restructuring.
+   */
+  replaceEvents(
+    start: number,
+    deleteCount: number,
+    events: readonly NoteEvent[],
+  ): void {
+    if (!Number.isInteger(start) || start < 0 || start > this.eventCount) {
+      throw new RangeError(
+        `Cannot replace events at index ${start}: the melody has ${this.eventCount} events`,
+      );
+    }
+    if (
+      !Number.isInteger(deleteCount) ||
+      deleteCount < 0 ||
+      start + deleteCount > this.eventCount
+    ) {
+      throw new RangeError(
+        `Cannot replace ${deleteCount} events at index ${start}: the melody has ${this.eventCount} events`,
+      );
+    }
+    if (deleteCount === 0 && events.length === 0) {
+      return;
+    }
+
+    const end = start + deleteCount;
+    const delta = events.length - deleteCount;
+
+    const ties = new Set<number>();
+    for (const i of this.tiedToNext) {
+      // A tie joins `i` to `i + 1`, so it needs both of them to survive and to
+      // still be neighbours afterwards.
+      if (i + 1 < start) {
+        ties.add(i);
+      } else if (i >= end) {
+        ties.add(i + delta);
+      }
+    }
+    this.tiedToNext = ties;
+
+    const tuplets = new Map<number, { count: number; tuplet: Tuplet }>();
+    for (const [groupStart, group] of this.tuplets) {
+      if (groupStart + group.count <= start) {
+        tuplets.set(groupStart, group);
+      } else if (groupStart >= end) {
+        tuplets.set(groupStart + delta, group);
+      }
+    }
+    this.tuplets = tuplets;
+
+    this.events.splice(start, deleteCount, ...events);
   }
 
   tie(index: number): void {
@@ -73,19 +178,50 @@ export class Melody {
     const current = this.getEvent(index);
     const next = this.getEvent(index + 1);
 
-    if (!(current instanceof Note)) {
-      throw new TypeError("Cannot tie a rest to another event");
-    }
-    if (!(next instanceof Note)) {
-      throw new TypeError("Cannot tie a note to a rest");
-    }
-    if (!current.pitch.isEqual(next.pitch)) {
-      throw new TypeError(
-        "Cannot tie notes with different pitches: pitches must match exactly",
-      );
+    const problem = this.tieProblem(index);
+    if (problem) {
+      throw new TypeError(problem);
     }
 
     this.tiedToNext.add(index);
+  }
+
+  /** Why `tie(index)` would be refused, or `undefined` if it would be allowed. */
+  private tieProblem(index: number): string | undefined {
+    const current = this.getEvent(index);
+    const next = this.getEvent(index + 1);
+
+    if (current instanceof Rest) {
+      return "Cannot tie a rest to another event";
+    }
+    if (next instanceof Rest) {
+      return "Cannot tie a note to a rest";
+    }
+    // Two notes still awaiting a pitch will be pitched together, so they can be
+    // tied now. One of each cannot: the tie would claim they are one sound
+    // while only one of them has decided what that sound is.
+    if (current instanceof Note !== next instanceof Note) {
+      return "Cannot tie a note to one that has no pitch yet";
+    }
+    if (
+      current instanceof Note &&
+      next instanceof Note &&
+      !current.pitch.isEqual(next.pitch)
+    ) {
+      return "Cannot tie notes with different pitches: pitches must match exactly";
+    }
+    return undefined;
+  }
+
+  /**
+   * Whether `tie(index)` would succeed, so a tie control can be offered or
+   * greyed without having to attempt it and catch the refusal.
+   */
+  canTie(index: number): boolean {
+    if (index < 0 || index >= this.eventCount - 1) {
+      return false;
+    }
+    return this.tieProblem(index) === undefined;
   }
 
   untie(index: number): void {
@@ -187,10 +323,13 @@ export class Melody {
         `Cannot set duration at index ${index}: the event is grouped in a ${tuplet} tuplet`,
       );
     }
-    this.events[index] =
-      event instanceof Note
-        ? new Note(event.pitch, duration)
-        : new Rest(duration);
+    if (event instanceof Note) {
+      this.events[index] = new Note(event.pitch, duration);
+    } else if (event instanceof UnpitchedNote) {
+      this.events[index] = new UnpitchedNote(duration);
+    } else {
+      this.events[index] = new Rest(duration);
+    }
   }
 
   private sameTupletSpans(other: Melody): boolean {

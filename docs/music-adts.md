@@ -10,9 +10,12 @@ import {
   Tuplet,
   KeySignature,
   Note,
+  UnpitchedNote,
   Rest,
   Melody,
 } from "./music/index.js";
+
+import { notateRest, writtenValue } from "./music/duration.js";
 
 import {
   Measure,
@@ -95,7 +98,7 @@ Throws `TypeError` if `octave` is not an integer.
 | `toChroma()` | `number` | Pitch class 0–11 within the octave. |
 | `isEqual(other)` | `boolean` | Exact match: same letter, accidental, and octave. |
 | `isEnharmonicallyEqual(other)` | `boolean` | Same sounding height (e.g. F♯4 and G♭4). |
-| `toString()` | `string` | Spelling string, e.g. `"A#4"`, `"Gb3"`. |
+| `toString()` | `string` | EasyScore pitch token, lower case, e.g. `"a#4"`, `"gb3"`. |
 
 ### Example
 
@@ -105,7 +108,7 @@ const gFlat = new Pitch("G", -1, 4);
 
 fSharp.isEqual(gFlat);               // false
 fSharp.isEnharmonicallyEqual(gFlat); // true
-fSharp.toString();                   // "F#4"
+fSharp.toString();                   // "f#4"
 ```
 
 ---
@@ -213,6 +216,41 @@ new Duration(NoteValue.Quarter);                          // quarter note
 new Duration(NoteValue.Quarter, 1);                       // dotted quarter
 new Duration(NoteValue.Eighth, 0, Tuplet.Triplet);        // one eighth-note triplet
 new Duration(NoteValue.Sixteenth, 0, Tuplet.Quintuplet);  // one sixteenth quintuplet
+```
+
+### Writing lengths
+
+Two functions turn a length back into notation.
+
+| Function | Returns | Description |
+| -------- | ------- | ----------- |
+| `writtenValue(length)` | `Duration \| undefined` | The single duration sounding exactly `length`, or `undefined` when no one duration does. Every value-and-dots pair has a distinct length, so at most one can match. |
+| `notateRest(length, from, meter)` | `Duration[]` | `length` of silence starting `from` into a bar of `meter`, as the rests a copyist would write. |
+
+`writtenValue` doubles as the test for whether a tuplet ratio divides a length
+evenly: dividing a length `L` by `numNotes:inTimeOf` gives members of written
+value `L / inTimeOf`, and the ratio may only be offered when that has a name.
+
+`notateRest` needs the starting position because rests exist to show where the
+beats fall, so length alone cannot choose the notation — three beats of 4/4 are a
+half rest and a quarter from the downbeat, but a quarter and a half from beat
+two. The span is cut at every metric boundary it crosses, coarsest first, and
+only a piece filling a whole boundary-to-boundary node becomes one rest. Meters
+are read as beats rather than as their printed numerator, so 6/8 groups as two
+dotted-quarter beats rather than six eighths, and a compound beat divides two
+thirds then one — a quarter rest followed by an eighth.
+
+Both `from` and `length` must be multiples of 1/32, and the span must stay inside
+one bar; a tuplet's own length never is, which is why a tuplet's rests come from
+its ratio instead. Every duration returned sounds exactly what it says, including
+for a full bar: the whole rest a copyist draws there stands in for a bar of any
+length, which is the renderer's business rather than a length.
+
+```typescript
+notateRest(new Fraction(3, 4), new Fraction(0, 1), { beats: 4, beatUnit: 4 });
+// [half, quarter]
+notateRest(new Fraction(3, 4), new Fraction(1, 4), { beats: 4, beatUnit: 4 });
+// [quarter, half] — same length, different bar position
 ```
 
 ---
@@ -370,9 +408,50 @@ new Rest(duration: Duration)
 
 ---
 
+## `UnpitchedNote`
+
+A note whose rhythm is decided but whose pitch is not yet — what rhythm-first
+entry writes, drawn as an X notehead.
+
+Neither of the other two events says this. A `Note` at some stand-in pitch would
+claim a pitch had been chosen, and would colour the accidentals of the bar it
+sits in; a `Rest` would claim silence had been chosen. So this is its own kind of
+event, equal only to another of its kind.
+
+### Fields
+
+| Field      | Type       | Description |
+| ---------- | ---------- | ----------- |
+| `duration` | `Duration` | Note length |
+
+### Constructor
+
+```typescript
+new UnpitchedNote(duration: Duration)
+```
+
+### Methods
+
+| Method | Returns | Description |
+| ------ | ------- | ----------- |
+| `isEqual(other)` | `boolean` | Same duration (exact). `false` against a `Note` or `Rest`. |
+| `isEnharmonicallyEqual(other)` | `boolean` | Same-length duration. `false` against a `Note` or `Rest`. |
+| `toString()` | `string` | `"x/q"`, after the notehead it draws with. |
+
+`Melody.setPitch` turns one into a `Note` and `Melody.clearPitch` turns it back,
+both preserving the duration. It sounds as silence until a pitch is set, and
+`spellingContext` skips it exactly as it skips a `Rest` — so a bar full of them
+leaves later spellings to the key alone.
+
+---
+
 ## `NoteEvent`
 
-Type alias: `Note | Rest`. Use `instanceof Note` / `instanceof Rest` to distinguish.
+Type alias: `Note | UnpitchedNote | Rest`. Use `instanceof` to distinguish.
+
+Note that `instanceof` narrowing is permissive: a branch written as
+`if (event instanceof Note) … else …` silently treats an `UnpitchedNote` as the
+`else` case rather than failing to compile.
 
 ---
 
@@ -410,10 +489,31 @@ Events are copied into internal storage; the passed array is not aliased.
 
 | Method | Description |
 | ------ | ----------- |
-| `setPitch(index, pitch)` | Replace the pitch of a `Note`. If the event is in a tied group, the same pitch is applied to every `Note` in that group, preserving each event's duration. Throws `TypeError` on a `Rest`. |
-| `setDuration(index, duration)` | Replace the duration of a `Note` or `Rest`. Throws `TypeError` if the event is in a tuplet group and `duration.tuplet` differs from that group's ratio. |
+| `setPitch(index, pitch)` | Give a `Note` or `UnpitchedNote` this pitch, producing a `Note`. Applied to every non-`Rest` event of the tied group containing `index`, preserving each event's duration. Throws `TypeError` on a `Rest`. |
+| `clearPitch(index)` | The inverse: return the event to an `UnpitchedNote`, keeping its duration. Applied to the whole tied group, since a tied run is one sound and so is pitched or unpitched as a whole. Untying is separate — the group stays tied. Throws `TypeError` on a `Rest`. |
+| `setDuration(index, duration)` | Replace the duration, keeping which kind of event it is. Throws `TypeError` if the event is in a tuplet group and `duration.tuplet` differs from that group's ratio. |
+| `setEvent(index, event)` | Replace one event in place. Keeps the tuplet bracket it belongs to and the ties either side, dropping only ties the new event cannot honour. |
+| `replaceEvents(start, deleteCount, events)` | Splice the event list, keeping ties and tuplet groups attached to the events they were made for (see below). |
+| `isFullyPitched()` | Whether no `UnpitchedNote` remains — the check to make before treating a melody as finished. |
 
 Key and time signatures cannot be changed after construction.
+
+### `replaceEvents`
+
+Ties and tuplet groups are held by index, so a bare splice would silently
+reattach them to whatever slid into place. `replaceEvents` keeps them straight:
+
+- anything wholly **before** the replaced range is left alone;
+- anything wholly **after** it is shifted by the change in event count;
+- anything the range **touches** is dropped.
+
+The last rule is not conservatism. A tie asserts two *neighbours* are one sound
+and a bracket covers *consecutive* events, so neither survives an end being
+replaced or a gap opening inside it — inserting between two tied events parts
+them, and inserting inside a bracket breaks it.
+
+To change an event and keep its tie and bracket, use `setDuration`, which
+replaces in place rather than restructuring.
 
 ### Ties
 
@@ -423,7 +523,8 @@ A tie always links `events[i]` to `events[i + 1]`. A **tied group** is a maximal
 
 | Method | Returns | Description |
 | ------ | ------- | ----------- |
-| `tie(index)` | `void` | Tie `events[index]` to `events[index + 1]`. Both must be `Note`s with exactly equal pitch (`Pitch.isEqual`, not enharmonic). Throws `RangeError` if `index + 1` is out of range; throws `TypeError` if either event is a `Rest` or pitches differ. |
+| `tie(index)` | `void` | Tie `events[index]` to `events[index + 1]`. Both must be `Note`s with exactly equal pitch (`Pitch.isEqual`, not enharmonic), or both `UnpitchedNote`s — those will be pitched together, so they can be tied before either has a pitch. Throws `RangeError` if `index + 1` is out of range; throws `TypeError` if either event is a `Rest`, if pitches differ, or if only one end has a pitch. |
+| `canTie(index)` | `boolean` | Whether `tie(index)` would succeed, so a tie control can be offered or greyed without attempting it and catching the refusal. `false` outside the valid range. |
 | `untie(index)` | `void` | Remove the tie between `events[index]` and `events[index + 1]`, if present. Safe no-op when no tie exists. |
 | `isTiedToNext(index)` | `boolean` | Whether `events[index]` is tied to the next event. Throws `RangeError` if `index` is out of range. |
 | `isTiedToPrev(index)` | `boolean` | Whether `events[index]` is tied to the previous event. Throws `RangeError` if `index` is out of range. |

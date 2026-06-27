@@ -9,6 +9,7 @@ import {
   Pitch,
   Rest,
   Tuplet,
+  UnpitchedNote,
   type NoteEvent,
 } from "../dist/music/index.js";
 
@@ -681,5 +682,425 @@ describe("Melody Tuplets", () => {
     melody.groupTuplet(0, 3);
 
     assert.equal(melody.toString(), "c4/8{3:2}, d4/8{3:2}, b4/8{3:2}/r");
+  });
+});
+
+describe("Melody Unpitched Notes", () => {
+  it("setPitch(): turns a note awaiting a pitch into a pitched one", () => {
+    const melody = makeDefaultMelody([
+      new UnpitchedNote(QUARTER),
+      new Rest(QUARTER),
+    ]);
+
+    melody.setPitch(0, C4);
+
+    assert.equal(melody.getEvent(0).isEqual(new Note(C4, QUARTER)), true);
+    // The rhythm is what was already decided, so it survives untouched.
+    assert.equal(melody.getEvent(1).isEqual(new Rest(QUARTER)), true);
+  });
+
+  it("setPitch(): pitches a whole tied group of unpitched notes at once", () => {
+    const melody = makeDefaultMelody([
+      new UnpitchedNote(QUARTER),
+      new UnpitchedNote(HALF),
+      new UnpitchedNote(QUARTER),
+    ]);
+    melody.tie(0);
+    melody.tie(1);
+
+    melody.setPitch(1, D4);
+
+    assert.equal(melody.getEvent(0).isEqual(new Note(D4, QUARTER)), true);
+    assert.equal(melody.getEvent(1).isEqual(new Note(D4, HALF)), true);
+    assert.equal(melody.getEvent(2).isEqual(new Note(D4, QUARTER)), true);
+  });
+
+  it("clearPitch(): returns a pitched note to awaiting a pitch", () => {
+    const melody = makeDefaultMelody([new Note(C4, DOTTED_QUARTER)]);
+
+    melody.clearPitch(0);
+
+    assert.equal(
+      melody.getEvent(0).isEqual(new UnpitchedNote(DOTTED_QUARTER)),
+      true,
+    );
+  });
+
+  it("clearPitch(): clears a whole tied group, which must share one pitch", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+    ]);
+    melody.tie(0);
+
+    melody.clearPitch(1);
+
+    assert.equal(melody.getEvent(0).isEqual(new UnpitchedNote(QUARTER)), true);
+    assert.equal(melody.getEvent(1).isEqual(new UnpitchedNote(QUARTER)), true);
+    // Clearing is not untying: the group is still one sound, still unpitched.
+    assert.equal(melody.isTiedToNext(0), true);
+  });
+
+  it("clearPitch(): is a no-op on a note already awaiting a pitch", () => {
+    const melody = makeDefaultMelody([new UnpitchedNote(HALF)]);
+
+    melody.clearPitch(0);
+
+    assert.equal(melody.getEvent(0).isEqual(new UnpitchedNote(HALF)), true);
+  });
+
+  it("clearPitch(): throws TypeError when called on a Rest", () => {
+    const melody = makeDefaultMelody([new Rest(QUARTER)]);
+
+    assert.throws(() => melody.clearPitch(0), TypeError);
+  });
+
+  it("clearPitch(): throws RangeError for an out-of-range index", () => {
+    const melody = makeDefaultMelody([new Note(C4, QUARTER)]);
+
+    assert.throws(() => melody.clearPitch(1), RangeError);
+  });
+
+  it("setPitch() and clearPitch() round-trip, preserving the rhythm", () => {
+    const melody = makeDefaultMelody([new UnpitchedNote(DOTTED_QUARTER)]);
+
+    melody.setPitch(0, F_SHARP_4);
+    melody.clearPitch(0);
+
+    assert.equal(
+      melody.getEvent(0).isEqual(new UnpitchedNote(DOTTED_QUARTER)),
+      true,
+    );
+  });
+
+  it("setDuration(): leaves a note still awaiting a pitch", () => {
+    const melody = makeDefaultMelody([new UnpitchedNote(QUARTER)]);
+
+    melody.setDuration(0, HALF);
+
+    assert.equal(melody.getEvent(0).isEqual(new UnpitchedNote(HALF)), true);
+  });
+
+  it("tie(): joins two notes that are both awaiting a pitch", () => {
+    const melody = makeDefaultMelody([
+      new UnpitchedNote(QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    melody.tie(0);
+
+    assert.equal(melody.isTiedToNext(0), true);
+    assert.deepEqual(melody.getTiedGroup(0), [0, 1]);
+  });
+
+  it("tie(): throws TypeError when only one end has a pitch", () => {
+    // The two cannot be asserted to be one sound while they disagree on what
+    // that sound is; the editor gives the second the first's pitch beforehand.
+    const pitchedFirst = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+    const pitchedSecond = makeDefaultMelody([
+      new UnpitchedNote(QUARTER),
+      new Note(C4, QUARTER),
+    ]);
+
+    assert.throws(() => pitchedFirst.tie(0), TypeError);
+    assert.throws(() => pitchedSecond.tie(0), TypeError);
+  });
+
+  it("tie(): still throws TypeError against a Rest", () => {
+    const melody = makeDefaultMelody([
+      new UnpitchedNote(QUARTER),
+      new Rest(QUARTER),
+    ]);
+
+    assert.throws(() => melody.tie(0), TypeError);
+  });
+
+  it("playback(): sounds a note awaiting a pitch as silence", () => {
+    const unpitched = makeDefaultMelody([new UnpitchedNote(QUARTER)]).playback(
+      88,
+    );
+    const rest = makeDefaultMelody([new Rest(QUARTER)]).playback(88);
+
+    // Nothing has been decided to sound yet, so nothing sounds.
+    assert.deepEqual(unpitched, rest);
+  });
+
+  it("isFullyPitched()", () => {
+    assert.equal(makeDefaultMelody([]).isFullyPitched(), true);
+    assert.equal(
+      makeDefaultMelody([new Note(C4, QUARTER), new Rest(QUARTER)]).isFullyPitched(),
+      true,
+    );
+    assert.equal(
+      makeDefaultMelody([
+        new Note(C4, QUARTER),
+        new UnpitchedNote(QUARTER),
+      ]).isFullyPitched(),
+      false,
+    );
+  });
+
+  it("isFullyPitched(): becomes true once the last pitch is set", () => {
+    const melody = makeDefaultMelody([new UnpitchedNote(QUARTER)]);
+
+    assert.equal(melody.isFullyPitched(), false);
+    melody.setPitch(0, G4);
+    assert.equal(melody.isFullyPitched(), true);
+  });
+
+  it("toString()", () => {
+    const melody = makeDefaultMelody([
+      new UnpitchedNote(QUARTER),
+      new Note(C4, QUARTER),
+      new Rest(HALF),
+    ]);
+
+    assert.equal(melody.toString(), "x/q, c4/q, b4/h/r");
+  });
+});
+
+describe("Melody setEvent", () => {
+  it("replaces one event without disturbing anything around it", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(D4, QUARTER),
+    ]);
+
+    melody.setEvent(1, new Rest(QUARTER));
+
+    assert.equal(melody.eventCount, 2);
+    assert.equal(melody.toString(), "c4/q, b4/q/r");
+  });
+
+  it("keeps a tuplet bracket the event belongs to", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, EIGHTH_TRIPLET),
+      new Note(D4, EIGHTH_TRIPLET),
+      new Note(E4, EIGHTH_TRIPLET),
+    ]);
+    melody.groupTuplet(0, 3);
+
+    melody.setEvent(1, new Rest(EIGHTH_TRIPLET));
+
+    // Replacing a member in place is not restructuring, so the bracket stands.
+    assert.deepEqual(
+      melody.tupletSpans().map(({ start, count }) => ({ start, count })),
+      [{ start: 0, count: 3 }],
+    );
+  });
+
+  it("keeps ties the new event can still honour", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+    ]);
+    melody.tie(0);
+
+    melody.setEvent(1, new Note(C4, HALF));
+
+    assert.equal(melody.isTiedToNext(0), true);
+  });
+
+  it("drops ties the new event cannot honour", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+    ]);
+    melody.tie(0);
+    melody.tie(1);
+
+    // Silence cannot be tied, so both ties into and out of it must go.
+    melody.setEvent(1, new Rest(QUARTER));
+
+    assert.equal(melody.isTiedToNext(0), false);
+    assert.equal(melody.isTiedToNext(1), false);
+  });
+
+  it("drops a tie to a note that now disagrees on pitch", () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+    ]);
+    melody.tie(0);
+
+    melody.setEvent(1, new Note(D4, QUARTER));
+
+    assert.equal(melody.isTiedToNext(0), false);
+  });
+
+  it("throws RangeError for an index outside the melody", () => {
+    const melody = makeDefaultMelody([new Note(C4, QUARTER)]);
+
+    assert.throws(() => melody.setEvent(1, new Rest(QUARTER)), RangeError);
+  });
+});
+
+describe("Melody replaceEvents", () => {
+  const five = () =>
+    makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(D4, QUARTER),
+      new Note(E4, QUARTER),
+      new Note(F4, QUARTER),
+      new Note(G4, QUARTER),
+    ]);
+
+  it("replaces a range with different events", () => {
+    const melody = five();
+
+    melody.replaceEvents(1, 2, [new Rest(HALF)]);
+
+    assert.equal(melody.eventCount, 4);
+    assert.equal(melody.toString(), "c4/q, b4/h/r, f4/q, g4/q");
+  });
+
+  it("inserts without deleting", () => {
+    const melody = five();
+
+    melody.replaceEvents(2, 0, [new Rest(EIGHTH)]);
+
+    assert.equal(melody.eventCount, 6);
+    assert.equal(melody.getEvent(2).isEqual(new Rest(EIGHTH)), true);
+    assert.equal(melody.getEvent(3).isEqual(new Note(E4, QUARTER)), true);
+  });
+
+  it("deletes without inserting", () => {
+    const melody = five();
+
+    melody.replaceEvents(0, 2, []);
+
+    assert.equal(melody.eventCount, 3);
+    assert.equal(melody.getEvent(0).isEqual(new Note(E4, QUARTER)), true);
+  });
+
+  it("throws RangeError when the range falls outside the melody", () => {
+    assert.throws(() => five().replaceEvents(-1, 1, []), RangeError);
+    assert.throws(() => five().replaceEvents(4, 2, []), RangeError);
+    assert.throws(() => five().replaceEvents(6, 0, []), RangeError);
+    assert.throws(() => five().replaceEvents(0, -1, []), RangeError);
+  });
+
+  /** Ties need matching pitches, and these tests turn only on position. */
+  const fiveTiable = () =>
+    makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+    ]);
+
+  it("leaves ties before the splice alone and shifts those after it", () => {
+    const melody = fiveTiable();
+    melody.tie(0); // 0–1, entirely before
+    melody.tie(3); // 3–4, entirely after
+
+    melody.replaceEvents(2, 1, [new Rest(EIGHTH), new Rest(EIGHTH)]);
+
+    assert.equal(melody.isTiedToNext(0), true);
+    // The pair at 3–4 has one extra event before it now.
+    assert.equal(melody.isTiedToNext(4), true);
+    assert.equal(melody.isTiedToNext(3), false);
+  });
+
+  it("drops a tie that reached into the replaced range", () => {
+    const melody = fiveTiable();
+    melody.tie(1); // 1–2, and 2 is about to be replaced
+
+    melody.replaceEvents(2, 1, [new Rest(QUARTER)]);
+
+    assert.equal(melody.isTiedToNext(1), false);
+  });
+
+  it("drops a tie the insertion would come between", () => {
+    const melody = fiveTiable();
+    melody.tie(1);
+
+    melody.replaceEvents(2, 0, [new Rest(QUARTER)]);
+
+    // The two are no longer neighbours, so they can no longer be one sound.
+    assert.equal(melody.isTiedToNext(1), false);
+    assert.equal(melody.isTiedToNext(2), false);
+  });
+
+  it("changes nothing at all for an empty splice", () => {
+    const melody = fiveTiable();
+    melody.tie(1);
+
+    melody.replaceEvents(2, 0, []);
+
+    assert.equal(melody.eventCount, 5);
+    assert.equal(melody.isTiedToNext(1), true);
+  });
+
+  const withTriplet = () => {
+    const melody = makeDefaultMelody([
+      new Note(C4, QUARTER),
+      new Note(D4, EIGHTH_TRIPLET),
+      new Note(E4, EIGHTH_TRIPLET),
+      new Note(F4, EIGHTH_TRIPLET),
+      new Note(G4, QUARTER),
+    ]);
+    melody.groupTuplet(1, 3);
+    return melody;
+  };
+
+  it("shifts a tuplet group that lies after the splice", () => {
+    const melody = withTriplet();
+
+    melody.replaceEvents(0, 1, [new Rest(EIGHTH), new Rest(EIGHTH)]);
+
+    assert.deepEqual(
+      melody.tupletSpans().map(({ start, count }) => ({ start, count })),
+      [{ start: 2, count: 3 }],
+    );
+  });
+
+  it("leaves a tuplet group that lies before the splice", () => {
+    const melody = withTriplet();
+
+    melody.replaceEvents(4, 1, [new Rest(EIGHTH)]);
+
+    assert.deepEqual(
+      melody.tupletSpans().map(({ start, count }) => ({ start, count })),
+      [{ start: 1, count: 3 }],
+    );
+  });
+
+  it("drops a tuplet group the splice overlaps", () => {
+    const melody = withTriplet();
+
+    melody.replaceEvents(2, 1, [new Rest(EIGHTH)]);
+
+    assert.deepEqual(melody.tupletSpans(), []);
+  });
+
+  it("drops a tuplet group an insertion lands inside", () => {
+    const melody = withTriplet();
+
+    melody.replaceEvents(2, 0, [new Rest(EIGHTH)]);
+
+    // A bracket has to cover consecutive events, so it cannot survive a gap.
+    assert.deepEqual(melody.tupletSpans(), []);
+  });
+
+  it("keeps a tuplet group when an insertion abuts either end", () => {
+    const before = withTriplet();
+    before.replaceEvents(1, 0, [new Rest(EIGHTH)]);
+    assert.deepEqual(
+      before.tupletSpans().map(({ start, count }) => ({ start, count })),
+      [{ start: 2, count: 3 }],
+    );
+
+    const after = withTriplet();
+    after.replaceEvents(4, 0, [new Rest(EIGHTH)]);
+    assert.deepEqual(
+      after.tupletSpans().map(({ start, count }) => ({ start, count })),
+      [{ start: 1, count: 3 }],
+    );
   });
 });
