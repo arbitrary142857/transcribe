@@ -13,13 +13,8 @@ import {
 
 import { splitIntoMeasures } from "../music/measure.js";
 import type { Melody } from "../music/melody.js";
-import { Note, Rest, type NoteEvent } from "../music/note-event.js";
-import { ACCIDENTAL_STRING, type Pitch } from "../music/pitch.js";
-
-const REST_KEY_BY_CLEF: Record<string, string> = {
-  treble: "b/4",
-  bass: "d/3",
-};
+import { Rest, UnpitchedNote, type NoteEvent } from "../music/note-event.js";
+import { vexFlowKeyFor } from "./vex-key.js";
 
 /** Room to the right of the last bar so a hanging tie is not clipped. */
 const TAIL_SLACK = 24;
@@ -113,6 +108,11 @@ export type RenderMelodyOptions = {
   selected?: ReadonlySet<number>;
   /** Melody indices to draw in the hover colour; selection wins over hover. */
   hovered?: ReadonlySet<number>;
+  /**
+   * Melody indices that are not music yet — the trailing rests waiting past the
+   * last note. Drawn faintly, so the page shows where writing has reached.
+   */
+  ghost?: ReadonlySet<number>;
 };
 
 /** A note's clickable area: its notehead and stem, padded. */
@@ -132,10 +132,6 @@ export type MelodyRenderResult = {
   regions: readonly NoteHitRegion[];
 };
 
-function pitchToVexKey(pitch: Pitch): string {
-  return `${pitch.letter.toLowerCase()}${ACCIDENTAL_STRING[pitch.accidental]}/${pitch.octave}`;
-}
-
 /** Attach a rhythmic/visual dot (VexFlow Tutorial Step 3). */
 function dotted(staveNote: StaveNote): StaveNote {
   Dot.buildAndAttach([staveNote], { all: true });
@@ -149,32 +145,18 @@ function eventToStaveNote(
 ): StaveNote {
   const code = event.duration.vexFlowToken();
   const dots = event.duration.dots;
+  const keys = [vexFlowKeyFor(event, clef)];
 
-  if (event instanceof Rest) {
-    const note = factory.StaveNote({
-      keys: [REST_KEY_BY_CLEF[clef] ?? REST_KEY_BY_CLEF.treble!],
-      duration: code,
-      type: "r",
-      dots,
-      clef,
-    });
-    return dots > 0 ? dotted(note) : note;
-  }
+  // A note awaiting a pitch is stemmed and beamed like any other note — only
+  // its notehead differs — so it reads as rhythm rather than as silence.
+  const note =
+    event instanceof Rest
+      ? factory.StaveNote({ keys, duration: code, type: "r", dots, clef })
+      : // VexFlow 5: `autoStem` + `clef` choose stem direction from staff
+        // position (wiki Stem Direction; v5 renamed the old `auto_stem` field).
+        factory.StaveNote({ keys, duration: code, dots, clef, autoStem: true });
 
-  if (event instanceof Note) {
-    // VexFlow 5: `autoStem` + `clef` choose stem direction from staff position
-    // (wiki Stem Direction; v5 renamed the old `auto_stem` field).
-    const note = factory.StaveNote({
-      keys: [pitchToVexKey(event.pitch)],
-      duration: code,
-      dots,
-      clef,
-      autoStem: true,
-    });
-    return dots > 0 ? dotted(note) : note;
-  }
-
-  throw new TypeError("Unknown NoteEvent type");
+  return dots > 0 ? dotted(note) : note;
 }
 
 /**
@@ -224,6 +206,7 @@ export function renderMelody(
     clef = "treble",
     selected = new Set<number>(),
     hovered = new Set<number>(),
+    ghost = new Set<number>(),
   } = options;
 
   const element = document.getElementById(elementId);
@@ -479,12 +462,19 @@ export function renderMelody(
   // drawWithStyle(), which applies each element's own style to the context.
   const selectedStyle = asStyle(cssColor("--note-selected", "#b4432c"));
   const hoveredStyle = asStyle(cssColor("--note-hovered", "#c99a86"));
+  const placeholderStyle = asStyle(cssColor("--note-placeholder", "#9a9086"));
+  const ghostStyle = asStyle(cssColor("--note-ghost", "#cfc8bd"));
 
   // Selection wins over hover, so pointing at an already-selected note leaves
-  // it looking exactly as it did.
+  // it looking exactly as it did. Both win over the standing colours below,
+  // which say what an event *is* rather than what the pointer is doing.
   const styleOf = (index: number): ElementStyle | undefined => {
     if (selected.has(index)) return selectedStyle;
     if (hovered.has(index)) return hoveredStyle;
+    if (melody.getEvent(index) instanceof UnpitchedNote) {
+      return placeholderStyle;
+    }
+    if (ghost.has(index)) return ghostStyle;
     return undefined;
   };
 
@@ -515,11 +505,11 @@ export function renderMelody(
   }
 
   // Positions are only final once everything is formatted and drawn.
+  //
+  // Every event gets a region, rests included: a rest is the room the next note
+  // is written into, so it is the thing the user aims at most often.
   const regions: NoteHitRegion[] = [];
   for (let i = 0; i < notes.length; i++) {
-    if (!(melody.getEvent(i) instanceof Note)) {
-      continue;
-    }
     const region = hitRegion(notes[i]!);
     if (region) {
       regions.push({ melodyIndex: i, ...region });
@@ -545,7 +535,7 @@ export function renderMelody(
 }
 
 /**
- * The union of a note's noteheads and stem, padded, in svg user space.
+ * The union of an event's glyph and stem, padded, in svg user space.
  *
  * Built from the note's own geometry accessors rather than `getBoundingBox()`:
  * `Stem` declares that method but its implementation throws, and StaveNote's
@@ -566,7 +556,10 @@ function hitRegion(
   let top = yTop - NOTEHEAD_RADIUS;
   let bottom = yBottom + NOTEHEAD_RADIUS;
 
-  const stem = note.getStem();
+  // A rest carries a stem object too, hidden rather than absent, and taking its
+  // extents would stretch the target far past the glyph the user can see.
+  // VexFlow guards its own geometry the same way.
+  const stem = !note.isRest() && note.hasStem() ? note.getStem() : undefined;
   if (stem) {
     const { topY, baseY } = stem.getExtents();
     const stemX = note.getStemX();

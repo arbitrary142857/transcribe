@@ -1,5 +1,5 @@
 import type { Melody } from "../music/melody.js";
-import { Note } from "../music/note-event.js";
+import { Rest } from "../music/note-event.js";
 import {
   type MelodyRenderResult,
   type NoteHitRegion,
@@ -8,15 +8,13 @@ import {
 } from "./render-melody.js";
 
 export type MelodyView = {
-  /** The melody index anchoring the selection, if any. */
+  /** The selected melody index, if any. */
   getAnchor(): number | undefined;
-  /** Every selected index: the anchor's whole tied group. */
-  getSelection(): ReadonlySet<number>;
-  /** Select a note and its tied group; `undefined` clears the selection. */
+  /** Select one event; `undefined` clears the selection. */
   select(melodyIndex: number | undefined): void;
   /**
-   * Move the selection to the neighbouring note, stepping over a whole tied
-   * group at a time. With nothing selected, takes the first or last note.
+   * Move the selection to the neighbouring event, one at a time — including
+   * within a tied run. With nothing selected, takes the first or last.
    */
   moveSelection(direction: -1 | 1): void;
   /** Redraw from the melody's current state, keeping the selection. */
@@ -81,18 +79,62 @@ export function createMelodyView(
   let hoverAnchor: number | undefined;
   let rendered: MelodyRenderResult;
 
-  /** The whole tied group around an anchor — a tie selects as one unit. */
-  const groupOf = (index: number | undefined): ReadonlySet<number> =>
-    index === undefined ? new Set() : new Set(melody.getTiedGroup(index));
+  /**
+   * One event, selected on its own.
+   *
+   * A tied run is one sound but it is several events, and each of them has its
+   * own length to edit. Selecting the run as a unit made the parts unreachable;
+   * pitch still travels across the whole run, because `Melody.setPitch` applies
+   * it to the group whichever member is asked.
+   */
+  const only = (index: number | undefined): ReadonlySet<number> =>
+    index === undefined ? new Set() : new Set([index]);
 
-  const getSelection = () => groupOf(anchor);
+  /**
+   * The rests past the last note, which are not music yet.
+   *
+   * They are the spare bar the next note gets written into, and drawing them
+   * faintly is what shows where writing has reached without the score ever
+   * having a ragged, half-empty bar on the end.
+   */
+  function trailingRests(): ReadonlySet<number> {
+    const ghost = new Set<number>();
+    for (let i = melody.eventCount - 1; i >= 0; i--) {
+      if (!(melody.getEvent(i) instanceof Rest)) {
+        break;
+      }
+      ghost.add(i);
+    }
+    return ghost;
+  }
+
+  /**
+   * Keep the selection and hover inside the melody.
+   *
+   * The view holds indices into a melody that edits mutate underneath it, and
+   * an edit can leave it shorter than it was — silencing the last note in a bar
+   * merges every rest in that bar into one. So an index taken before an edit
+   * may name nothing by the time the score is redrawn. Clamping to the last
+   * event keeps the selection near where it was rather than dropping it.
+   */
+  function clampToMelody(): void {
+    const last = melody.eventCount - 1;
+    if (anchor !== undefined && anchor > last) {
+      anchor = last >= 0 ? last : undefined;
+    }
+    if (hoverAnchor !== undefined && hoverAnchor > last) {
+      hoverAnchor = undefined;
+    }
+  }
 
   function draw(): void {
+    clampToMelody();
     rendered = renderMelody(melody, {
       ...options,
       elementId,
-      selected: groupOf(anchor),
-      hovered: groupOf(hoverAnchor),
+      selected: only(anchor),
+      hovered: only(hoverAnchor),
+      ghost: trailingRests(),
     });
   }
 
@@ -126,12 +168,8 @@ export function createMelodyView(
    */
   function onMouseDown(event: MouseEvent): void {
     const hit = noteAt(event);
-    // Pressing any note of the current selection clears the whole selection,
-    // as does pressing empty space. Comparing against the anchor alone would
-    // mean that, with X tied to Y, pressing X and then Y just moved the anchor
-    // from one to the other and the pair never let go.
-    const alreadySelected = hit !== undefined && getSelection().has(hit);
-    select(alreadySelected ? undefined : hit);
+    // Pressing the selected event lets go of it, as does pressing empty space.
+    select(hit === anchor ? undefined : hit);
   }
 
   function onMouseMove(event: MouseEvent): void {
@@ -164,29 +202,25 @@ export function createMelodyView(
     }
   }
 
-  /** The next selectable note from `from`, skipping rests. */
-  function nextNote(from: number, direction: -1 | 1): number | undefined {
-    for (let i = from; i >= 0 && i < melody.eventCount; i += direction) {
-      if (melody.getEvent(i) instanceof Note) {
-        return i;
-      }
-    }
-    return undefined;
-  }
+  /**
+   * `index` if the melody has an event there.
+   *
+   * Every event is selectable, rests included: a rest is the room the next note
+   * is written into, so stepping over them would put most of the page out of
+   * reach of the arrow keys.
+   */
+  const inRange = (index: number): number | undefined =>
+    index >= 0 && index < melody.eventCount ? index : undefined;
 
   function moveSelection(direction: -1 | 1): void {
     if (anchor === undefined) {
       // Nothing selected yet: come in from whichever end you are heading from.
-      const from = direction > 0 ? 0 : melody.eventCount - 1;
-      const found = nextNote(from, direction);
+      const found = inRange(direction > 0 ? 0 : melody.eventCount - 1);
       if (found !== undefined) select(found);
       return;
     }
 
-    // Step over the whole tied group, so a tied pair counts as one note.
-    const group = melody.getTiedGroup(anchor);
-    const edge = direction > 0 ? group[group.length - 1]! : group[0]!;
-    const found = nextNote(edge + direction, direction);
+    const found = inRange(anchor + direction);
     if (found !== undefined) {
       select(found);
     }
@@ -218,7 +252,6 @@ export function createMelodyView(
 
   return {
     getAnchor: () => anchor,
-    getSelection,
     select,
     moveSelection,
     refresh: draw,

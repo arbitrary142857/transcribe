@@ -6,6 +6,10 @@
   /* Read by the renderer to colour a selected note and its ties. */
   --note-selected: #b4432c;
   --note-hovered: #d09a86;
+  /* A note whose rhythm is written but whose pitch is not chosen yet. */
+  --note-placeholder: #8d8378;
+  /* Trailing rests: the spare bar waiting to be written into, not music yet. */
+  --note-ghost: #c8c1b6;
   --white-key-width: 56px;
   --black-key-width: 36px;
   --white-key-height: 152px;
@@ -17,21 +21,76 @@
   box-sizing: border-box;
 }
 
+/* Setting `display` on an element beats the browser's own rule for `hidden`,
+   so anything hidden would still take its space and draw its borders. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  /* A drag past the top or bottom stays inside the page rather than reloading
+     it — this is an editor, and a lost melody is not a refresh worth having. */
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
+  min-height: 100vh;
+  /* Every tap is a click on a control, so no waiting to see whether a second
+     one is coming, and no zoom when it does. */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+  display: flex;
+  flex-direction: column;
   background: var(--page-bg);
   color: var(--ink);
   font-family: Georgia, "Times New Roman", serif;
 }
 
 main {
+  flex: 1 0 auto;
+}
+
+main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.5rem;
+  padding: 0 1.5rem 1.5rem;
+}
+
+/* The editor's own column. Everything inside lines up with it, and with the
+   keyboard below, rather than each part shrinking to its own contents. */
+#workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 1200px;
+}
+
+/* The rhythm controls, pinned to the top of the window.
+   The band runs the full width and only its contents are held to the page's
+   measure, so it never stops in a hard edge partway across. The lighter fill
+   and the shadow are what make the music read as passing underneath. */
+#toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  width: 100%;
+  padding: 0.9rem 1.5rem 0.6rem;
+  background: #faf8f4;
+  border-bottom: 1px solid var(--rule);
+  box-shadow: 0 4px 14px rgb(28 26 23 / 9%);
+}
+
+#toolbar-inner {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 #score {
+  padding-top: 1rem;
   /* Width comes from the layout, never from the score drawn inside it — the
      renderer justifies bars to this width, so the two must not chase each
      other. Too narrow to hold the widest line, the score scales down to fit
@@ -40,18 +99,591 @@ main {
   max-width: 1200px;
 }
 
+/* ---- Panels ---- */
+
+/* One look for every group of choices: the setup panels, the rhythm panel and
+   the key chooser are the same kind of thing and read as one family. */
+.panel {
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 0.85rem 1rem 1rem;
+  box-shadow: 0 1px 2px rgb(28 26 23 / 6%);
+}
+
+/* ---- Setup: clef and meter, asked once ---- */
+
+#setup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 4.5rem 1.5rem 1rem;
+}
+
+/* The submit sits after both choosers on the same line, and drops below them
+   only when the window is too narrow to hold all three. */
+.setup-submit {
+  flex: 0 0 auto;
+}
+
+/* Each chooser is one line: two clefs, or seven meters, with nothing to wrap. */
+.setup-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+}
+
+.setup-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.5rem;
+  font: inherit;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.setup-cell:hover {
+  background: #f5efe4;
+  border-color: #b3aa9d;
+}
+
+.setup-cell.is-on {
+  border-color: var(--note-selected);
+  box-shadow: inset 0 0 0 1px var(--note-selected);
+}
+
+/* Sized from the diagram it holds, so the box stops where the glyph does. */
+.setup-staff {
+  width: 3rem;
+  pointer-events: none;
+}
+
+.setup-cell[aria-label$="clef"] .setup-staff {
+  width: 2.6rem;
+}
+
+.setup-submit {
+  padding: 0.6rem 1.6rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: #fffdf9;
+  background: var(--note-selected);
+  border: 1px solid var(--note-selected);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.setup-submit:hover:not(:disabled) {
+  background: #9c3925;
+}
+
+.setup-submit:disabled {
+  color: #8d8378;
+  background: #ebe5da;
+  border-color: var(--rule);
+  cursor: not-allowed;
+}
+
+/* ---- The bar above the music ---- */
+
+#signatures {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.key-picker {
+  position: relative;
+}
+
+.key-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.key-toggle:hover,
+.key-toggle.is-on {
+  background: #f5efe4;
+  border-color: #b3aa9d;
+}
+
+.key-toggle-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8d8378;
+}
+
+.key-toggle-value {
+  font-size: 0.95rem;
+}
+
+/* The chooser floats over the page rather than pushing the music down: the
+   score must not move while a panel is open above it. */
+.key-panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 5;
+  max-width: min(72rem, calc(100vw - 3rem));
+  overflow-x: auto;
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 6px 20px rgb(28 26 23 / 14%);
+}
+
+.key-layout {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: max-content;
+}
+
+/* C major on its own at the middle left, with the two arms of the circle
+   opening out from it — sharps above, flats below. */
+.key-arms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.key-row {
+  display: flex;
+  gap: 0.65rem;
+}
+
+/* Every signature gets the same box, so the grid reads as one set of equal
+   choices rather than as a diagram with some buttons under it. */
+.key-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 7.4rem;
+  padding: 0.6rem 0.55rem;
+}
+
+.key-staff {
+  width: 100%;
+}
+
+/* Stacked rather than side by side: two key names laid out in a row make each
+   cell wider than the diagram above it, and seven of those overflow the panel. */
+.key-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+}
+
+.key-choice {
+  padding: 0.18rem 0.4rem;
+  font: inherit;
+  font-size: 0.75rem;
+  color: #6c6459;
+  background: #f3ece0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.key-choice:hover {
+  background: #e6dccb;
+  color: var(--ink);
+}
+
+.key-choice.is-on {
+  background: var(--note-selected);
+  border-color: var(--note-selected);
+  color: #fffdf9;
+}
+
+/* ---- Mode switch ---- */
+
+.mode-switch {
+  display: inline-flex;
+  padding: 2px;
+  background: #ebe5da;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+}
+
+.mode-option {
+  padding: 0.32rem 0.85rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: #6c6459;
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.mode-option:hover {
+  color: var(--ink);
+}
+
+.mode-option.is-on {
+  background: #fffdf9;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(28 26 23 / 12%);
+}
+
+.history {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.chip {
+  padding: 0.34rem 0.75rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.chip:hover:not(:disabled) {
+  background: #f5efe4;
+}
+
+.chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ---- Controls ---- */
+
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 1rem;
+}
+
+.rhythm-panel,
+.tuplet-panel {
+  padding: 0.6rem;
+}
+
+.duration-grid {
+  display: grid;
+  grid-template-columns: repeat(5, auto);
+  gap: 0.35rem;
+}
+
+/* The four that divide a beat further, in a square, with the duplet alongside
+   and centred against it. */
+.tuplet-panel {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.tuplet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.35rem;
+}
+
+.duration-cell {
+  position: relative;
+  width: 2.9rem;
+  height: 2.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* The icons are drawn inside their own box, so the ink is centred in the
+   button rather than sitting high with the stem hanging out of it. */
+.duration-cell svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.duration-cell:hover:not(:disabled) {
+  background: #f5efe4;
+  border-color: #b3aa9d;
+}
+
+.duration-cell:disabled {
+  /* Still visible, and still explains itself on hover — greyed, not gone, so
+     the grid shows the shape of the room available. */
+  opacity: 0.26;
+  cursor: not-allowed;
+}
+
+#tuplets,
+#actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.tuplet {
+  width: 2.7rem;
+  height: 2.7rem;
+  padding: 0.32rem;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.tuplet svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tuplet:hover:not(:disabled) {
+  background: #f5efe4;
+  border-color: #b3aa9d;
+}
+
+.tuplet:disabled {
+  opacity: 0.26;
+  cursor: not-allowed;
+}
+
+/* A tuplet control is an action button; only its lit state is its own. */
+.action:disabled {
+  opacity: 0.26;
+  cursor: not-allowed;
+}
+
+/* The ratio the selection is already inside. Pressing it again undoes the
+   division, so it stays live while lit. */
+.tuplet.is-on {
+  background: var(--note-selected);
+  border-color: var(--note-selected);
+  color: #fffdf9;
+}
+
+.tuplet.is-on:hover {
+  background: #9c3925;
+  border-color: #9c3925;
+  color: #fffdf9;
+}
+
+/* ---- Icon actions ---- */
+
+.action {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 5rem;
+  padding: 0.3rem 0.3rem 0.35rem;
+  font: inherit;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.action:hover {
+  background: #f5efe4;
+  border-color: #b3aa9d;
+}
+
+/* Height-driven, so a wider icon — the rest one is a note, an arrow and a rest
+   — simply gets wider rather than being squeezed into a square. */
+.action-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.9rem;
+}
+
+.action-icon svg {
+  display: block;
+  height: 100%;
+  width: auto;
+}
+
+.action-label {
+  font-size: 0.7rem;
+  line-height: 1.15;
+  text-align: center;
+  color: #6c6459;
+}
+
+/* Every shortcut hint looks the same, wherever it sits. */
+.cell-key,
+.action-key,
+.chip-key {
+  font-family: inherit;
+  font-size: 0.66rem;
+  line-height: 1;
+  padding: 1.5px 4px;
+  color: #8d8378;
+  background: #f0eae0;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+}
+
+/* The digit that writes this length, in the one corner of the cell no note
+   reaches into: the head sits low and the stem and flags keep to the right. */
+.cell-key {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+}
+
+/* Hints are labels, never targets: a press anywhere on the control is a press
+   on the control. */
+.cell-key,
+.action-key,
+.chip-key {
+  pointer-events: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* The key that does the same thing, printed on the control itself.
+
+   Laid out in the column rather than floated over it: an overlaid badge has to
+   be kept clear of the icon by hand, and the icons are not all the same width,
+   so one of them always ends up underneath it. */
+.action-key {
+  align-self: flex-end;
+  margin-bottom: 0.1rem;
+}
+
+/* Buttons without a shortcut still keep the row, so a row of them lines up. */
+.action-key:empty {
+  visibility: hidden;
+}
+
+.action:disabled .cell-key,
+.action:disabled .action-key,
+.duration-cell:disabled .cell-key,
+.chip:disabled .chip-key {
+  opacity: 0.55;
+}
+
+/* Bigger than the rhythm actions: it sits beside a whole keyboard, and at the
+   same size as them it read as an afterthought. */
+#pitch-actions .action {
+  min-width: 5.6rem;
+  padding: 0.55rem 0.4rem 0.45rem;
+  gap: 0.35rem;
+}
+
+#pitch-actions .action-icon {
+  height: 2.5rem;
+}
+
+#pitch-actions .action-label {
+  font-size: 0.78rem;
+}
+
+#status {
+  margin: 0.6rem 0 0;
+  font-size: 0.88rem;
+  color: #6c6459;
+}
+
+#status:empty {
+  display: none;
+}
+
+
 /* ---- Piano keyboard ---- */
 
 /* Sits under the score, matching its width rather than running the full width
-   of the window. */
+   of the window. Pinned for the same reason the controls are above the score:
+   pitching a run of notes means many clicks in a row, and the keys must not
+   move. */
+#keyboard-area {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: stretch;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 1.5rem;
+  background: #faf8f4;
+  border-top: 1px solid var(--rule);
+  box-shadow: 0 -4px 14px rgb(28 26 23 / 9%);
+}
+
 #keyboard {
-  width: calc(100% - 3rem);
-  max-width: 1200px;
-  margin: 0 auto 1.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
   border: 1px solid var(--rule);
   border-radius: 4px;
   background: #efeae2;
   overflow: hidden;
+}
+
+/* Clearing a pitch belongs with the piano: it is the inverse of pressing a
+   key, not something done to the rhythm. */
+#pitch-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .keyboard-scroller {
@@ -153,4 +785,192 @@ main {
 .key-black.key-selected {
   background: var(--note-selected);
   border-color: #7d2d1d;
+}
+
+
+/* ---- Narrow screens ---------------------------------------------------
+
+   The two pinned bars and the music have to share one short screen, so the
+   controls give up room rather than the staff: the staff is the thing being
+   worked on, and an editor whose controls leave nothing to look at is no
+   editor at all. */
+
+@media (max-width: 700px) {
+  main {
+    padding: 0 0.75rem 1rem;
+  }
+
+  /* A row of seven meters cannot fit, so it wraps rather than running off both
+     edges of the page. */
+  #setup {
+    padding: 1.5rem 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .setup-row {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .setup-panel {
+    max-width: 100%;
+  }
+
+  #toolbar {
+    padding: 0.55rem 0.7rem 0.45rem;
+  }
+
+  #signatures {
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .key-toggle {
+    padding: 0.3rem 0.5rem;
+    gap: 0.3rem;
+  }
+
+  .key-toggle-label {
+    display: none;
+  }
+
+  .key-toggle-value,
+  .mode-option,
+  .chip {
+    font-size: 0.75rem;
+  }
+
+  .mode-option {
+    padding: 0.28rem 0.55rem;
+  }
+
+  .chip {
+    padding: 0.28rem 0.5rem;
+  }
+
+  /* Inline with the rest, rather than pushed right and wrapping to a line of
+     their own for the sake of an alignment nobody asked for. */
+  .history {
+    margin-left: 0;
+  }
+
+  #controls {
+    gap: 0.45rem;
+  }
+
+  /* The tuplets and the actions share the line under the rhythm panel. */
+  #tuplets,
+  #actions {
+    gap: 0.3rem;
+  }
+
+  .rhythm-panel {
+    padding: 0.5rem 0.55rem;
+  }
+
+  .duration-grid {
+    gap: 0.25rem;
+    margin-top: 0;
+  }
+
+  .duration-cell {
+    width: 2.3rem;
+    height: 2.3rem;
+    padding: 0.3rem;
+  }
+
+  /* Nothing to press them on, so every shortcut hint goes — showing some and
+     not others would only look like an oversight. */
+  .cell-key,
+  .chip-key,
+  .action-key {
+    display: none;
+  }
+
+  .tuplet {
+    width: 2.2rem;
+    height: 2.2rem;
+    padding: 0.24rem;
+  }
+
+  .rhythm-panel,
+  .tuplet-panel {
+    padding: 0.45rem;
+  }
+
+  .tuplet-panel {
+    gap: 0.3rem;
+  }
+
+  .tuplet-grid {
+    gap: 0.25rem;
+  }
+
+  .action {
+    min-width: 3.5rem;
+    padding: 0.3rem 0.2rem;
+    gap: 0.15rem;
+  }
+
+  .action-icon {
+    height: 1.4rem;
+  }
+
+  .action-label {
+    font-size: 0.6rem;
+  }
+
+  #status {
+    margin-top: 0.4rem;
+    font-size: 0.78rem;
+  }
+
+  /* Shorter keys, so the keyboard takes a strip rather than a third of the
+     screen. Still wide enough to hit with a thumb. */
+  :root {
+    --white-key-width: 40px;
+    --black-key-width: 26px;
+    --white-key-height: 104px;
+    --black-key-height: 64px;
+    --keyboard-padding: 0.4rem;
+  }
+
+  #keyboard-area {
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem;
+  }
+
+  .key-name {
+    font-size: 0.62rem;
+  }
+
+  .key-black .key-name {
+    font-size: 0.55rem;
+  }
+
+  #pitch-actions .action {
+    min-width: 4.2rem;
+    padding: 0.4rem 0.3rem;
+  }
+
+  #pitch-actions .action-icon {
+    height: 1.9rem;
+  }
+
+  #pitch-actions .action-label {
+    font-size: 0.66rem;
+  }
+
+  /* Held off both edges by the same margin: a rounded corner pressed against
+     the side of the screen reads as a mistake rather than as a corner. */
+  .key-panel {
+    left: 0;
+    max-width: calc(100vw - 1.4rem);
+    padding: 0.6rem;
+  }
+
+  .key-cell {
+    width: 6.4rem;
+    padding: 0.45rem 0.4rem;
+  }
 }

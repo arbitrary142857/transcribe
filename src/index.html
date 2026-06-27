@@ -3,15 +3,46 @@
   <head>
     <!-- IMPORTANT: Set the character set to UTF-8. Otherwise you may get weird symbols on the score. -->
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- The page is a set of controls, not a document: a double tap is a second
+         click on a button, and a drag past the edge is not a request to reload. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
     <title>Melody Editor</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <!-- A band across the whole window with its contents centred inside, so the
+         controls never end in a hard edge partway across the page. Pinned to the
+         top as the keyboard is pinned to the bottom, and above the music so it
+         cannot slide out from under the pointer as the score grows a line. -->
+    <div id="toolbar" hidden>
+      <div id="toolbar-inner">
+        <div id="signatures"></div>
+        <div id="controls">
+          <div id="durations"></div>
+          <div id="tuplets"></div>
+          <div id="actions"></div>
+        </div>
+        <p id="status" role="status"></p>
+      </div>
+    </div>
+
     <main>
-      <div id="score"></div>
+      <!-- Shown only until a clef and a meter are chosen. From then on both are
+           read off the stave, and this is emptied for good. -->
+      <div id="setup"></div>
+
+      <div id="workspace" hidden>
+        <div id="score"></div>
+      </div>
     </main>
-    <div id="keyboard"></div>
+
+    <div id="keyboard-area" hidden>
+      <div id="keyboard"></div>
+      <div id="pitch-actions"></div>
+    </div>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
