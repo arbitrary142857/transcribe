@@ -20,7 +20,7 @@ const buttons = document.querySelectorAll<HTMLButtonElement>(
   "button[data-melody]",
 );
 
-let activeMelodyId: SampleMelodyId | null = null;
+let activeMelodyId: SampleMelodyId | undefined;
 
 function currentBarWidth(): number {
   const raw = barWidthInput ? Number(barWidthInput.value) : DEFAULT_BAR_WIDTH;
@@ -31,7 +31,7 @@ function setStatus(message: string): void {
   if (statusEl) statusEl.textContent = message;
 }
 
-function setPressed(activeId: SampleMelodyId | null): void {
+function setPressed(activeId: SampleMelodyId | undefined): void {
   for (const button of buttons) {
     const id = button.dataset.melody;
     button.setAttribute("aria-pressed", id === activeId ? "true" : "false");

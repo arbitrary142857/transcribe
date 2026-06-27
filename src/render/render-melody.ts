@@ -159,8 +159,8 @@ export function renderMelody(
     return notes;
   }
 
-  let previousNotes: StaveNote[] | null = null;
-  let previousMeasure: Measure | null = null;
+  let previousNotes: StaveNote[] | undefined;
+  let previousMeasure: Measure | undefined;
 
   for (let i = 0; i < measures.length; i++) {
     const measure = measures[i]!;
