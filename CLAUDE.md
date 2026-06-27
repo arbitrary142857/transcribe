@@ -23,3 +23,8 @@ Its `.d.ts` files do not always tell the truth either: `Stem.getBoundingBox()`
 is declared but throws `NotImplemented`. When behaviour matters, check the
 implementation in `node_modules/vexflow/build/esm/src/` — one of the few reasons
 to read `node_modules/`, and say so when doing it.
+
+## Test-first design
+
+Write tests first, then code.
+Consult previously-existing tests for reference on how to name tests.
