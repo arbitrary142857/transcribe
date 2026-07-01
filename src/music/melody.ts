@@ -119,4 +119,13 @@ export class Melody {
 
     return encodeWav(samples, SAMPLE_RATE);
   }
+
+  /** EasyScore line of comma-separated note and rest tokens. */
+  toString(): string {
+    const parts: string[] = [];
+    for (let i = 0; i < this.eventCount; i++) {
+      parts.push(this.getEvent(i).toString());
+    }
+    return parts.join(", ");
+  }
 }

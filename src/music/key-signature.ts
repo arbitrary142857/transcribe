@@ -1,4 +1,4 @@
-import { Pitch } from "./pitch.js";
+import { ACCIDENTAL_STRING, Pitch } from "./pitch.js";
 import type { Mode } from "./types.js";
 
 export class KeySignature {
@@ -15,5 +15,11 @@ export class KeySignature {
     return (
       this.mode === other.mode && this.tonic.toChroma() === other.tonic.toChroma()
     );
+  }
+
+  /** VexFlow key-signature spec, e.g. `"G"`, `"F#m"`, `"Db"`. */
+  toString(): string {
+    const name = `${this.tonic.letter}${ACCIDENTAL_STRING[this.tonic.accidental]}`;
+    return this.mode === "minor" ? `${name}m` : name;
   }
 }

@@ -10,7 +10,8 @@ const LETTER_SEMITONE: Record<LetterName, number> = {
   B: 11,
 };
 
-const ACCIDENTAL_SUFFIX: Record<Accidental, string> = {
+/** EasyScore / key-signature accidental spelling (VexFlow). */
+export const ACCIDENTAL_STRING: Record<Accidental, string> = {
   [-2]: "bb",
   [-1]: "b",
   0: "",
@@ -61,7 +62,8 @@ export class Pitch {
     return this.toSemitone() === other.toSemitone();
   }
 
+  /** EasyScore pitch token, e.g. `"f#4"`, `"gb3"`. */
   toString(): string {
-    return `${this.letter}${ACCIDENTAL_SUFFIX[this.accidental]}${this.octave}`;
+    return `${this.letter.toLowerCase()}${ACCIDENTAL_STRING[this.accidental]}${this.octave}`;
   }
 }

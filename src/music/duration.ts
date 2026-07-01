@@ -12,6 +12,27 @@ export const NoteValue = {
   ThirtySecond: 32,
 } as const;
 
+type NoteValueType = (typeof NoteValue)[keyof typeof NoteValue];
+
+/** VexFlow EasyScore duration token (without leading slash). */
+const VEXFLOW_DURATION: Record<NoteValueType, string> = {
+  [NoteValue.Whole]: "w",
+  [NoteValue.Half]: "h",
+  [NoteValue.HalfTriplet]: "h",
+  [NoteValue.Quarter]: "q",
+  [NoteValue.QuarterTriplet]: "q",
+  [NoteValue.Eighth]: "8",
+  [NoteValue.EighthTriplet]: "8",
+  [NoteValue.Sixteenth]: "16",
+  [NoteValue.SixteenthTriplet]: "16",
+  [NoteValue.ThirtySecond]: "32",
+};
+
+/** Slash-prefixed EasyScore duration without dots, e.g. `/q`. */
+export function vexflowDurationSlash(value: NoteValueType): string {
+  return `/${VEXFLOW_DURATION[value]}`;
+}
+
 function gcd(a: number, b: number): number {
   let x = Math.abs(a);
   let y = Math.abs(b);
@@ -30,7 +51,7 @@ function normalizeFraction(num: number, den: number): { num: number; den: number
 
 export class Duration {
   constructor(
-    public value: (typeof NoteValue)[keyof typeof NoteValue],
+    public value: NoteValueType,
     public dots = 0,
   ) {
     if (!Number.isInteger(this.dots) || this.dots < 0) {
@@ -64,5 +85,10 @@ export class Duration {
     const { num, den } = this.asWholeNoteFraction();
     const wholeNoteSeconds = (4 * 60) / bpm;
     return (num / den) * wholeNoteSeconds;
+  }
+
+  /** EasyScore duration suffix, e.g. `/q` or `/q..`. */
+  toString(): string {
+    return `${vexflowDurationSlash(this.value)}${".".repeat(this.dots)}`;
   }
 }
