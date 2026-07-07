@@ -1,4 +1,5 @@
 import { Duration } from "./duration.js";
+import { findTiedChain } from "./tieChain.js";
 import { KeySignature } from "./key-signature.js";
 import { Note, type NoteEvent, Rest } from "./note-event.js";
 import { Pitch } from "./pitch.js";
@@ -87,22 +88,7 @@ export class Melody {
 
   getTiedGroup(index: number): number[] {
     this.assertEventIndex(index);
-
-    let tieStart = index;
-    while (tieStart > 0 && this.tiedToNext.has(tieStart - 1)) {
-      tieStart--;
-    }
-
-    let tieEnd = index;
-    while (tieEnd < this.eventCount - 1 && this.tiedToNext.has(tieEnd)) {
-      tieEnd++;
-    }
-
-    const tiedIndices: number[] = [];
-    for (let i = tieStart; i <= tieEnd; i++) {
-      tiedIndices.push(i);
-    }
-    return tiedIndices;
+    return findTiedChain(this.tiedToNext, index);
   }
 
   setDuration(index: number, duration: Duration): void {

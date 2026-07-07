@@ -1,3 +1,5 @@
+import { equals, reduce } from "./fraction.js";
+
 /** Each value is the denominator of 1/n of a whole note. */
 export const NoteValue = {
   Whole: 1,
@@ -28,22 +30,6 @@ const VEXFLOW_DURATION: Record<NoteValueType, string> = {
   [NoteValue.ThirtySecond]: "32",
 };
 
-function gcd(a: number, b: number): number {
-  let x = Math.abs(a);
-  let y = Math.abs(b);
-  while (y !== 0) {
-    const t = y;
-    y = x % y;
-    x = t;
-  }
-  return x;
-}
-
-function normalizeFraction(num: number, den: number): { num: number; den: number } {
-  const g = gcd(num, den);
-  return { num: num / g, den: den / g };
-}
-
 export class Duration {
   constructor(
     public value: NoteValueType,
@@ -66,14 +52,15 @@ export class Duration {
       num *= 2 ** (this.dots + 1) - 1;
       den *= 2 ** this.dots;
     }
-    return normalizeFraction(num, den);
+    return reduce({ num, den });
   }
 
   /** Same sounding length, possibly with different notation. */
   sameLengthAs(other: Duration): boolean {
-    const a = this.asWholeNoteFraction();
-    const b = other.asWholeNoteFraction();
-    return a.num * b.den === b.num * a.den;
+    return equals(
+      this.asWholeNoteFraction(),
+      other.asWholeNoteFraction(),
+    );
   }
 
   inSeconds(bpm: number): number {
