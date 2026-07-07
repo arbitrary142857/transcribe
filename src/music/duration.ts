@@ -28,11 +28,6 @@ const VEXFLOW_DURATION: Record<NoteValueType, string> = {
   [NoteValue.ThirtySecond]: "32",
 };
 
-/** Slash-prefixed EasyScore duration without dots, e.g. `/q`. */
-export function vexflowDurationSlash(value: NoteValueType): string {
-  return `/${VEXFLOW_DURATION[value]}`;
-}
-
 function gcd(a: number, b: number): number {
   let x = Math.abs(a);
   let y = Math.abs(b);
@@ -89,6 +84,6 @@ export class Duration {
 
   /** EasyScore duration suffix, e.g. `/q` or `/q..`. */
   toString(): string {
-    return `${vexflowDurationSlash(this.value)}${".".repeat(this.dots)}`;
+    return `/${VEXFLOW_DURATION[this.value]}${".".repeat(this.dots)}`;
   }
 }

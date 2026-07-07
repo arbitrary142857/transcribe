@@ -1,4 +1,4 @@
-import { Duration, vexflowDurationSlash } from "./duration.js";
+import { Duration } from "./duration.js";
 import { Pitch } from "./pitch.js";
 
 /** Staff position placeholder for EasyScore rests (VexFlow ignores the pitch). */
@@ -56,6 +56,6 @@ export class Rest {
 
   /** EasyScore rest token, e.g. `"b4/q/r"` or `"b4/h/r.."`. */
   toString(): string {
-    return `${REST_PLACEHOLDER}${vexflowDurationSlash(this.duration.value)}/r${".".repeat(this.duration.dots)}`;
+    return `${REST_PLACEHOLDER}${new Duration(this.duration.value).toString()}/r${".".repeat(this.duration.dots)}`;
   }
 }

@@ -8,6 +8,7 @@ import { encodeWav } from "./wav.js";
 
 export class Melody {
   private events: NoteEvent[];
+  private tiedToNext = new Set<number>();
 
   constructor(
     public readonly keySignature: KeySignature,
@@ -21,12 +22,15 @@ export class Melody {
     return this.events.length;
   }
 
-  getEvent(index: number): NoteEvent {
-    const event = this.events[index];
-    if (!event) {
+  private assertEventIndex(index: number): void {
+    if (index < 0 || index >= this.eventCount) {
       throw new RangeError(`No event at index ${index}`);
     }
-    return event;
+  }
+
+  getEvent(index: number): NoteEvent {
+    this.assertEventIndex(index);
+    return this.events[index]!;
   }
 
   setPitch(index: number, pitch: Pitch): void {
@@ -34,7 +38,71 @@ export class Melody {
     if (!(event instanceof Note)) {
       throw new TypeError("Cannot set pitch on a rest");
     }
-    this.events[index] = new Note(pitch, event.duration);
+    for (const i of this.getTiedGroup(index)) {
+      const member = this.getEvent(i);
+      if (member instanceof Note) {
+        this.events[i] = new Note(pitch, member.duration);
+      }
+    }
+  }
+
+  tie(index: number): void {
+    if (index < 0 || index >= this.eventCount - 1) {
+      throw new RangeError(
+        `Cannot tie at index ${index}: index + 1 must be a valid event index`,
+      );
+    }
+
+    const current = this.getEvent(index);
+    const next = this.getEvent(index + 1);
+
+    if (!(current instanceof Note)) {
+      throw new TypeError("Cannot tie a rest to another event");
+    }
+    if (!(next instanceof Note)) {
+      throw new TypeError("Cannot tie a note to a rest");
+    }
+    if (!current.pitch.isEqual(next.pitch)) {
+      throw new TypeError(
+        "Cannot tie notes with different pitches: pitches must match exactly",
+      );
+    }
+
+    this.tiedToNext.add(index);
+  }
+
+  untie(index: number): void {
+    this.tiedToNext.delete(index);
+  }
+
+  isTiedToNext(index: number): boolean {
+    this.assertEventIndex(index);
+    return this.tiedToNext.has(index);
+  }
+
+  isTiedToPrev(index: number): boolean {
+    this.assertEventIndex(index);
+    return this.tiedToNext.has(index - 1);
+  }
+
+  getTiedGroup(index: number): number[] {
+    this.assertEventIndex(index);
+
+    let tieStart = index;
+    while (tieStart > 0 && this.tiedToNext.has(tieStart - 1)) {
+      tieStart--;
+    }
+
+    let tieEnd = index;
+    while (tieEnd < this.eventCount - 1 && this.tiedToNext.has(tieEnd)) {
+      tieEnd++;
+    }
+
+    const tiedIndices: number[] = [];
+    for (let i = tieStart; i <= tieEnd; i++) {
+      tiedIndices.push(i);
+    }
+    return tiedIndices;
   }
 
   setDuration(index: number, duration: Duration): void {
@@ -62,6 +130,9 @@ export class Melody {
       if (!this.getEvent(i).isEqual(other.getEvent(i))) {
         return false;
       }
+      if (this.isTiedToNext(i) !== other.isTiedToNext(i)) {
+        return false;
+      }
     }
     return true;
   }
@@ -81,6 +152,9 @@ export class Melody {
     }
     for (let i = 0; i < this.eventCount; i++) {
       if (!this.getEvent(i).isEnharmonicallyEqual(other.getEvent(i))) {
+        return false;
+      }
+      if (this.isTiedToNext(i) !== other.isTiedToNext(i)) {
         return false;
       }
     }
