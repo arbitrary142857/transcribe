@@ -279,17 +279,33 @@ Events are copied into internal storage; the passed array is not aliased.
 
 | Method | Description |
 | ------ | ----------- |
-| `setPitch(index, pitch)` | Replace the pitch of a `Note`. Throws `TypeError` on a `Rest`. |
+| `setPitch(index, pitch)` | Replace the pitch of a `Note`. If the event is in a tied group, the same pitch is applied to every `Note` in that group, preserving each event's duration. Throws `TypeError` on a `Rest`. |
 | `setDuration(index, duration)` | Replace the duration of a `Note` or `Rest`. |
 
 Key and time signatures cannot be changed after construction.
+
+### Ties
+
+Ties connect **adjacent** events in the melody's event list, asserting they are one continuous sound. Tie state lives on `Melody` only (not on `Note`, `Rest`, or `Duration`).
+
+A tie always links `events[i]` to `events[i + 1]`. A **tied group** is a maximal run of consecutive tied-together indices; for example, if indices 2–3 and 3–4 are tied, then `getTiedGroup(3)` returns `[2, 3, 4]`.
+
+| Method | Returns | Description |
+| ------ | ------- | ----------- |
+| `tie(index)` | `void` | Tie `events[index]` to `events[index + 1]`. Both must be `Note`s with exactly equal pitch (`Pitch.isEqual`, not enharmonic). Throws `RangeError` if `index + 1` is out of range; throws `TypeError` if either event is a `Rest` or pitches differ. |
+| `untie(index)` | `void` | Remove the tie between `events[index]` and `events[index + 1]`, if present. Safe no-op when no tie exists. |
+| `isTiedToNext(index)` | `boolean` | Whether `events[index]` is tied to the next event. Throws `RangeError` if `index` is out of range. |
+| `isTiedToPrev(index)` | `boolean` | Whether `events[index]` is tied to the previous event. Throws `RangeError` if `index` is out of range. |
+| `getTiedGroup(index)` | `number[]` | Sorted indices of the maximal tie chain containing `index`, including `index` itself. Returns `[index]` when the event is not tied to anything. Throws `RangeError` if `index` is out of range. |
+
+To change the pitch of a single event within a tied group, call `untie()` first; `setPitch` always updates the whole group.
 
 ### Equality
 
 | Method | Description |
 | ------ | ----------- |
-| `isEqual(other)` | Exact equality: key, meter, and every event (spelling and notation). |
-| `isEnharmonicallyEqual(other)` | Same sounding melody: enharmonic pitches, same-length durations, enharmonically equivalent key. |
+| `isEqual(other)` | Exact equality: key, meter, every event (spelling and notation), and tie structure at every index. |
+| `isEnharmonicallyEqual(other)` | Same sounding melody: enharmonic pitches, same-length durations, enharmonically equivalent key, and the same tie structure. |
 
 ### Playback
 
@@ -323,4 +339,23 @@ const melody = new Melody(
 
 melody.setPitch(0, new Pitch("D", 0, 4));
 melody.playback(96);
+```
+
+Tie three consecutive C4 notes and then retune the middle one — all three update together:
+
+```typescript
+const tied = new Melody(
+  new KeySignature(new Pitch("C", 0, 4), "major"),
+  { beats: 4, beatUnit: 4 },
+  [
+    new Note(new Pitch("C", 0, 4), new Duration(NoteValue.Quarter)),
+    new Note(new Pitch("C", 0, 4), new Duration(NoteValue.Quarter)),
+    new Note(new Pitch("C", 0, 4), new Duration(NoteValue.Half)),
+  ],
+);
+
+tied.tie(0);
+tied.tie(1);
+tied.setPitch(1, new Pitch("D", 0, 4)); // all three become D4; durations unchanged
+tied.getTiedGroup(1);                   // [0, 1, 2]
 ```
