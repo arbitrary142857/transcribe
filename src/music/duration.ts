@@ -1,4 +1,4 @@
-import { equals, reduce } from "./fraction.js";
+import { Fraction } from "./fraction.js";
 
 /** Each value is the denominator of 1/n of a whole note. */
 export const NoteValue = {
@@ -45,22 +45,19 @@ export class Duration {
   }
 
   /** Length as a fraction of a whole note, for playback timing. */
-  asWholeNoteFraction(): { readonly num: number; readonly den: number } {
+  asWholeNoteFraction(): Fraction {
     let num = 1;
     let den = this.value;
     if (this.dots > 0) {
       num *= 2 ** (this.dots + 1) - 1;
       den *= 2 ** this.dots;
     }
-    return reduce({ num, den });
+    return new Fraction(num, den).reduce();
   }
 
   /** Same sounding length, possibly with different notation. */
   sameLengthAs(other: Duration): boolean {
-    return equals(
-      this.asWholeNoteFraction(),
-      other.asWholeNoteFraction(),
-    );
+    return this.asWholeNoteFraction().equals(other.asWholeNoteFraction());
   }
 
   inSeconds(bpm: number): number {

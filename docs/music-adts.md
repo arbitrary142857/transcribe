@@ -1,6 +1,6 @@
 # Music ADTs
 
-TypeScript abstract data types for representing multi-bar melodies. Import from `src/music/index.js`.
+TypeScript abstract data types for representing multi-bar melodies. Core types import from `src/music/index.js`; measures and fractions import from their own modules (see below).
 
 ```typescript
 import {
@@ -12,6 +12,15 @@ import {
   Rest,
   Melody,
 } from "./music/index.js";
+
+import {
+  Measure,
+  splitIntoMeasures,
+  MeasureOverflowError,
+  IncompleteMeasureError,
+} from "./music/measure.js";
+
+import { Fraction } from "./music/fraction.js";
 ```
 
 ---
@@ -140,7 +149,7 @@ Each dot adds half of the **original** note value (one dot → ×3/2, two dots �
 | Method | Returns | Description |
 | ------ | ------- | ----------- |
 | `isEqual(other)` | `boolean` | Same `value` and `dots` (exact notation). |
-| `asWholeNoteFraction()` | `{ num, den }` | Length as a reduced fraction of a whole note. |
+| `asWholeNoteFraction()` | `Fraction` | Length as a reduced fraction of a whole note. |
 | `sameLengthAs(other)` | `boolean` | Same sounding length, possibly different notation. |
 | `inSeconds(bpm)` | `number` | Wall-clock duration at the given quarter-note BPM. |
 
@@ -300,6 +309,8 @@ A tie always links `events[i]` to `events[i + 1]`. A **tied group** is a maximal
 
 To change the pitch of a single event within a tied group, call `untie()` first; `setPitch` always updates the whole group.
 
+Ties may cross barlines. When a melody is split into measures (see [`splitIntoMeasures`](#splitintomeasures)), within-measure ties appear in each measure's local `tiedToNext`, while cross-barline ties appear as `tiedToNextBar` / `tiedToPrevBar` on adjacent measures.
+
 ### Equality
 
 | Method | Description |
@@ -358,4 +369,119 @@ tied.tie(0);
 tied.tie(1);
 tied.setPitch(1, new Pitch("D", 0, 4)); // all three become D4; durations unchanged
 tied.getTiedGroup(1);                   // [0, 1, 2]
+```
+
+---
+
+## `Fraction`
+
+Exact rational number used for duration arithmetic (whole-note fractions). All measure-length math uses `Fraction` methods — never floating-point comparison.
+
+Import from `src/music/fraction.js`.
+
+### Fields
+
+| Field | Type     | Description |
+| ----- | -------- | ----------- |
+| `num` | `number` | Numerator   |
+| `den` | `number` | Denominator |
+
+### Constructor
+
+```typescript
+new Fraction(num: number, den: number)
+```
+
+### Methods
+
+| Method | Returns | Description |
+| ------ | ------- | ----------- |
+| `reduce()` | `Fraction` | Lowest terms with a positive denominator. |
+| `add(other)` | `Fraction` | Sum, reduced. |
+| `difference(other)` | `Fraction` | This minus `other`, reduced. |
+| `compare(other)` | `number` | Negative / zero / positive for `<` / `=` / `>`. |
+| `equals(other)` | `boolean` | Same rational value (e.g. 1/2 equals 2/4). |
+| `toString()` | `string` | Reduced form as `"num/den"`. |
+
+---
+
+## `Measure`
+
+An immutable snapshot of one bar produced by splitting a `Melody`. It is a read-only view — there is no `setPitch`, `setDuration`, `tie`, or `untie` on `Measure`. After editing the source `Melody`, call `splitIntoMeasures` again to regenerate measures.
+
+Import from `src/music/measure.js`.
+
+### Fields
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `startIndex` | `number` | Index into the original `Melody` event list of this measure's first event. |
+| `events` | `readonly NoteEvent[]` | Slice of the melody's events that belong to this measure, in order. |
+| `tiedToNext` | `ReadonlySet<number>` | **Local** indices (0-based within `events`) where the event is tied to the next event *inside this measure*. Same shape/semantics as `Melody`'s internal ties, but scoped to the measure. Cross-barline ties are **not** listed here. |
+| `tiedToPrevBar` | `boolean` | Whether this measure's first event is tied to the previous measure's last event. Always `false` for the first measure. |
+| `tiedToNextBar` | `boolean` | Whether this measure's last event is tied to the next measure's first event. Always `false` for the last measure (and whenever there is no following event). |
+
+### Constructor
+
+```typescript
+new Measure(
+  startIndex: number,
+  events: readonly NoteEvent[],
+  tiedToNext: ReadonlySet<number>,
+  tiedToPrevBar: boolean,
+  tiedToNextBar: boolean,
+)
+```
+
+Typically constructed only by `splitIntoMeasures`; callers usually do not build `Measure`s by hand.
+
+---
+
+## `splitIntoMeasures`
+
+```typescript
+splitIntoMeasures(melody: Melody): Measure[]
+```
+
+Divides a melody's flat event sequence into bars using `melody.timeSignature`.
+
+### Algorithm (summary)
+
+1. Measure length \(N\) is the fraction `{ beats / beatUnit }` of a whole note (e.g. 4/4 → `4/4`, 3/8 → `3/8`).
+2. Scan events in order, accumulating each event's `asWholeNoteFraction()` with exact `Fraction` arithmetic.
+3. When the running total equals \(N\), finalize a `Measure` (including local ties and barline-tie flags), then reset the accumulator.
+4. If an event would make the total **strictly greater** than \(N\), throw `MeasureOverflowError`.
+5. If the melody ends with a partially filled measure (total \(> 0\) but \(< N\)), throw `IncompleteMeasureError`. Partial final measures are **not** auto-padded with rests.
+
+Tie status never affects length math: a tied note always contributes its own notated duration. Ties only affect `tiedToNext`, `tiedToPrevBar`, and `tiedToNextBar` on the resulting measures.
+
+### Errors
+
+| Error | When | Notable fields |
+| ----- | ---- | -------------- |
+| `MeasureOverflowError` | An event pushes the running total past \(N\). | `eventIndex`, `measureStartIndex`, `overflow` (`Fraction`) |
+| `IncompleteMeasureError` | The melody ends mid-measure. | `measureStartIndex`, `filled` (`Fraction`), `needed` (`Fraction`) |
+
+Distinguish with `instanceof`; they are separate classes.
+
+### Example
+
+```typescript
+const melody = new Melody(
+  new KeySignature(new Pitch("C", 0, 4), "major"),
+  { beats: 4, beatUnit: 4 },
+  [
+    new Note(new Pitch("C", 0, 4), new Duration(NoteValue.Half)),
+    new Note(new Pitch("C", 0, 4), new Duration(NoteValue.Half)),
+    new Note(new Pitch("C", 0, 4), new Duration(NoteValue.Whole)),
+  ],
+);
+
+melody.tie(1); // last note of bar 1 tied to first note of bar 2
+
+const measures = splitIntoMeasures(melody);
+// measures.length === 2
+// measures[0].startIndex === 0, events.length === 2, tiedToNextBar === true
+// measures[1].startIndex === 2, events.length === 1, tiedToPrevBar === true
+// neither measure lists the cross-barline tie in local tiedToNext
 ```

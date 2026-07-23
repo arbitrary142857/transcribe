@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { Duration, NoteValue } from "../dist/music/duration.js";
+import { Fraction } from "../dist/music/fraction.js";
 import { approxEqual } from "./helpers/approx-equal.js";
 
 describe("NoteValue", () => {
@@ -52,19 +53,19 @@ describe("Duration", () => {
   it("asWholeNoteFraction()", () => {
     assert.deepEqual(
       new Duration(NoteValue.Quarter).asWholeNoteFraction(),
-      { num: 1, den: 4 },
+      new Fraction(1, 4),
     );
     assert.deepEqual(
       new Duration(NoteValue.Quarter, 1).asWholeNoteFraction(),
-      { num: 3, den: 8 },
+      new Fraction(3, 8),
     );
     assert.deepEqual(
       new Duration(NoteValue.Half, 4).asWholeNoteFraction(),
-      { num: 31, den: 32 },
+      new Fraction(31, 32),
     );
     assert.deepEqual(
       new Duration(NoteValue.HalfTriplet, 1).asWholeNoteFraction(),
-      { num: 1, den: 2 },
+      new Fraction(1, 2),
     );
   });
 

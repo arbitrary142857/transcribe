@@ -1,9 +1,5 @@
-export interface Fraction {
-  num: number;
-  den: number;
-}
-
-function gcd(a: number, b: number): number {
+/** Greatest common divisor; always returns a non-negative integer. */
+export function gcd(a: number, b: number): number {
   let x = Math.abs(a);
   let y = Math.abs(b);
   while (y !== 0) {
@@ -14,26 +10,49 @@ function gcd(a: number, b: number): number {
   return x;
 }
 
-export function reduce(f: Fraction): Fraction {
-  let { num, den } = f;
-  if (den < 0) {
-    num = -num;
-    den = -den;
+export class Fraction {
+  constructor(
+    public readonly num: number,
+    public readonly den: number,
+  ) {}
+
+  /** Returns this fraction reduced to lowest terms with a positive denominator. */
+  reduce(): Fraction {
+    let { num, den } = this;
+    if (den < 0) {
+      num = -num;
+      den = -den;
+    }
+    const g = gcd(num, den);
+    return new Fraction(num / g, den / g);
   }
-  const g = gcd(num, den);
-  return { num: num / g, den: den / g };
-}
 
-export function add(a: Fraction, b: Fraction): Fraction {
-  const num = a.num * b.den + b.num * a.den;
-  const den = a.den * b.den;
-  return reduce({ num, den });
-}
+  add(other: Fraction): Fraction {
+    return new Fraction(
+      this.num * other.den + other.num * this.den,
+      this.den * other.den,
+    ).reduce();
+  }
 
-export function compare(a: Fraction, b: Fraction): number {
-  return a.num * b.den - b.num * a.den;
-}
+  /** Returns this − other, reduced. */
+  difference(other: Fraction): Fraction {
+    return new Fraction(
+      this.num * other.den - other.num * this.den,
+      this.den * other.den,
+    ).reduce();
+  }
 
-export function equals(a: Fraction, b: Fraction): boolean {
-  return compare(a, b) === 0;
+  /** Negative if this < other, 0 if equal, positive if this > other. */
+  compare(other: Fraction): number {
+    return this.num * other.den - other.num * this.den;
+  }
+
+  equals(other: Fraction): boolean {
+    return this.compare(other) === 0;
+  }
+
+  toString(): string {
+    const { num, den } = this.reduce();
+    return `${num}/${den}`;
+  }
 }
