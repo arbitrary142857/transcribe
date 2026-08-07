@@ -1,4 +1,4 @@
-import { createApp } from "./ui/app.js";
+import { createApp } from "../ui/app.js";
 
 /**
  * Make sure the score fonts are usable before anything is measured.

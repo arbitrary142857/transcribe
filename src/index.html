@@ -1,64 +1,29 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- IMPORTANT: Set the character set to UTF-8. Otherwise you may get weird symbols on the score. -->
     <meta charset="utf-8" />
-    <!-- The page is a set of controls, not a document: a double tap is a second
-         click on a button, and a drag past the edge is not a request to reload. -->
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-    />
-    <title>Melody Editor</title>
+    <!-- A document rather than a control surface, so unlike the editor this one
+         lets the page be zoomed. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Daily Transcribe</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <!-- A band across the whole window with its contents centred inside, so the
-         controls never end in a hard edge partway across the page. Pinned to the
-         top as the keyboard is pinned to the bottom, and above the music so it
-         cannot slide out from under the pointer as the score grows a line. -->
-    <div id="toolbar" hidden>
-      <div id="toolbar-inner">
-        <div id="signatures"></div>
-        <div id="toolbar-body">
-          <div id="controls">
-            <div id="durations"></div>
-            <div id="tuplets"></div>
-            <div id="actions"></div>
-          </div>
-          <!-- Everything to do with the video, set apart from the controls
-               that write the music down: the player itself, and the controls
-               that drive it. Filled in once the link has been given and never
-               rebuilt after, so nothing an edit does sends the player back to
-               the start. -->
-          <div id="playback">
-            <div id="playback-controls"></div>
-            <div id="video"></div>
-          </div>
-        </div>
-        <p id="status" role="status"></p>
-      </div>
-    </div>
+    <nav class="site-nav">
+      <a class="site-name" href="/" aria-current="page">Daily Transcribe</a>
+      <div class="site-links"><a href="/edit">New transcription</a></div>
+    </nav>
 
-    <main>
-      <!-- Shown only until a clef and a meter are chosen. From then on both are
-           read off the stave, and this is emptied for good. -->
-      <div id="setup"></div>
+    <main class="page">
+      <h1 class="page-title">Levels</h1>
+      <p class="page-lede">
+        Melodies people have picked off a recording and written down.
+      </p>
 
-      <div id="workspace" hidden>
-        <!-- The score has every one of its children replaced on each redraw,
-             so the marker that follows the video is a neighbour of it rather
-             than a child, and this is what holds the two together. -->
-        <div id="score-area">
-          <div id="score"></div>
-        </div>
-      </div>
+      <ul id="levels" class="level-list"></ul>
+      <p id="levels-note" class="page-note" role="status">Loading…</p>
     </main>
 
-    <div id="keyboard-area" hidden>
-      <div id="keyboard"></div>
-      <div id="pitch-actions"></div>
-    </div>
-    <script type="module" src="./main.ts"></script>
+    <script type="module" src="./home.ts"></script>
   </body>
 </html>

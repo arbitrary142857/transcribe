@@ -1,6 +1,6 @@
 import { createHistory, type History } from "../editor/history.js";
 import { emptyMelody } from "../editor/operations.js";
-import { withKeySignature } from "../editor/signature.js";
+import { hasMusic, withKeySignature } from "../editor/signature.js";
 import { KeySignature } from "../music/key-signature.js";
 import type { Melody } from "../music/melody.js";
 import { Pitch } from "../music/pitch.js";
@@ -165,6 +165,22 @@ export function createApp(elements: AppElements): void {
     }
     event.preventDefault();
     step(event.shiftKey ? history?.redo() : history?.undo());
+  });
+
+  /**
+   * The browser's own question before written music is thrown away.
+   *
+   * There is nowhere yet to save a melody to, so everything written lives in
+   * this tab and goes with it. Asked here rather than on the link in the bar
+   * above because that is only one of the ways out: this one also catches the
+   * back button, a reload, and the tab being closed.
+   *
+   * Nothing to lose, nothing to ask — an untouched page of rests is not work,
+   * which is the same reckoning the key change uses.
+   */
+  window.addEventListener("beforeunload", (event) => {
+    if (!melody || !hasMusic(melody)) return;
+    event.preventDefault();
   });
 
   mount();

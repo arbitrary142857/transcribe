@@ -1,4 +1,7 @@
 dist/
 dist-test/
 dist-web/
+dist-worker/
 node_modules/
+.wrangler/
+.dev.vars

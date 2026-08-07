@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+
+  // The Worker's own name, and nothing else's: it decides the default
+  // <name>.workers.dev URL and how the script is listed in the dashboard.
+  // No code reads it, and it need not match the repo or the database.
+  //
+  // Named for where this is going rather than where it came from. Once
+  // transcribe.jasonmao.com is attached as a custom domain the workers.dev
+  // URL stops being seen at all, so this is the last moment the name is
+  // worth choosing — and the only moment it is free, since renaming after a
+  // deploy creates a second Worker and leaves the first one serving.
+  "name": "transcribe",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-07",
+
+  // No `directory` here on purpose: the Vite plugin writes one into the
+  // generated config at build time, pointing at whatever the client build
+  // produced. Setting it by hand is how the two drift apart.
+  //
+  // Assets win by default, so the Worker only ever sees a request no file
+  // answers — which is every /api/* path, and nothing else worth serving.
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "404-page"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "transcriptions",
+      "database_id": "98d19a4c-9754-4675-be1a-b840caf8124e"
+    }
+  ]
+}

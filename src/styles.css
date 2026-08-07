@@ -1585,6 +1585,129 @@ main {
 }
 
 
+/* ---- The bar across the top of every page ----
+
+   Lined up with the editor's toolbar rather than with the window, so the
+   wordmark sits over the controls below it instead of out at the edge. On the
+   editor this scrolls away and the sticky toolbar takes the top back, which is
+   why it can afford to be here at all. */
+
+.site-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem 1.2rem;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.85rem 1.5rem 0.7rem;
+}
+
+.site-name {
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.site-links {
+  display: flex;
+  gap: 1.1rem;
+  font-size: 0.85rem;
+}
+
+.site-links a {
+  color: #6c6459;
+  text-decoration: none;
+}
+
+.site-name:hover,
+.site-links a:hover {
+  text-decoration: underline;
+}
+
+/* Where you already are is a label, not a door. */
+.site-name[aria-current="page"]:hover {
+  text-decoration: none;
+}
+
+
+/* ---- Pages that are documents rather than control surfaces ----
+
+   The editor's `main` centres a column of controls; these pages want a column
+   of prose, left-aligned inside the same width. */
+
+main.page {
+  align-items: stretch;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.5rem 1.5rem 3rem;
+}
+
+.page-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.55rem;
+}
+
+.page-lede {
+  margin: 0 0 1.7rem;
+  color: #6c6459;
+}
+
+.page-note {
+  margin: 0;
+  color: #8d8378;
+  font-size: 0.92rem;
+}
+
+
+/* ---- Level cards ----
+
+   Everything on a card comes out of its own column in the database. The
+   melody is not among them, so nothing here has to remember to leave the
+   pitches out. */
+
+.level-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.level-card {
+  padding: 0.95rem 1.05rem;
+  background: #faf8f4;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.level-title {
+  /* Long enough to overflow is normal for a piece of music, so it wraps. */
+  margin: 0;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+
+.level-subtitle {
+  margin: 0.2rem 0 0;
+  color: #6c6459;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.level-facts {
+  margin: 0.65rem 0 0;
+  color: #8d8378;
+  font-size: 0.8rem;
+  /* Bar counts and tempos line up down the column rather than wandering. */
+  font-variant-numeric: tabular-nums;
+}
+
+
 /* ---- Narrow screens ---------------------------------------------------
 
    The two pinned bars and the music have to share one short screen, so the

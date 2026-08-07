@@ -1,0 +1,24 @@
+{
+  // The Worker, built and typechecked apart from the page.
+  //
+  // The point of a separate project is the `lib` below: no DOM. Worker code
+  // and page code share the music and the shared modules, and this is what
+  // proves that share stays honest -- if anything reachable from the Worker
+  // reaches for `document` or `window`, this build fails and the deployed
+  // Worker never gets the chance to fail at runtime instead.
+  //
+  // It emits as well as checks, because test/api-levels.test.ts runs the
+  // routes in plain Node against a stand-in database.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The Worker imports out of src/, so the root of the two together is the
+    // repo. Output mirrors that: dist-worker/worker/ beside dist-worker/src/.
+    "rootDir": ".",
+    "outDir": "dist-worker",
+    "lib": ["ES2022"],
+    // Node's globals are not the Worker's. Everything the runtime offers
+    // arrives instead through worker-configuration.d.ts below.
+    "types": []
+  },
+  "include": ["worker", "worker-configuration.d.ts"]
+}
