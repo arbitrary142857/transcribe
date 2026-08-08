@@ -36,6 +36,21 @@ export type TempoMap = {
 const isReal = (value: number) => Number.isFinite(value);
 
 /**
+ * The beats a player feels in one bar of `meter`.
+ *
+ * The felt beat, not the written one: 6/8 is counted in two dotted quarters
+ * rather than six eighths, which is what a conductor beats and what the
+ * metronome clicks.
+ *
+ * Lives here beside `TempoMap.beatsPerBar`, which is the same number, because
+ * the tempo has to be judged before a map exists — the setup page and the
+ * editor both gate on it — and two copies of this arithmetic would be two
+ * things to keep agreeing.
+ */
+export const beatsPerBarOf = (meter: TimeSignature): number =>
+  barLengthOf(meter).divide(beatLengthOf(meter)).toNumber();
+
+/**
  * Read a tempo out of two marks and the bars between them.
  *
  * Returns nothing rather than a broken map when the marks cannot describe a

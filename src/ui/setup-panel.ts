@@ -1,6 +1,4 @@
-import { beatLengthOf } from "../music/duration.js";
 import type { TimeSignature } from "../music/types.js";
-import { barLengthOf } from "../editor/position.js";
 import {
   bpmOf,
   stepTiming,
@@ -8,7 +6,12 @@ import {
   type TimingAction,
   type TimingState,
 } from "../playback/timing-fields.js";
-import { beatsPerMinute, tempoMapOf, type Marks } from "../playback/tempo-map.js";
+import {
+  beatsPerBarOf,
+  beatsPerMinute,
+  tempoMapOf,
+  type Marks,
+} from "../playback/tempo-map.js";
 import { renderStaveDiagram } from "../render/stave-diagram.js";
 import { openModal } from "./modal.js";
 import { createTimingPanel, type TimingPanel } from "./timing-panel.js";
@@ -44,7 +47,14 @@ const METER_WIDTH = 40;
 const CLEF_HEADROOM = { above: 24, below: 20 };
 const METER_HEADROOM = { above: 7, below: 7 };
 
-/** Everything the melody page needs, settled for good. */
+/**
+ * Everything the melody page needs to begin.
+ *
+ * Three of these are settled for good — the clef, the meter and the bar count,
+ * which the music is written against and cannot move under it. The marks are
+ * only settled *here*: they were guessed against a video nobody had
+ * transcribed yet, and the editor can correct them.
+ */
 export type Setup = {
   clef: string;
   meter: TimeSignature;
@@ -77,11 +87,13 @@ function cell(
   return button;
 }
 
-/** The felt beats in one bar of `meter`, or a quarter-note default before one is chosen. */
-const beatsPerBarOf = (meter: TimeSignature | undefined): number =>
-  meter === undefined
-    ? 4
-    : barLengthOf(meter).divide(beatLengthOf(meter)).toNumber();
+/**
+ * The felt beats in one bar, or a quarter-note default before a meter is
+ * chosen — which is a state only this page has, so the default stays here
+ * while the arithmetic lives with the tempo map.
+ */
+const beatsPerBar = (meter: TimeSignature | undefined): number =>
+  meter === undefined ? 4 : beatsPerBarOf(meter);
 
 /**
  * The first page: clef, meter, video, and the timing that pins them together.
@@ -92,9 +104,11 @@ const beatsPerBarOf = (meter: TimeSignature | undefined): number =>
  * a redraw there would take the caret out of a box mid-keystroke, and would
  * reload the video itself: an iframe starts over whenever it is replaced.
  *
- * Everything chosen here is final. The bar count and the timing marks become
- * the melody's fixed length and tempo, so the way out runs through a
- * confirmation that says so.
+ * The clef, the meter and the bar count chosen here are final: the music is
+ * written against all three and none can move under it afterwards, so the way
+ * out runs through a confirmation that says so. The timing marks are not among
+ * them — they are a first guess at a video nobody has transcribed yet, and the
+ * editor can correct them.
  */
 export function createSetupPage(
   element: HTMLElement,
@@ -276,7 +290,7 @@ export function createSetupPage(
     const step = stepTiming(
       timing,
       action,
-      beatsPerBarOf(meter),
+      beatsPerBar(meter),
       rig && rig.duration() > 0 ? rig.duration() : undefined,
     );
     timing = step.state;
@@ -303,7 +317,7 @@ export function createSetupPage(
   const currentMap = () => {
     if (meter === undefined || timing.measures === undefined) return undefined;
     if (timing.start === undefined || timing.end === undefined) return undefined;
-    if (timingProblem(timing, beatsPerBarOf(meter)) !== undefined) {
+    if (timingProblem(timing, beatsPerBar(meter)) !== undefined) {
       return undefined;
     }
     return tempoMapOf(
@@ -377,7 +391,7 @@ export function createSetupPage(
     if (!videoId) return "Load the video you are writing from.";
     if (trouble) return trouble;
     if (!rigReady) return "Waiting for the video…";
-    return timingProblem(timing, beatsPerBarOf(meter));
+    return timingProblem(timing, beatsPerBar(meter));
   }
 
   start.addEventListener("click", () => {
@@ -394,13 +408,14 @@ export function createSetupPage(
     };
     const bars = chosen.measures === 1 ? "1 bar" : `${chosen.measures} bars`;
     void openModal({
-      title: "These settings are final",
+      title: "The clef, the meter and the bar count are final",
       body: [
         `${bars} at ${Math.round(beatsPerMinute(map))} BPM, ` +
           `in ${meterLabel(chosen.meter)}, ${chosen.clef} clef.`,
-        "Once writing begins, the clef, the meter, the bar count and the " +
-          "timing marks cannot be changed. Check them against the video " +
-          "before going on.",
+        "Once writing begins, none of those three can be changed. Check them " +
+          "against the video before going on.",
+        "The timing marks can: correct them from the editor whenever the " +
+          "tempo turns out to be a little off.",
       ],
       confirm: "Start writing",
       cancel: "Go back",
@@ -427,7 +442,7 @@ export function createSetupPage(
   // ---- state to screen ---------------------------------------------------
 
   function panelState(noteOverride?: string) {
-    const beats = beatsPerBarOf(meter);
+    const beats = beatsPerBar(meter);
     const bpm = bpmOf(timing, beats);
     const problem = timingProblem(timing, beats);
     const note =

@@ -13,6 +13,7 @@ import {
   type SectionStep,
 } from "../playback/section-play.js";
 import {
+  beatsPerBarOf,
   beatsPerMinute,
   secondsAtPosition,
   tempoMapOf,
@@ -20,17 +21,39 @@ import {
   type TempoMap,
 } from "../playback/tempo-map.js";
 import { toMilliseconds } from "../playback/timecode.js";
+import {
+  bpmOf,
+  stepTiming,
+  timingProblem,
+  type TimingAction,
+  type TimingState,
+} from "../playback/timing-fields.js";
 import type { MelodyRenderResult } from "../render/render-melody.js";
 import { createPlaybackPanel, type PlaybackPanel } from "./playback-panel.js";
 import { createPlayhead, type Playhead } from "./playhead.js";
+import { createTimingPanel, type TimingPanel } from "./timing-panel.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { createVideoRig, type VideoRig } from "./video-rig.js";
 
-/** Everything the setup page settled, frozen. */
+/** Where the music sits in the video, and how much of it there is. */
 export type PlaybackConfig = {
   marks: Marks;
   measures: number;
   meter: TimeSignature;
+};
+
+export type PlaybackOptions = {
+  /**
+   * Whether the timing may be corrected here.
+   *
+   * True in the editor, where the marks were first guessed against a video
+   * nobody had transcribed yet. False wherever a level is being played: the
+   * marks are then part of the level rather than part of the work, and moving
+   * them would move the answer.
+   */
+  canRetime?: boolean;
+  /** The marks were changed; the page that owns them should take them on. */
+  onRetime?: (marks: Marks) => void;
 };
 
 export type Playback = {
@@ -43,14 +66,21 @@ export type Playback = {
   destroy(): void;
 };
 
+/** Which of the two panels the controls column is showing. */
+type Mode = "playback" | "timing";
+
 /**
  * The melody page's side of the video.
  *
- * The tempo is not measured here — it arrived frozen from the setup page, and
- * everything on this page reads from it: where each note falls in the video,
- * where the metronome clicks, where the marker stands on the stave. What this
- * page adds is the *section*: a stretch of the video played on its own, looped
- * if asked, marked off the clock or off the selected note.
+ * Two jobs share one column, and only one is on screen at a time. *Playback*
+ * is a stretch of the video played on its own, looped if asked, marked off the
+ * clock or off the selected note. *Timing* is where the first bar starts and
+ * the last one ends — the two moments everything else is measured from.
+ *
+ * They are swapped rather than shown together because they look identical and
+ * mean different things: both are a pair of marks with the same icons on the
+ * same two keys. Only one pair being on screen is what makes `I` and `O`
+ * unambiguous, without anyone having to remember a rule.
  *
  * Made once and outliving every rebuild of the editor around it: switching
  * modes or undoing throws the editor away, and the video must not restart
@@ -61,8 +91,26 @@ export function createPlayback(
   iframe: HTMLIFrameElement,
   config: PlaybackConfig,
   selection: () => number | undefined,
+  options: PlaybackOptions = {},
 ): Playback {
-  const map: TempoMap | undefined = tempoMapOf(
+  const canRetime = options.canRetime ?? false;
+  const beatsPerBar = beatsPerBarOf(config.meter);
+
+  /**
+   * The tempo, and the two marks it is read from.
+   *
+   * No longer settled once and for all: correcting the marks rebuilds the map,
+   * and everything read from it has to be read again — the onsets each note
+   * falls on, the metronome's clicks, the playhead, and the line reporting the
+   * tempo. `retime()` below is the one place that happens.
+   */
+  let timing: TimingState = {
+    start: config.marks.start,
+    end: config.marks.end,
+    measures: config.measures,
+    locked: false,
+  };
+  let map: TempoMap | undefined = tempoMapOf(
     config.marks,
     config.measures,
     config.meter,
@@ -71,9 +119,13 @@ export function createPlayback(
   /** When each event begins and ends, in video seconds; indexed like the melody. */
   let onsets: number[] = [];
   let ends: number[] = [];
+  /** The melody last taken on, so a re-timing can recompute against it. */
+  let following: Melody | undefined;
 
+  let mode: Mode = "playback";
   let rigReady = false;
   let trouble: string | undefined;
+  let rejected: string | undefined;
   let sectionStart = map?.start;
   let sectionEnd = map?.end;
   // Looping and following both start on: looping a passage and watching where
@@ -90,20 +142,32 @@ export function createPlayback(
   const playhead: Playhead = createPlayhead(elements.scoreArea);
   const rig: VideoRig = createVideoRig(iframe);
 
-  // ---- what the panel says ---------------------------------------------
+  /** What the marks still get wrong, or nothing. */
+  const problem = () => timingProblem(timing, beatsPerBar);
+
+  // ---- what the panels say ---------------------------------------------
 
   function note(): string {
     if (trouble) return trouble;
-    if (!map) return "The timing from the setup page did not add up.";
+    if (rejected) return rejected;
+    const wrong = problem();
+    if (wrong) return wrong;
+    if (!map) return "The timing does not add up.";
     const bars = config.measures === 1 ? "1 bar" : `${config.measures} bars`;
     return `${bars} · ${Math.round(beatsPerMinute(map))} BPM`;
   }
 
   function refresh(): void {
-    panel.update({
+    const shared = {
       ready: rigReady,
       rates: rig.rates(),
       rate: rig.rate(),
+      timed: map !== undefined && problem() === undefined,
+      note: note(),
+    };
+
+    panel.update({
+      ...shared,
       start: sectionStart,
       end: sectionEnd,
       playing: section?.playing ?? false,
@@ -112,9 +176,27 @@ export function createPlayback(
       hasSelection,
       metronomeOn,
       followOn,
-      timed: map !== undefined,
-      note: note(),
     });
+
+    timingPanel?.update({
+      ...shared,
+      timing,
+      bpmText: (() => {
+        const bpm = bpmOf(timing, beatsPerBar);
+        return bpm === undefined ? undefined : String(Math.round(bpm * 10) / 10);
+      })(),
+      metronomeOn,
+    });
+
+    if (modes) {
+      for (const option of modes) {
+        const on = option.mode === mode;
+        option.button.setAttribute("aria-pressed", String(on));
+        option.button.classList.toggle("is-on", on);
+      }
+      playbackHost.hidden = mode !== "playback";
+      timingHost.hidden = mode !== "timing";
+    }
   }
 
   // ---- the section machine ---------------------------------------------
@@ -208,6 +290,63 @@ export function createPlayback(
     setMark(field, seconds);
   }
 
+  // ---- the timing fields -----------------------------------------------
+
+  /**
+   * Take the tempo the marks now describe.
+   *
+   * Everything downstream of the map is read from the map, so all of it is
+   * read again here: the onsets the playhead and the section fields are
+   * matched against, and the metronome's own copy of the tempo. The section is
+   * deliberately left where it is — correcting the timing corrects the timing,
+   * and the reset button beside each playback mark is already the way to snap
+   * a loop back onto the marks.
+   */
+  function retime(): void {
+    map =
+      problem() === undefined
+        ? tempoMapOf(
+            { start: timing.start!, end: timing.end! },
+            config.measures,
+            config.meter,
+          )
+        : undefined;
+
+    if (following) {
+      // Onsets are seconds, and every one of them just moved.
+      takeOnsets(following);
+    }
+    if (!map) {
+      playhead.show(undefined);
+    }
+    // The metronome clicks the marked tempo, so it follows every change — and
+    // falls silent the moment the marks stop describing one.
+    if (metronomeOn) {
+      rig.setMetronome(map);
+    }
+    options.onRetime?.({ start: timing.start!, end: timing.end! });
+    refresh();
+  }
+
+  function act(action: TimingAction): void {
+    const step = stepTiming(
+      timing,
+      action,
+      beatsPerBar,
+      rig.duration() > 0 ? rig.duration() : undefined,
+    );
+    if (step.rejected) {
+      // The note line carries the reason; the state did not move.
+      rejected = step.rejected;
+      refresh();
+      return;
+    }
+    rejected = undefined;
+    timing = step.state;
+    timingPanel?.flash(step.autoEdited);
+    retime();
+  }
+
   function playPause(): void {
     if (!section || !rigReady) return;
     run(
@@ -222,17 +361,29 @@ export function createPlayback(
     run(pressJumpBack(section));
   }
 
-  /** The letter shortcuts, from the page or from inside a time box. */
+  /**
+   * The letter shortcuts, from the page or from inside a time box.
+   *
+   * `I` and `O` mean whichever pair of marks is on screen. That is the whole
+   * reason the panels swap rather than sit side by side: two pairs of marks
+   * with one pair of keys between them would need a rule, and this needs none.
+   */
   const onLetter = (letter: string, shift: boolean): boolean => {
     if (!rigReady) return false;
-    if (letter === "i") {
-      if (shift) fromNote("start");
-      else markNow("start");
-      return true;
-    }
-    if (letter === "o") {
-      if (shift) fromNote("end");
-      else markNow("end");
+    if (letter === "i" || letter === "o") {
+      const field = letter === "i" ? "start" : "end";
+      if (mode === "timing") {
+        // No shifted variant here: a note's onset is worked out *from* these
+        // marks, so setting a mark from a note would be circular.
+        if (shift) return false;
+        act({
+          kind: field === "start" ? "mark-start" : "mark-end",
+          seconds: rig.now(),
+        });
+        return true;
+      }
+      if (shift) fromNote(field);
+      else markNow(field);
       return true;
     }
     if (letter === "r" && !shift) {
@@ -261,9 +412,47 @@ export function createPlayback(
   }
   window.addEventListener("keydown", onKey);
 
-  // ---- the panel --------------------------------------------------------
+  // ---- the panels -------------------------------------------------------
 
-  const panel: PlaybackPanel = createPlaybackPanel(elements.panel, {
+  elements.panel.replaceChildren();
+
+  let modes:
+    | readonly { button: HTMLButtonElement; mode: Mode }[]
+    | undefined;
+
+  if (canRetime) {
+    const switcher = document.createElement("div");
+    switcher.className = "mode-switch panel-switch";
+    switcher.setAttribute("role", "group");
+    switcher.setAttribute("aria-label", "What the controls below do");
+
+    modes = ([
+      ["Playback", "playback"],
+      ["Timing", "timing"],
+    ] as const).map(([label, which]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mode-option";
+      button.textContent = label;
+      button.addEventListener("click", () => {
+        mode = which;
+        // A rejection belonged to the panel that is no longer showing.
+        rejected = undefined;
+        refresh();
+      });
+      switcher.append(button);
+      return { button, mode: which };
+    });
+
+    elements.panel.append(switcher);
+  }
+
+  const playbackHost = document.createElement("div");
+  const timingHost = document.createElement("div");
+  timingHost.hidden = true;
+  elements.panel.append(playbackHost, timingHost);
+
+  const panel: PlaybackPanel = createPlaybackPanel(playbackHost, {
     onRate: (rate) => rig.setRate(rate),
 
     onPlayPause: playPause,
@@ -316,7 +505,64 @@ export function createPlayback(
     onLetter,
   });
 
+  /**
+   * The timing panel, when the timing is this page's to correct.
+   *
+   * The bar count is not among its fields: here the bars are the melody's own
+   * length and cannot move, so the box is left out and the note line reports
+   * the count instead.
+   */
+  const timingPanel: TimingPanel | undefined = canRetime
+    ? createTimingPanel(
+        timingHost,
+        {
+          onRate: (rate) => rig.setRate(rate),
+          onMark: (field) => {
+            if (!rigReady) return;
+            act({
+              kind: field === "start" ? "mark-start" : "mark-end",
+              seconds: rig.now(),
+            });
+          },
+          onType: (field, seconds) =>
+            act({
+              kind: field === "start" ? "type-start" : "type-end",
+              seconds,
+            }),
+          onNudge: (field, seconds) => act({ kind: "nudge", field, seconds }),
+          // The bar count is the melody's, and the melody is not edited here.
+          onTypeMeasures: () => {},
+          onTypeBpm: (bpm) => act({ kind: "type-bpm", bpm }),
+          onToggleLock: () => act({ kind: "toggle-lock" }),
+          onMetronome(on) {
+            metronomeOn = on && map !== undefined;
+            rig.setMetronome(metronomeOn ? map : undefined);
+            refresh();
+          },
+          onLetter,
+        },
+        { measures: "fixed" },
+      )
+    : undefined;
+
   // ---- the score --------------------------------------------------------
+
+  /** Where each event falls in the video, at the tempo as it now stands. */
+  function takeOnsets(melody: Melody): void {
+    following = melody;
+    if (!map) {
+      onsets = [];
+      ends = [];
+      return;
+    }
+    const positions = eventPositions(melody);
+    onsets = positions.map((position) =>
+      secondsAtPosition(map!, position.start.toNumber()),
+    );
+    ends = positions.map((position) =>
+      secondsAtPosition(map!, position.start.add(position.length).toNumber()),
+    );
+  }
 
   /** Which event is sounding at a video second, or none outside the music. */
   function eventAt(seconds: number): number | undefined {
@@ -342,14 +588,7 @@ export function createPlayback(
 
   return {
     follow(next) {
-      if (!map) return;
-      const positions = eventPositions(next);
-      onsets = positions.map((position) =>
-        secondsAtPosition(map, position.start.toNumber()),
-      );
-      ends = positions.map((position) =>
-        secondsAtPosition(map, position.start.add(position.length).toNumber()),
-      );
+      takeOnsets(next);
     },
 
     onScore(rendered) {

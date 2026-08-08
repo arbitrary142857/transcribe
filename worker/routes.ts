@@ -10,8 +10,9 @@ import { Hono } from "hono";
 import { decode, parseMelodyJson, type MelodyJson } from "../src/editor/codec.js";
 import { measureCountOf } from "../src/editor/position.js";
 import type { Melody } from "../src/music/melody.js";
-import type { Mode } from "../src/music/types.js";
-import { MEASURES_MAX } from "../src/playback/timing-fields.js";
+import type { Mode, TimeSignature } from "../src/music/types.js";
+import { beatsPerBarOf } from "../src/playback/tempo-map.js";
+import { MEASURES_MAX, timingProblem } from "../src/playback/timing-fields.js";
 import {
   cleanDetails,
   countSoundingNotes,
@@ -205,6 +206,48 @@ const VIDEO_ID = /^[\w-]{11}$/;
 const isFinite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+/**
+ * The two moments the marks name, if they name two.
+ *
+ * Both routes read these the same way, because an edit may now move them: the
+ * first guess at where bar one starts is made against a video nobody has
+ * transcribed yet, so it is the thing most worth being able to correct.
+ */
+function readMarks(
+  body: Record<string, unknown>,
+  fallback?: { start: number; end: number },
+): { start: number; end: number } | { problem: string } {
+  const { markStart, markEnd } = body;
+  if (markStart === undefined && markEnd === undefined && fallback) {
+    return fallback;
+  }
+  if (!isFinite(markStart) || markStart < 0) {
+    return { problem: "The start mark is not a moment of the video." };
+  }
+  if (!isFinite(markEnd) || markEnd <= markStart) {
+    return { problem: "The end mark has to come after the start mark." };
+  }
+  return { start: markStart, end: markEnd };
+}
+
+/**
+ * Whether the marks and the music between them describe a tempo worth having.
+ *
+ * The same gate the setup page holds its Start button to, and for the same
+ * reason: below ten a mistake reads as a tempo, and above six hundred the
+ * metronome is being asked for ten clicks a second and the playhead crosses
+ * the stave faster than an eye follows.
+ */
+const tempoProblem = (
+  marks: { start: number; end: number },
+  measures: number,
+  meter: TimeSignature,
+): string | undefined =>
+  timingProblem(
+    { start: marks.start, end: marks.end, measures, locked: false },
+    beatsPerBarOf(meter),
+  );
+
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -325,15 +368,13 @@ api.post("/api/levels", async (c) => {
 
   // The four things a melody cannot imply, and so the only four taken on trust
   // -- checked, but not derivable from anything else here.
-  const { videoId, markStart, markEnd, clef } = read.body;
+  const { videoId, clef } = read.body;
   if (typeof videoId !== "string" || !VIDEO_ID.test(videoId)) {
     return c.json({ error: "That is not a YouTube video id." }, 400);
   }
-  if (!isFinite(markStart) || markStart < 0) {
-    return c.json({ error: "The start mark is not a moment of the video." }, 400);
-  }
-  if (!isFinite(markEnd) || markEnd <= markStart) {
-    return c.json({ error: "The end mark has to come after the start mark." }, 400);
+  const marks = readMarks(read.body);
+  if ("problem" in marks) {
+    return c.json({ error: marks.problem }, 400);
   }
   if (clef !== "treble" && clef !== "bass") {
     return c.json({ error: "That is not a clef." }, 400);
@@ -342,6 +383,11 @@ api.post("/api/levels", async (c) => {
   const derived = derive(read.melody);
   if ("problem" in derived) {
     return c.json({ error: derived.problem }, 400);
+  }
+
+  const tempo = tempoProblem(marks, derived.measures, read.melody.timeSignature);
+  if (tempo !== undefined) {
+    return c.json({ error: tempo }, 400);
   }
 
   const id = newTranscriptionId();
@@ -358,8 +404,8 @@ api.post("/api/levels", async (c) => {
       read.details.subtitle ?? null,
       read.details.description ?? null,
       videoId,
-      markStart,
-      markEnd,
+      marks.start,
+      marks.end,
       derived.measures,
       clef satisfies Clef,
       derived.meterBeats,
@@ -410,16 +456,19 @@ api.get("/api/levels/:id/source", async (c) => {
 });
 
 /**
- * Replace the music and the words.
+ * Replace the music, the words, and where the music sits in the video.
  *
- * The body holds those two things and nothing else. The clef, the meter, the
- * bar count, the video and the marks are not merely ignored here -- there is
- * nowhere in this route to put them, so no request can move them. The editor
- * agrees with that rule; this is what enforces it.
+ * The marks are here because the first guess at them is made on the setup page,
+ * against a video nobody has transcribed yet, and being a few tenths out is the
+ * ordinary case rather than the exceptional one.
  *
- * A melody of a different length or meter is refused rather than stored: the
- * bar count was settled against the video's marks, and music of another length
- * would leave those marks measuring something else.
+ * The clef and the video are not here, and that absence is what makes them
+ * immutable: there is nowhere in this route to put them, so no request moves
+ * them. The editor agrees with that rule; this is what enforces it.
+ *
+ * A melody of a different length or meter is refused rather than stored. The
+ * bar count and the marks measure each other, and music of another length would
+ * leave them measuring something else -- so of the three, only the marks move.
  */
 api.put("/api/levels/:id", async (c) => {
   const id = c.req.param("id");
@@ -433,10 +482,14 @@ api.put("/api/levels/:id", async (c) => {
   }
 
   const row = (await c.env.DB.prepare(
-    `SELECT measures, meter_beats, meter_unit FROM transcriptions WHERE id = ?`,
+    `SELECT measures, meter_beats, meter_unit, mark_start, mark_end
+       FROM transcriptions WHERE id = ?`,
   )
     .bind(id)
-    .first()) as Pick<LevelRow, "measures" | "meter_beats" | "meter_unit"> | null;
+    .first()) as Pick<
+    LevelRow,
+    "measures" | "meter_beats" | "meter_unit" | "mark_start" | "mark_end"
+  > | null;
 
   if (row === null) {
     return c.json({ error: "There is no level at that address." }, 404);
@@ -459,9 +512,25 @@ api.put("/api/levels/:id", async (c) => {
     return c.json({ error: "An edit cannot change the meter." }, 400);
   }
 
+  // An edit that says nothing about the marks leaves them where they were,
+  // so saving a retitled level does not have to restate its timing.
+  const marks = readMarks(read.body, {
+    start: row.mark_start,
+    end: row.mark_end,
+  });
+  if ("problem" in marks) {
+    return c.json({ error: marks.problem }, 400);
+  }
+
+  const tempo = tempoProblem(marks, derived.measures, read.melody.timeSignature);
+  if (tempo !== undefined) {
+    return c.json({ error: tempo }, 400);
+  }
+
   await c.env.DB.prepare(
     `UPDATE transcriptions
         SET title = ?, subtitle = ?, description = ?,
+            mark_start = ?, mark_end = ?,
             key_fifths = ?, key_mode = ?,
             note_count = ?, unpitched_count = ?, melody = ?
       WHERE id = ?`,
@@ -470,6 +539,8 @@ api.put("/api/levels/:id", async (c) => {
       read.details.title,
       read.details.subtitle ?? null,
       read.details.description ?? null,
+      marks.start,
+      marks.end,
       derived.keyFifths,
       derived.keyMode,
       derived.noteCount,

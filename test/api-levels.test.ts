@@ -99,12 +99,20 @@ const melodyOf = (events: readonly NoteEvent[]) =>
 const bars = (count: number) =>
   melodyOf(Array.from({ length: count }, () => new Note(C4, QUARTER)));
 
+/**
+ * A submission that would really be made.
+ *
+ * The marks span four seconds, which over the two bars of `bars(8)` is 120 to
+ * the beat — a tempo, rather than a number that merely passes. The routes hold
+ * marks to 10–600 BPM, so a fixture with a careless span would be refused for
+ * a reason no test meant to be about.
+ */
 const submission = (over: Record<string, unknown> = {}) => ({
   details: { title: "Clair de lune", subtitle: "Debussy" },
   melody: JSON.parse(JSON.stringify(encode(bars(8)))),
   videoId: "dQw4w9WgXcQ",
   markStart: 12.5,
-  markEnd: 44.25,
+  markEnd: 16.5,
   clef: "treble",
   ...over,
 });
@@ -327,6 +335,7 @@ describe("POST /api/levels", () => {
       { markStart: -1 },
       { markEnd: 12.5 },
       { markEnd: 0 },
+      { markEnd: 0 },
       { markStart: "12.5" },
       { markStart: Number.NaN },
       { clef: "alto" },
@@ -365,7 +374,7 @@ describe("POST /api/levels", () => {
     const bound = boundColumns(asked[0]!.sql, asked[0]!.values);
     assert.equal(bound.video_id, "dQw4w9WgXcQ");
     assert.equal(bound.mark_start, 12.5);
-    assert.equal(bound.mark_end, 44.25);
+    assert.equal(bound.mark_end, 16.5);
     assert.equal(bound.clef, "treble");
   });
 });
@@ -424,21 +433,71 @@ describe("PUT /api/levels/:id", () => {
     assert.match(asked.at(-1)!.sql, /update transcriptions/i);
   });
 
-  it("cannot be made to change the clef, the video or the marks", async () => {
+  it("cannot be made to change the clef or the video", async () => {
     // They are not in the body at all, which is what makes them immutable --
     // the editor merely agrees with this, rather than being what enforces it.
     const { response, asked } = await send(
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
-      { ...edit, clef: "bass", videoId: "aaaaaaaaaaa", markStart: 0, markEnd: 99 },
+      { ...edit, clef: "bass", videoId: "aaaaaaaaaaa" },
       { first: stored },
     );
 
     assert.equal(response.status, 200);
     const update = asked.at(-1)!.sql;
     assert.match(update, /update transcriptions/i);
-    for (const column of ["clef", "video_id", "mark_start", "mark_end"]) {
+    for (const column of ["clef", "video_id"]) {
       assert.equal(update.includes(column), false, `update touched ${column}`);
+    }
+  });
+
+  it("moves the marks, which are the one thing an edit may re-settle", async () => {
+    // The first guess at where bar one starts is made against a video nobody
+    // has transcribed yet, so it is the thing most worth being able to fix.
+    const { response, asked } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      { ...edit, markStart: 13.25, markEnd: 45 },
+      { first: stored },
+    );
+
+    assert.equal(response.status, 200);
+    const update = asked.at(-1)!;
+    assert.match(update.sql, /mark_start/);
+    assert.match(update.sql, /mark_end/);
+    assert.equal(update.values.includes(13.25), true);
+    assert.equal(update.values.includes(45), true);
+  });
+
+  it("leaves the marks alone when an edit does not mention them", async () => {
+    const { response, asked } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      edit,
+      { first: stored },
+    );
+
+    assert.equal(response.status, 200);
+    const update = asked.at(-1)!;
+    assert.equal(update.values.includes(stored.mark_start), true);
+    assert.equal(update.values.includes(stored.mark_end), true);
+  });
+
+  it("refuses marks that describe no section", async () => {
+    for (const over of [
+      { markStart: -1, markEnd: 4 },
+      { markStart: 4, markEnd: 4 },
+      { markStart: 4, markEnd: 1 },
+      { markStart: "13", markEnd: 45 },
+      { markStart: 13, markEnd: Number.NaN },
+    ]) {
+      const { response } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { ...edit, ...over },
+        { first: stored },
+      );
+      assert.equal(response.status, 400, `took ${JSON.stringify(over)}`);
     }
   });
 
@@ -512,5 +571,78 @@ describe("the api's edges", () => {
     const { response } = await get("/api/levels");
 
     assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  });
+});
+
+describe("the tempo the marks imply", () => {
+  const stored = {
+    ...ROW,
+    measures: 2,
+    melody: JSON.stringify(encode(bars(8))),
+  };
+
+  it("is refused when it is faster than music goes", async () => {
+    // Two bars of 4/4 is eight beats; over a fifth of a second that is well
+    // past 600, and a metronome asked for it would click ten times a second.
+    const { response, asked } = await send(
+      "/api/levels",
+      "POST",
+      submission({ markStart: 0, markEnd: 0.2 }),
+    );
+
+    assert.equal(response.status, 400);
+    assert.match(await errorOf(response), /BPM/);
+    assert.deepEqual(asked, []);
+  });
+
+  it("is refused when it is slower than music goes", async () => {
+    const { response } = await send(
+      "/api/levels",
+      "POST",
+      submission({ markStart: 0, markEnd: 600 }),
+    );
+
+    assert.equal(response.status, 400);
+    assert.match(await errorOf(response), /BPM/);
+  });
+
+  it("is held to the same bounds when an edit moves the marks", async () => {
+    const { response } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      {
+        details: { title: "Clair de lune" },
+        melody: submission().melody,
+        markStart: 0,
+        markEnd: 0.2,
+      },
+      { first: stored },
+    );
+
+    assert.equal(response.status, 400);
+    assert.match(await errorOf(response), /BPM/);
+  });
+
+  it("counts the felt beat, so a compound meter is not called too fast", async () => {
+    // Two bars of 6/8 is four felt beats, not twelve. Counting the written
+    // ones would put this at three times the tempo it is.
+    const melody = new Melody(
+      C_MAJOR,
+      { beats: 6, beatUnit: 8 },
+      Array.from({ length: 12 }, () => new Note(C4, new Duration(NoteValue.Eighth))),
+    );
+
+    const { response } = await send(
+      "/api/levels",
+      "POST",
+      submission({
+        melody: JSON.parse(JSON.stringify(encode(melody))),
+        markStart: 0,
+        // Four felt beats across two seconds is 120; twelve would be 360.
+        markEnd: 2,
+      }),
+    );
+
+    assert.equal(response.status, 201);
   });
 });

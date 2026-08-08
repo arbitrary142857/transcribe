@@ -1633,6 +1633,35 @@ main {
 }
 
 
+/* ---- Which job the controls column is doing ----
+
+   Playback is a stretch of the video played on its own; timing is where the
+   first bar starts and the last one ends. Both are a pair of marks under the
+   same two keys, so only one is ever on screen — which is what makes I and O
+   mean one thing without anyone having to remember a rule.
+
+   Smaller than the switch in the signature bar: that one sits in a band with
+   room to spare, while this shares a 19rem column with the video. */
+
+.panel-switch {
+  width: 100%;
+  margin-bottom: 0.4rem;
+}
+
+.panel-switch .mode-option {
+  flex: 1 1 0;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+/* The bar count is the melody's own length here and cannot be typed over, so
+   the row is left out; the note underneath goes on reporting it. */
+.timing-panel .timing-tempo {
+  margin-top: 0.1rem;
+}
+
+
 /* ---- The details, and the way out ----
 
    Both ride in the signature bar. The details borrow the key picker's shape

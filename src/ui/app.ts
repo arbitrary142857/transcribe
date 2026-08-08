@@ -6,7 +6,8 @@ import { KeySignature } from "../music/key-signature.js";
 import type { Melody } from "../music/melody.js";
 import { Pitch } from "../music/pitch.js";
 import type { TimeSignature } from "../music/types.js";
-import type { Marks } from "../playback/tempo-map.js";
+import { beatsPerBarOf, type Marks } from "../playback/tempo-map.js";
+import { timingProblem } from "../playback/timing-fields.js";
 import {
   countSoundingNotes,
   detailsProblem,
@@ -106,12 +107,23 @@ export function createApp(elements: AppElements, entry: Entry = { kind: "new" })
    */
   let savedMelody = "";
   let savedDetails = JSON.stringify(EMPTY_DETAILS);
+  let savedMarks = "";
 
   const detailsNow = () => JSON.stringify(details);
   const melodyNow = () => (melody ? JSON.stringify(encode(melody)) : "");
+  const marksNow = () => (source ? JSON.stringify(source.marks) : "");
 
   const isDirty = () =>
-    melodyNow() !== savedMelody || detailsNow() !== savedDetails;
+    melodyNow() !== savedMelody ||
+    detailsNow() !== savedDetails ||
+    marksNow() !== savedMarks;
+
+  /** Everything just went into the database; nothing is owed on the way out. */
+  function markSaved(): void {
+    savedMelody = melodyNow();
+    savedDetails = detailsNow();
+    savedMarks = marksNow();
+  }
 
   function showSetup(): void {
     elements.workspace.hidden = true;
@@ -135,6 +147,17 @@ export function createApp(elements: AppElements, entry: Entry = { kind: "new" })
       iframe,
       { marks: from.marks, measures: from.measures, meter: from.meter },
       () => editor?.selection(),
+      {
+        // The marks were first guessed on the setup page against a video
+        // nobody had transcribed yet, so correcting them belongs here. Playing
+        // a level will pass false: there the marks are part of the level.
+        canRetime: true,
+        onRetime(marks) {
+          if (!source) return;
+          source = { ...source, marks };
+          showSignatures();
+        },
+      },
     );
   }
 
@@ -155,7 +178,7 @@ export function createApp(elements: AppElements, entry: Entry = { kind: "new" })
     history = createHistory(melody);
     // Nothing has been saved, so the baseline is what it opened as: an empty
     // page is not unsaved work, and leaving it should not be argued about.
-    savedMelody = melodyNow();
+    markSaved();
     mount();
   }
 
@@ -176,17 +199,28 @@ export function createApp(elements: AppElements, entry: Entry = { kind: "new" })
       subtitle: record.subtitle ?? "",
       description: record.description ?? "",
     };
-    savedMelody = melodyNow();
-    savedDetails = detailsNow();
+    markSaved();
     mount();
   }
 
   /** Why the transcription cannot be sent, or nothing if it can. */
   function submitProblem(): string | undefined {
-    if (!melody) return "There is nothing to send yet.";
+    if (!melody || !source) return "There is nothing to send yet.";
     if (countSoundingNotes(melody) < LIMITS.noteCount.min) {
       return "Write at least two notes before submitting.";
     }
+    // The marks can now be moved from here, so they can now be moved wrong:
+    // the same gate the setup page holds its Start button to.
+    const timing = timingProblem(
+      {
+        start: source.marks.start,
+        end: source.marks.end,
+        measures: source.measures,
+        locked: false,
+      },
+      beatsPerBarOf(source.meter),
+    );
+    if (timing !== undefined) return timing;
     return detailsProblem(details);
   }
 
@@ -213,7 +247,12 @@ export function createApp(elements: AppElements, entry: Entry = { kind: "new" })
 
     const editing = entry.kind === "edit";
     const body = editing
-      ? { details, melody: encode(melody) }
+      ? {
+          details,
+          melody: encode(melody),
+          markStart: source.marks.start,
+          markEnd: source.marks.end,
+        }
       : {
           details,
           melody: encode(melody),
@@ -239,8 +278,7 @@ export function createApp(elements: AppElements, entry: Entry = { kind: "new" })
         throw new Error(said.error ?? `The server answered ${response.status}.`);
       }
       // Saved, so there is nothing left to warn about on the way out.
-      savedMelody = melodyNow();
-      savedDetails = detailsNow();
+      markSaved();
       window.location.assign("/");
     } catch (error) {
       saving = false;

@@ -50,6 +50,18 @@ export type TimingPanel = {
   flash(fields: readonly TimingField[]): void;
 };
 
+export type TimingPanelOptions = {
+  /**
+   * Whether the bar count is one of the things being settled.
+   *
+   * True on the setup page, where the three fields decide each other. False in
+   * the editor, where the bars are the melody's own length and cannot move —
+   * so the box is left out entirely rather than shown dead, and the note line
+   * underneath goes on reporting the count anyway.
+   */
+  measures?: "editable" | "fixed";
+};
+
 function labelled(text: string): HTMLElement {
   const label = document.createElement("span");
   label.className = "playback-label";
@@ -77,8 +89,10 @@ function markButton(
 export function createTimingPanel(
   element: HTMLElement,
   handlers: TimingPanelHandlers,
+  options: TimingPanelOptions = {},
 ): TimingPanel {
   element.replaceChildren();
+  const editableMeasures = (options.measures ?? "editable") === "editable";
 
   const panel = document.createElement("section");
   panel.className = "panel playback-panel timing-panel";
@@ -184,7 +198,14 @@ export function createTimingPanel(
   note.className = "playback-note";
   note.setAttribute("role", "status");
 
-  panel.append(speed.element, startRow, endRow, measuresRow, tempoRow, note);
+  panel.append(
+    speed.element,
+    startRow,
+    endRow,
+    ...(editableMeasures ? [measuresRow] : []),
+    tempoRow,
+    note,
+  );
   element.append(panel);
 
   /** Write into a box, unless it is the one being typed in. */
@@ -213,13 +234,15 @@ export function createTimingPanel(
       startField.setDisabled(!state.ready);
       endField.setDisabled(!state.ready);
 
-      showIn(
-        measures,
-        state.timing.measures === undefined ? "" : String(state.timing.measures),
-      );
-      // Editable even while locked: a locked bar-count edit moves the end
-      // mark, keeping each bar the seconds it had.
-      measures.disabled = !state.ready;
+      if (editableMeasures) {
+        showIn(
+          measures,
+          state.timing.measures === undefined ? "" : String(state.timing.measures),
+        );
+        // Editable even while locked: a locked bar-count edit moves the end
+        // mark, keeping each bar the seconds it had.
+        measures.disabled = !state.ready;
+      }
 
       showIn(bpm, state.bpmText ?? "");
       bpm.disabled = !state.ready || state.timing.locked || !state.timed;

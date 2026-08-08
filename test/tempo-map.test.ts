@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   beatsBetween,
+  beatsPerBarOf,
   beatsPerMinute,
   positionAtSeconds,
   secondsAtPosition,
@@ -24,6 +25,35 @@ const at = (index: number) => 10 + index * 0.5;
 
 const beatsIn = (meter: { beats: number; beatUnit: number }) =>
   tempoMapOf({ start: 0, end: 1 }, 1, meter)!.beatsPerBar;
+
+describe("beatsPerBarOf()", () => {
+  it("counts the beat a player feels, not the one written underneath", () => {
+    // Compound meters are felt in dotted beats: 6/8 is two, not six.
+    assert.equal(beatsPerBarOf(METER_6_8), 2);
+    assert.equal(beatsPerBarOf(METER_9_8), 3);
+    assert.equal(beatsPerBarOf(METER_12_8), 4);
+  });
+
+  it("reads a bare three at the top as simple triple, not as one beat", () => {
+    // Being compound takes more than a three on top: 3/8 is three beats.
+    assert.equal(beatsPerBarOf(METER_3_8), 3);
+  });
+
+  it("counts the written beat in a simple meter, where they agree", () => {
+    assert.equal(beatsPerBarOf(METER_4_4), 4);
+    assert.equal(beatsPerBarOf(METER_3_4), 3);
+    assert.equal(beatsPerBarOf(METER_2_4), 2);
+  });
+
+  it("agrees with the map built from the same meter", () => {
+    // The two must not drift: one gates the tempo before a map exists, the
+    // other is what the metronome clicks once one does.
+    for (const meter of [METER_4_4, METER_3_4, METER_6_8, METER_5_8]) {
+      const map = tempoMapOf({ start: 0, end: 4 }, 2, meter)!;
+      assert.equal(beatsPerBarOf(meter), map.beatsPerBar, String(meter.beats));
+    }
+  });
+});
 
 describe("tempoMapOf()", () => {
   it("clicks the beat the meter names in simple time", () => {
