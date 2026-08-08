@@ -52,6 +52,19 @@ CREATE TABLE transcriptions (
   -- is a raw SQLite error.
   note_count   INTEGER NOT NULL CHECK (note_count >= 2),
 
+  -- How many of those groupings are still waiting for a pitch.
+  --
+  -- Zero means the transcription is finished, and finished is what a puzzle
+  -- has to be: an answer with blanks in it cannot mark anyone's attempt. More
+  -- than zero means a draft, which is allowed -- rhythm is real work and worth
+  -- saving on its own -- and is what a card says when it calls itself
+  -- unfinished.
+  --
+  -- A column rather than a look inside `melody`, for the reason every card
+  -- fact is a column: the listing query must never read the answer.
+  unpitched_count INTEGER NOT NULL
+    CHECK (unpitched_count >= 0 AND unpitched_count <= note_count),
+
   -- MelodyJson, verbatim. The answer.
   melody       TEXT    NOT NULL,
 

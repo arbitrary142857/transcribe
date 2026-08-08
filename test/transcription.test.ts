@@ -8,6 +8,7 @@ import { Pitch } from "../dist/music/pitch.js";
 import {
   cleanDetails,
   countSoundingNotes,
+  countUnpitchedNotes,
   detailsProblem,
   firstSoundingNote,
   ID_LENGTH,
@@ -113,6 +114,51 @@ describe("countSoundingNotes()", () => {
 
   it("counts nothing in a melody of rests", () => {
     assert.equal(countSoundingNotes(melodyOf([new Rest(QUARTER)])), 0);
+  });
+});
+
+describe("countUnpitchedNotes()", () => {
+  it("counts a tied run of them once, exactly as its pitched twin counts", () => {
+    // Two notes awaiting a pitch may be tied, since they will be pitched
+    // together — so an unpitched run is one note to find, not four.
+    const melody = melodyOf([
+      new UnpitchedNote(QUARTER),
+      new UnpitchedNote(QUARTER),
+      new UnpitchedNote(QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+    melody.tie(0);
+    melody.tie(1);
+    melody.tie(2);
+
+    assert.equal(countUnpitchedNotes(melody), 1);
+    assert.equal(countSoundingNotes(melody), 1);
+  });
+
+  it("counts nothing once every note has a pitch", () => {
+    const melody = melodyOf(notes(3));
+
+    assert.equal(countUnpitchedNotes(melody), 0);
+  });
+
+  it("passes over rests, which are waiting for nothing", () => {
+    const melody = melodyOf([new Rest(QUARTER), new UnpitchedNote(QUARTER)]);
+
+    assert.equal(countUnpitchedNotes(melody), 1);
+  });
+
+  it("never counts more than there are notes at all", () => {
+    // The database says so too, and a count that broke this would be a card
+    // claiming more notes are missing than the level has.
+    const melody = melodyOf([
+      new Note(C4, QUARTER),
+      new UnpitchedNote(QUARTER),
+      new Rest(QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    assert.equal(countUnpitchedNotes(melody), 2);
+    assert.equal(countSoundingNotes(melody), 3);
   });
 });
 

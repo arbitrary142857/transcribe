@@ -1633,6 +1633,140 @@ main {
 }
 
 
+/* ---- The details, and the way out ----
+
+   Both ride in the signature bar. The details borrow the key picker's shape
+   exactly — a labelled toggle with a panel floating under it — because they
+   are the same kind of thing: something about the piece that is usually left
+   alone and occasionally changed, and which must not push the music down when
+   it is opened. */
+
+.details-picker {
+  position: relative;
+}
+
+/* Narrower than the key chooser, which has fifteen staves to show. */
+.details-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: 28rem;
+  max-width: calc(100vw - 3rem);
+  overflow-x: visible;
+}
+
+/* Held to a width so the bar does not jump about as a title is typed. */
+.details-title {
+  display: inline-block;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Nothing yet chosen is a fact rather than a fault: the reason Submit cannot
+   be pressed is written under Submit, not here. */
+.details-title.is-untitled {
+  color: #8d8378;
+  font-style: italic;
+}
+
+.details-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.details-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.details-label {
+  cursor: pointer;
+}
+
+.details-required {
+  margin-left: 0.15rem;
+  color: var(--note-selected);
+}
+
+.details-count {
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: #b3aa9d;
+}
+
+.details-count.is-wrong {
+  color: var(--note-selected);
+}
+
+.details-input {
+  font-size: 0.85rem;
+}
+
+textarea.details-input {
+  resize: vertical;
+  min-height: 4.5rem;
+  line-height: 1.4;
+}
+
+.submit-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.submit-button {
+  padding: 0.4rem 1rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: #fffdf9;
+  background: var(--note-selected);
+  border: 1px solid var(--note-selected);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.submit-button:hover:not(:disabled) {
+  background: #9c3925;
+}
+
+.submit-button:disabled {
+  color: #8d8378;
+  background: #ebe5da;
+  border-color: var(--rule);
+  cursor: not-allowed;
+}
+
+/* Says why the button is grey, in the same voice the setup page uses. */
+.submit-note {
+  margin: 0;
+  max-width: 16rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: #8d8378;
+}
+
+.submit-note:empty {
+  display: none;
+}
+
+/* The confirm in the one dialog had no disabled state, having never needed
+   one; it does now that a dialog can be waiting on a field. */
+.modal-confirm:disabled {
+  color: #8d8378;
+  background: #ebe5da;
+  border-color: var(--rule);
+  cursor: not-allowed;
+}
+
+
 /* ---- Pages that are documents rather than control surfaces ----
 
    The editor's `main` centres a column of controls; these pages want a column
@@ -1685,11 +1819,50 @@ main.page {
   border-radius: 8px;
 }
 
+/* The title takes the room and the pencil keeps its corner. */
+.level-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
 .level-title {
   /* Long enough to overflow is normal for a piece of music, so it wraps. */
   margin: 0;
   font-size: 1.05rem;
   overflow-wrap: anywhere;
+}
+
+/* Quiet until reached for: a card is for reading first and editing second. */
+.level-edit {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  color: #8d8378;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.level-edit:hover {
+  color: var(--ink);
+  background: #f3ece0;
+  border-color: var(--rule);
+}
+
+.level-edit svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* Said before the musical facts, because it changes what they are worth. */
+.level-unfinished {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--note-selected);
 }
 
 .level-subtitle {

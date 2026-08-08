@@ -42,9 +42,19 @@ export type TimeFieldOptions = {
   onLetter?(letter: string, shift: boolean): boolean;
 };
 
-/** One click of the stepper; a finer one with Shift held. */
-const STEP_SECONDS = 0.1;
-const FINE_STEP_SECONDS = 0.01;
+/**
+ * One click of the stepper; a finer one with Shift held.
+ *
+ * A hundredth is comfortably finer than anything being aimed at — a sixteenth
+ * note at 120 to the beat lasts 0.125s — and getting somewhere is done by
+ * typing or by marking against the video rather than by holding an arrow.
+ *
+ * A thousandth is the floor and not an arbitrary one: `toMilliseconds` rounds
+ * every write to the millisecond and `formatTimecode` shows exactly three
+ * decimals, so a finer step would move nothing and read as a broken control.
+ */
+const STEP_SECONDS = 0.01;
+const FINE_STEP_SECONDS = 0.001;
 
 /** Hold-to-repeat, tuned to feel like a native number input. */
 const REPEAT_DELAY_MS = 500;

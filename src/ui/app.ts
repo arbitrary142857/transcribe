@@ -1,13 +1,24 @@
+import { decode, encode } from "../editor/codec.js";
 import { createHistory, type History } from "../editor/history.js";
 import { emptyMelody } from "../editor/operations.js";
-import { hasMusic, withKeySignature } from "../editor/signature.js";
+import { withKeySignature } from "../editor/signature.js";
 import { KeySignature } from "../music/key-signature.js";
 import type { Melody } from "../music/melody.js";
 import { Pitch } from "../music/pitch.js";
+import type { TimeSignature } from "../music/types.js";
+import type { Marks } from "../playback/tempo-map.js";
+import {
+  countSoundingNotes,
+  detailsProblem,
+  LIMITS,
+  type Clef,
+  type TranscriptionDetails,
+  type TranscriptionRecord,
+} from "../shared/transcription.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
 import { createPlayback, type Playback } from "./playback.js";
 import { createSetupPage, type Setup } from "./setup-panel.js";
-import { createSignatureBar } from "./signature-bar.js";
+import { createSignatureBar, type SignatureBar } from "./signature-bar.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { mountVideoPanel } from "./video-panel.js";
 
@@ -22,8 +33,40 @@ export type AppElements = EditorElements & {
   scoreArea: HTMLElement;
 };
 
+/**
+ * How the page was arrived at.
+ *
+ * A fresh transcription starts at the setup page; one opened from the level
+ * list starts already written, with nothing left to settle. The mode rides
+ * along unused for now — the switch in the bar still decides it — but it is
+ * where the mode will come from once opening a level to play it and opening it
+ * to edit it become two different doors.
+ */
+export type Entry =
+  | { kind: "new"; mode?: "melody" | "pitches" }
+  | {
+      kind: "edit";
+      id: string;
+      record: TranscriptionRecord;
+      mode?: "melody" | "pitches";
+    };
+
+/** What the melody was written down from, kept because saving needs it. */
+type Source = {
+  videoId: string;
+  marks: Marks;
+  measures: number;
+  meter: TimeSignature;
+};
+
 /** The key a new melody starts in, until it is changed. */
 const OPENING_KEY = new KeySignature(new Pitch("C", 0, 4), "major");
+
+const EMPTY_DETAILS: TranscriptionDetails = {
+  title: "",
+  subtitle: "",
+  description: "",
+};
 
 /**
  * Hold the melody and the controls around it.
@@ -35,14 +78,40 @@ const OPENING_KEY = new KeySignature(new Pitch("C", 0, 4), "major");
  * on the stave, which is a better place to read them from than a control that
  * cannot be used — while the video stays in the band above the music, where it
  * is wanted for as long as there is anything left to write.
+ *
+ * Opening a saved transcription skips the first life entirely. Everything the
+ * setup page would have settled is already settled, so `mount()` finds a melody
+ * waiting and the setup page is never built at all.
  */
-export function createApp(elements: AppElements): void {
+export function createApp(elements: AppElements, entry: Entry = { kind: "new" }): void {
   let melody: Melody | undefined;
-  let clef = "treble";
-  let pitchOnly = false;
+  let clef: Clef = "treble";
+  let pitchOnly = entry.mode === "pitches";
   let editor: Editor | undefined;
   let history: History | undefined;
   let playback: Playback | undefined;
+  let bar: SignatureBar | undefined;
+  let source: Source | undefined;
+
+  let details: TranscriptionDetails = { ...EMPTY_DETAILS };
+  let saving = false;
+
+  /**
+   * The melody and the details as they last stood in the database, or as they
+   * started for something never saved.
+   *
+   * Compared rather than counted: `history.canUndo()` would miss an edit that
+   * only changed the title, and a title is a perfectly ordinary thing to come
+   * back and fix.
+   */
+  let savedMelody = "";
+  let savedDetails = JSON.stringify(EMPTY_DETAILS);
+
+  const detailsNow = () => JSON.stringify(details);
+  const melodyNow = () => (melody ? JSON.stringify(encode(melody)) : "");
+
+  const isDirty = () =>
+    melodyNow() !== savedMelody || detailsNow() !== savedDetails;
 
   function showSetup(): void {
     elements.workspace.hidden = true;
@@ -54,44 +123,134 @@ export function createApp(elements: AppElements): void {
     createSetupPage(elements.setup, { onStart: start });
   }
 
-  function start(setup: Setup): void {
-    clef = setup.clef;
+  /** Put the video and its controls on, once, for whichever life this is. */
+  function openVideo(from: Source): void {
     // Put on once and then left alone. Every edit rebuilds the controls around
     // the player, and rebuilding the player itself would send the video back to
     // its beginning each time — so the thing that drives it is made out here
-    // too, beside it and outside the editor's life. This is a fresh embed: the
-    // one on the setup page died with that page, and a seek into the marked
-    // section is how playback starts anyway.
-    const iframe = mountVideoPanel(elements.video, setup.videoId);
+    // too, beside it and outside the editor's life.
+    const iframe = mountVideoPanel(elements.video, from.videoId);
     playback = createPlayback(
       { panel: elements.playbackControls, scoreArea: elements.scoreArea },
       iframe,
-      { marks: setup.marks, measures: setup.measures, meter: setup.meter },
+      { marks: from.marks, measures: from.measures, meter: from.meter },
       () => editor?.selection(),
     );
+  }
+
+  function start(setup: Setup): void {
+    clef = setup.clef === "bass" ? "bass" : "treble";
+    source = {
+      videoId: setup.videoId,
+      marks: setup.marks,
+      measures: setup.measures,
+      meter: setup.meter,
+    };
+    // This is a fresh embed: the one on the setup page died with that page, and
+    // a seek into the marked section is how playback starts anyway.
+    openVideo(source);
     // The melody arrives at its full, final length: every bar the marks span,
     // as rests, waiting to be written into. No edit can add or remove one.
     melody = emptyMelody(OPENING_KEY, setup.meter, setup.measures);
     history = createHistory(melody);
+    // Nothing has been saved, so the baseline is what it opened as: an empty
+    // page is not unsaved work, and leaving it should not be argued about.
+    savedMelody = melodyNow();
     mount();
   }
 
+  /** Open a transcription that already exists, with nothing left to settle. */
+  function open(record: TranscriptionRecord): void {
+    clef = record.clef;
+    source = {
+      videoId: record.videoId,
+      marks: { start: record.markStart, end: record.markEnd },
+      measures: record.measures,
+      meter: record.meter,
+    };
+    openVideo(source);
+    melody = decode(record.melody);
+    history = createHistory(melody);
+    details = {
+      title: record.title,
+      subtitle: record.subtitle ?? "",
+      description: record.description ?? "",
+    };
+    savedMelody = melodyNow();
+    savedDetails = detailsNow();
+    mount();
+  }
+
+  /** Why the transcription cannot be sent, or nothing if it can. */
+  function submitProblem(): string | undefined {
+    if (!melody) return "There is nothing to send yet.";
+    if (countSoundingNotes(melody) < LIMITS.noteCount.min) {
+      return "Write at least two notes before submitting.";
+    }
+    return detailsProblem(details);
+  }
+
   function showSignatures(): void {
-    if (!melody || !history) return;
-    createSignatureBar(elements.signatures, {
+    if (!melody || !history || !bar) return;
+    bar.update({
       key: melody.keySignature,
       clef,
       pitchOnly,
       canUndo: history.canUndo(),
       canRedo: history.canRedo(),
-      onKey: changeKey,
-      onMode: (next) => {
-        pitchOnly = next;
-        mount();
-      },
-      onUndo: () => step(history?.undo()),
-      onRedo: () => step(history?.redo()),
+      details,
+      submitLabel: entry.kind === "edit" ? "Save changes" : "Submit",
+      submitProblem: submitProblem(),
+      saving,
     });
+  }
+
+  async function submit(): Promise<void> {
+    if (!melody || !source || saving || submitProblem() !== undefined) return;
+    saving = true;
+    showSignatures();
+    elements.status.textContent = "";
+
+    const editing = entry.kind === "edit";
+    const body = editing
+      ? { details, melody: encode(melody) }
+      : {
+          details,
+          melody: encode(melody),
+          videoId: source.videoId,
+          markStart: source.marks.start,
+          markEnd: source.marks.end,
+          clef,
+        };
+
+    try {
+      const response = await fetch(
+        editing ? `/api/levels/${entry.id}` : "/api/levels",
+        {
+          method: editing ? "PUT" : "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      if (!response.ok) {
+        const said = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(said.error ?? `The server answered ${response.status}.`);
+      }
+      // Saved, so there is nothing left to warn about on the way out.
+      savedMelody = melodyNow();
+      savedDetails = detailsNow();
+      window.location.assign("/");
+    } catch (error) {
+      saving = false;
+      showSignatures();
+      elements.status.textContent =
+        error instanceof Error
+          ? `It could not be saved. ${error.message}`
+          : "It could not be saved.";
+      console.error(error);
+    }
   }
 
   function mount(): void {
@@ -104,6 +263,24 @@ export function createApp(elements: AppElements): void {
     elements.workspace.hidden = false;
     elements.toolbar.hidden = false;
     elements.keyboardArea.hidden = false;
+
+    // Built the first time there is a melody, and mutated from then on: it
+    // holds the details boxes, and a redraw between two keystrokes would take
+    // the caret out of whichever one was being typed into.
+    bar ??= createSignatureBar(elements.signatures, {
+      onKey: changeKey,
+      onMode: (next) => {
+        pitchOnly = next;
+        mount();
+      },
+      onUndo: () => step(history?.undo()),
+      onRedo: () => step(history?.redo()),
+      onDetails: (next) => {
+        details = next;
+        showSignatures();
+      },
+      onSubmit: () => void submit(),
+    });
 
     // The person mid-edit has not moved, so their selection must not: undo,
     // redo, key changes and mode switches all pass through here, and each
@@ -168,20 +345,23 @@ export function createApp(elements: AppElements): void {
   });
 
   /**
-   * The browser's own question before written music is thrown away.
+   * The browser's own question before unsaved work is thrown away.
    *
-   * There is nowhere yet to save a melody to, so everything written lives in
-   * this tab and goes with it. Asked here rather than on the link in the bar
-   * above because that is only one of the ways out: this one also catches the
-   * back button, a reload, and the tab being closed.
+   * Asked here rather than on the link in the bar above because that is only
+   * one of the ways out: this one also catches the back button, a reload, and
+   * the tab being closed.
    *
-   * Nothing to lose, nothing to ask — an untouched page of rests is not work,
-   * which is the same reckoning the key change uses.
+   * What counts as unsaved is the melody *or* the words — a title typed and
+   * not sent is as much work as a note written and not sent.
    */
   window.addEventListener("beforeunload", (event) => {
-    if (!melody || !hasMusic(melody)) return;
+    if (!isDirty()) return;
     event.preventDefault();
   });
 
-  mount();
+  if (entry.kind === "edit") {
+    open(entry.record);
+  } else {
+    mount();
+  }
 }

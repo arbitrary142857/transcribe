@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { keyName, levelFacts } from "../dist/ui/level-card.js";
+import { keyName, levelFacts, levelState } from "../dist/ui/level-card.js";
 import type { TranscriptionSummary } from "../dist/shared/transcription.js";
 
 /** A level as the listing route hands one over. */
@@ -20,8 +20,30 @@ const level = (
   keyFifths: 0,
   keyMode: "major",
   noteCount: 12,
+  unpitchedCount: 0,
   createdAt: 1_754_500_000_000,
   ...over,
+});
+
+describe("levelState()", () => {
+  it("says nothing about a transcription with every note pitched", () => {
+    // Finished is the ordinary case, and a card should not announce it.
+    assert.equal(levelState(level()), undefined);
+  });
+
+  it("calls a transcription unfinished, and says how much is left", () => {
+    assert.equal(
+      levelState(level({ unpitchedCount: 3 })),
+      "Unfinished · 3 notes need pitches",
+    );
+  });
+
+  it("counts one note in the singular", () => {
+    assert.equal(
+      levelState(level({ unpitchedCount: 1 })),
+      "Unfinished · 1 note needs a pitch",
+    );
+  });
 });
 
 describe("keyName()", () => {

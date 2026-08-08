@@ -7,8 +7,23 @@
  */
 
 import { Hono } from "hono";
+import { decode, parseMelodyJson, type MelodyJson } from "../src/editor/codec.js";
+import { measureCountOf } from "../src/editor/position.js";
+import type { Melody } from "../src/music/melody.js";
 import type { Mode } from "../src/music/types.js";
-import type { Clef, TranscriptionSummary } from "../src/shared/transcription.js";
+import { MEASURES_MAX } from "../src/playback/timing-fields.js";
+import {
+  cleanDetails,
+  countSoundingNotes,
+  countUnpitchedNotes,
+  detailsProblem,
+  isTranscriptionId,
+  LIMITS,
+  newTranscriptionId,
+  type Clef,
+  type TranscriptionRecord,
+  type TranscriptionSummary,
+} from "../src/shared/transcription.js";
 
 // ---- what a database is, as far as this file is concerned ---------------
 //
@@ -34,6 +49,8 @@ import type { Clef, TranscriptionSummary } from "../src/shared/transcription.js"
 type Statement = {
   bind(...values: unknown[]): Statement;
   all(): Promise<{ results: Record<string, unknown>[] }>;
+  first(): Promise<Record<string, unknown> | null>;
+  run(): Promise<unknown>;
 };
 
 export type Database = {
@@ -76,7 +93,7 @@ const LEVELS_PAGE = 100;
 const LEVEL_COLUMNS = `
   id, title, subtitle, video_id, mark_start, mark_end,
   measures, clef, meter_beats, meter_unit,
-  key_fifths, key_mode, note_count, created_at
+  key_fifths, key_mode, note_count, unpitched_count, created_at
 `;
 
 /**
@@ -107,6 +124,7 @@ type LevelRow = {
   key_fifths: number;
   key_mode: Mode;
   note_count: number;
+  unpitched_count: number;
   created_at: number;
 };
 
@@ -134,6 +152,7 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
   keyFifths: row.key_fifths,
   keyMode: row.key_mode,
   noteCount: row.note_count,
+  unpitchedCount: row.unpitched_count,
   createdAt: row.created_at,
 });
 
@@ -156,6 +175,311 @@ api.get("/api/levels", async (c) => {
 
   // The one place the shape of a row is asserted rather than proved. See LevelRow.
   return c.json((results as LevelRow[]).map(toSummary));
+});
+
+// ---- writing ------------------------------------------------------------
+//
+// Everything below this line can be reached by anyone who can reach the site,
+// with any body they care to send. Two rules hold it together.
+//
+// The first is that nothing is believed. A body is shape-checked before it is
+// read, and `parseMelodyJson` rebuilds the melody from only the fields it
+// recognised, so what reaches storage is what this file assembled rather than
+// what the sender assembled.
+//
+// The second is that nothing derivable is accepted. The meter, the key, the
+// bar count and both note counts are worked out here from the decoded melody
+// and never taken from the request -- otherwise a card could advertise four
+// notes over a melody of four hundred, and the listing that must never read a
+// melody would have no way of noticing.
+//
+// What is left, and so what a request genuinely supplies, is the four things
+// no melody can imply: the video, the two marks, and the clef.
+
+/** Room for a melody at its limit plus the text that travels beside it. */
+const MAX_BODY_BYTES = LIMITS.melodyBytes + 8 * 1024;
+
+/** The 11 characters YouTube names a video by. */
+const VIDEO_ID = /^[\w-]{11}$/;
+
+const isFinite = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Everything a melody settles about itself.
+ *
+ * Read off the decoded melody rather than off the request, which is what makes
+ * a level card's numbers true. `measureCountOf` is the same reckoning the
+ * editor uses, so a bar count cannot disagree with the music it counts.
+ */
+type Derived = {
+  meterBeats: number;
+  meterUnit: number;
+  keyFifths: number;
+  keyMode: Mode;
+  measures: number;
+  noteCount: number;
+  unpitchedCount: number;
+};
+
+function derive(melody: Melody): Derived | { problem: string } {
+  const noteCount = countSoundingNotes(melody);
+  if (noteCount < LIMITS.noteCount.min) {
+    return {
+      problem: `A transcription needs at least two notes before it is worth saving.`,
+    };
+  }
+
+  const measures = measureCountOf(melody);
+  if (measures < 1 || measures > MEASURES_MAX) {
+    return { problem: `A transcription runs from 1 to ${MEASURES_MAX} bars.` };
+  }
+
+  // fifths() is unbounded -- it counts seven per accidental, so B-sharp major
+  // lands on twelve. The stave cannot print those and the column will not hold
+  // them, so they are turned away here with a sentence rather than there with
+  // a constraint violation.
+  const keyFifths = melody.keySignature.fifths();
+  if (!Number.isInteger(keyFifths) || keyFifths < -7 || keyFifths > 7) {
+    return { problem: "That key signature is not one a stave can print." };
+  }
+
+  return {
+    meterBeats: melody.timeSignature.beats,
+    meterUnit: melody.timeSignature.beatUnit,
+    keyFifths,
+    keyMode: melody.keySignature.mode,
+    measures,
+    noteCount,
+    unpitchedCount: countUnpitchedNotes(melody),
+  };
+}
+
+/**
+ * A body, if it is one: within size, JSON, an object, with sound details and a
+ * melody that both parses and decodes.
+ *
+ * `decode` is inside the try because a shape-check cannot cover everything a
+ * `Melody` insists on -- a tie needs matching pitches, a bracket needs a
+ * writable length -- and those arrive as throws.
+ */
+async function readSubmission(
+  request: Request,
+): Promise<
+  | {
+      melody: Melody;
+      json: MelodyJson;
+      details: ReturnType<typeof cleanDetails>;
+      /** The whole body, since a request can only be read once. */
+      body: Record<string, unknown>;
+    }
+  | { status: 400 | 413; problem: string }
+> {
+  const text = await request.text();
+  if (text.length > MAX_BODY_BYTES) {
+    return { status: 413, problem: "That transcription is too large to store." };
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return { status: 400, problem: "The request was not JSON." };
+  }
+  if (!isObject(body)) {
+    return { status: 400, problem: "The request was not a transcription." };
+  }
+
+  const problem = detailsProblem(
+    (isObject(body.details) ? body.details : {}) as never,
+  );
+  if (problem !== undefined) {
+    return { status: 400, problem };
+  }
+
+  const json = parseMelodyJson(body.melody);
+  if (json === undefined) {
+    return { status: 400, problem: "That melody is not a melody." };
+  }
+
+  try {
+    return {
+      melody: decode(json),
+      json,
+      details: cleanDetails(body.details as never),
+      body,
+    };
+  } catch {
+    return { status: 400, problem: "That melody is not a melody." };
+  }
+}
+
+api.post("/api/levels", async (c) => {
+  const read = await readSubmission(c.req.raw);
+  if ("status" in read) {
+    return c.json({ error: read.problem }, read.status);
+  }
+
+  // The four things a melody cannot imply, and so the only four taken on trust
+  // -- checked, but not derivable from anything else here.
+  const { videoId, markStart, markEnd, clef } = read.body;
+  if (typeof videoId !== "string" || !VIDEO_ID.test(videoId)) {
+    return c.json({ error: "That is not a YouTube video id." }, 400);
+  }
+  if (!isFinite(markStart) || markStart < 0) {
+    return c.json({ error: "The start mark is not a moment of the video." }, 400);
+  }
+  if (!isFinite(markEnd) || markEnd <= markStart) {
+    return c.json({ error: "The end mark has to come after the start mark." }, 400);
+  }
+  if (clef !== "treble" && clef !== "bass") {
+    return c.json({ error: "That is not a clef." }, 400);
+  }
+
+  const derived = derive(read.melody);
+  if ("problem" in derived) {
+    return c.json({ error: derived.problem }, 400);
+  }
+
+  const id = newTranscriptionId();
+  await c.env.DB.prepare(
+    `INSERT INTO transcriptions (
+      id, title, subtitle, description, video_id, mark_start, mark_end,
+      measures, clef, meter_beats, meter_unit, key_fifths, key_mode,
+      note_count, unpitched_count, melody, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      id,
+      read.details.title,
+      read.details.subtitle ?? null,
+      read.details.description ?? null,
+      videoId,
+      markStart,
+      markEnd,
+      derived.measures,
+      clef satisfies Clef,
+      derived.meterBeats,
+      derived.meterUnit,
+      derived.keyFifths,
+      derived.keyMode,
+      derived.noteCount,
+      derived.unpitchedCount,
+      JSON.stringify(read.json),
+      Date.now(),
+    )
+    .run();
+
+  return c.json({ id }, 201);
+});
+
+/**
+ * The whole record, melody and all.
+ *
+ * Its own path because of what it hands over. Every other route is careful
+ * never to read the melody column; this one exists to read it, which is what
+ * the editor needs to reopen a transcription and what a puzzle must never be
+ * given. Keeping it separate is what lets it be shut behind ownership later
+ * without touching anything else.
+ */
+api.get("/api/levels/:id/source", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: "There is no level at that address." }, 404);
+  }
+
+  const row = (await c.env.DB.prepare(
+    `SELECT ${LEVEL_COLUMNS}, description, melody FROM transcriptions WHERE id = ?`,
+  )
+    .bind(id)
+    .first()) as (LevelRow & { description: string | null; melody: string }) | null;
+
+  if (row === null) {
+    return c.json({ error: "There is no level at that address." }, 404);
+  }
+
+  const record: TranscriptionRecord = {
+    ...toSummary(row),
+    description: row.description ?? undefined,
+    melody: JSON.parse(row.melody) as MelodyJson,
+  };
+  return c.json(record);
+});
+
+/**
+ * Replace the music and the words.
+ *
+ * The body holds those two things and nothing else. The clef, the meter, the
+ * bar count, the video and the marks are not merely ignored here -- there is
+ * nowhere in this route to put them, so no request can move them. The editor
+ * agrees with that rule; this is what enforces it.
+ *
+ * A melody of a different length or meter is refused rather than stored: the
+ * bar count was settled against the video's marks, and music of another length
+ * would leave those marks measuring something else.
+ */
+api.put("/api/levels/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: "There is no level at that address." }, 404);
+  }
+
+  const read = await readSubmission(c.req.raw);
+  if ("status" in read) {
+    return c.json({ error: read.problem }, read.status);
+  }
+
+  const row = (await c.env.DB.prepare(
+    `SELECT measures, meter_beats, meter_unit FROM transcriptions WHERE id = ?`,
+  )
+    .bind(id)
+    .first()) as Pick<LevelRow, "measures" | "meter_beats" | "meter_unit"> | null;
+
+  if (row === null) {
+    return c.json({ error: "There is no level at that address." }, 404);
+  }
+
+  const derived = derive(read.melody);
+  if ("problem" in derived) {
+    return c.json({ error: derived.problem }, 400);
+  }
+  if (derived.measures !== row.measures) {
+    return c.json(
+      { error: "An edit cannot change how many bars a transcription is." },
+      400,
+    );
+  }
+  if (
+    derived.meterBeats !== row.meter_beats ||
+    derived.meterUnit !== row.meter_unit
+  ) {
+    return c.json({ error: "An edit cannot change the meter." }, 400);
+  }
+
+  await c.env.DB.prepare(
+    `UPDATE transcriptions
+        SET title = ?, subtitle = ?, description = ?,
+            key_fifths = ?, key_mode = ?,
+            note_count = ?, unpitched_count = ?, melody = ?
+      WHERE id = ?`,
+  )
+    .bind(
+      read.details.title,
+      read.details.subtitle ?? null,
+      read.details.description ?? null,
+      derived.keyFifths,
+      derived.keyMode,
+      derived.noteCount,
+      derived.unpitchedCount,
+      JSON.stringify(read.json),
+      id,
+    )
+    .run();
+
+  return c.json({ id });
 });
 
 // A path under /api naming nothing is answered as data, never as a page:

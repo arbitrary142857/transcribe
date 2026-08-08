@@ -11,6 +11,7 @@ import { keyForFifths } from "../music/key-signature.js";
 import type { Accidental } from "../music/types.js";
 import { beatsPerMinute, tempoMapOf } from "../playback/tempo-map.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
+import { pencilIcon } from "./icons.js";
 
 /** Signs rather than letters, since a card is read and never typed into. */
 const ACCIDENTAL_SIGN: Record<Accidental, string> = {
@@ -60,6 +61,21 @@ export function levelFacts(level: TranscriptionSummary): string {
 }
 
 /**
+ * What is still missing, or nothing if the answer is complete.
+ *
+ * Read off a column rather than out of the melody, which is the whole reason
+ * the column exists: the listing cannot open the answer to find out whether it
+ * is finished. Finished is the ordinary case and says nothing — a card only
+ * speaks up when there is work left.
+ */
+export function levelState(level: TranscriptionSummary): string | undefined {
+  if (level.unpitchedCount === 0) return undefined;
+  return level.unpitchedCount === 1
+    ? "Unfinished · 1 note needs a pitch"
+    : `Unfinished · ${level.unpitchedCount} notes need pitches`;
+}
+
+/**
  * Built from elements with their text set, never from markup.
  *
  * That is not house style for its own sake: a title is written by whoever
@@ -67,24 +83,47 @@ export function levelFacts(level: TranscriptionSummary): string {
  * characters rather than running it. Nothing on this page may become
  * innerHTML.
  *
- * Not a link yet. Opening a level means loading its melody into the editor,
- * and until that route exists a card that looked clickable would be a promise
- * the page could not keep.
+ * The pencil is its own control rather than the whole card being a link, and
+ * that is deliberate: the card itself is going to open a level to *play* it,
+ * and the two want telling apart. The icon is the only part of the card that
+ * does anything today.
  */
 export function createLevelCard(level: TranscriptionSummary): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "level-card";
 
+  const head = document.createElement("div");
+  head.className = "level-head";
+
   const title = document.createElement("h2");
   title.className = "level-title";
   title.textContent = level.title;
-  item.append(title);
+
+  const edit = document.createElement("a");
+  edit.className = "level-edit";
+  edit.href = `/edit?level=${encodeURIComponent(level.id)}`;
+  edit.title = `Edit ${level.title}`;
+  edit.setAttribute("aria-label", `Edit ${level.title}`);
+  // The only innerHTML on this page, and it holds a constant from icons.ts —
+  // never anything that came out of the database.
+  edit.innerHTML = pencilIcon();
+
+  head.append(title, edit);
+  item.append(head);
 
   if (level.subtitle !== undefined) {
     const subtitle = document.createElement("p");
     subtitle.className = "level-subtitle";
     subtitle.textContent = level.subtitle;
     item.append(subtitle);
+  }
+
+  const state = levelState(level);
+  if (state !== undefined) {
+    const unfinished = document.createElement("p");
+    unfinished.className = "level-unfinished";
+    unfinished.textContent = state;
+    item.append(unfinished);
   }
 
   const facts = document.createElement("p");

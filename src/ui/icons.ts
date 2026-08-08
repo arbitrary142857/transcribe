@@ -370,3 +370,16 @@ export function tupletIcon(numNotes: number): string {
       `<text x="12" y="${line + 4.6}" text-anchor="middle" font-family="Georgia, serif" font-size="13" font-style="italic" fill="currentColor">${numNotes}</text>`,
   );
 }
+
+/** A pencil, for opening a saved transcription to change it. */
+export function pencilIcon(): string {
+  return svg(
+    // The nib, the body, and the band where the two meet — three shapes
+    // rather than one outline, so the point stays sharp at button size.
+    `<path d="M4 20 L4.9 16.4 L7.6 19.1 Z" fill="currentColor" />` +
+      `<path d="M6.2 15.1 L15.1 6.2 L17.8 8.9 L8.9 17.8 Z" fill="none" ` +
+      `stroke="currentColor" stroke-width="${STROKE * 1.4}" stroke-linejoin="round" />` +
+      `<path d="M16.4 4.9 A1.9 1.9 0 0 1 19.1 7.6 L17.8 8.9 L15.1 6.2 Z" ` +
+      `fill="currentColor" />`,
+  );
+}

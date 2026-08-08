@@ -10,7 +10,7 @@
 
 import type { MelodyJson } from "../editor/codec.js";
 import type { Melody } from "../music/melody.js";
-import { Rest } from "../music/note-event.js";
+import { Rest, UnpitchedNote } from "../music/note-event.js";
 import type { Mode, TimeSignature } from "../music/types.js";
 
 /** The two clefs the setup page offers, and the two the database allows. */
@@ -53,6 +53,12 @@ export type TranscriptionSummary = {
   keyMode: Mode;
   /** Note groupings, so a tied run counts once. See `countSoundingNotes`. */
   noteCount: number;
+  /**
+   * How many of those are still waiting for a pitch. Zero means finished, and
+   * finished is what a puzzle has to be. A card reads this to call itself
+   * unfinished without anything having to open the melody.
+   */
+  unpitchedCount: number;
   createdAt: number;
 };
 
@@ -148,6 +154,29 @@ export function countSoundingNotes(melody: Melody): number {
 }
 
 /**
+ * How many of those notes are still waiting for a pitch.
+ *
+ * Counted the same way as `countSoundingNotes`, which is what makes the two
+ * comparable: a tied run is one note whether or not it has been pitched yet,
+ * because `setPitch` and `clearPitch` both work on the whole run and a tie is
+ * refused between a pitched note and an unpitched one. So a run of four
+ * unpitched heads is one note left to find, not four.
+ *
+ * Zero means the transcription is finished. That is the question a puzzle has
+ * to be able to ask of a level, and asking it of the melody would mean reading
+ * the answer.
+ */
+export function countUnpitchedNotes(melody: Melody): number {
+  let count = 0;
+  for (let index = 0; index < melody.eventCount; index++) {
+    if (!(melody.getEvent(index) instanceof UnpitchedNote)) continue;
+    if (melody.isTiedToPrev(index)) continue;
+    count++;
+  }
+  return count;
+}
+
+/**
  * The events making up the first sounding note, or nothing if there is none.
  *
  * The whole tied run rather than the head of it, and that is not tidiness:
@@ -226,8 +255,16 @@ export function cleanDetails(raw: TranscriptionDetails): CleanDetails {
   };
 }
 
-/** Characters, as SQLite counts them — not UTF-16 units, as `.length` does. */
-const characters = (text: string): number => [...text].length;
+/**
+ * Characters, as SQLite counts them — not UTF-16 units, as `.length` does.
+ *
+ * Exported because the panel's live counter has to agree with the rule that
+ * greys its button: `"👨‍👩‍👧".length` is 8 and this is 5, so a counter using the
+ * other one would say a title was full while the validator still had room.
+ */
+export const countCharacters = (text: string): number => [...text].length;
+
+const characters = countCharacters;
 
 function oneLineProblem(
   text: string,
