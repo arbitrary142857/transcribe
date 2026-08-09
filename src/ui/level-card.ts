@@ -7,39 +7,50 @@
  * puzzles, that is the difference between a level and its answer.
  */
 
-import { keyForFifths } from "../music/key-signature.js";
-import type { Accidental } from "../music/types.js";
 import { beatsPerMinute, tempoMapOf } from "../playback/tempo-map.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { pencilIcon } from "./icons.js";
-
-/** Signs rather than letters, since a card is read and never typed into. */
-const ACCIDENTAL_SIGN: Record<Accidental, string> = {
-  [-2]: "\u{1D12B}",
-  [-1]: "♭",
-  0: "",
-  1: "♯",
-  2: "\u{1D12A}",
-};
+import { keyLabelOfFifths } from "./key-label.js";
+import { THUMBNAIL_SIZE, thumbnailUrl } from "./youtube.js";
 
 /** The key written the way it is spoken: `D♭ major`, `A minor`. */
-export function keyName(level: TranscriptionSummary): string {
-  const { tonic } = keyForFifths(level.keyFifths, level.keyMode);
-  return `${tonic.letter}${ACCIDENTAL_SIGN[tonic.accidental]} ${level.keyMode}`;
-}
+export const keyName = (level: TranscriptionSummary): string =>
+  keyLabelOfFifths(level.keyFifths, level.keyMode);
+
+/** Which fact this is, so the box beside it can pick an icon. */
+export type LevelStatKind = "bars" | "notes" | "tempo" | "length";
+
+/** One measured fact about a level, in the parts its own box prints. */
+export type LevelStat = {
+  kind: LevelStatKind;
+  /** For a screen reader and a tooltip, where the icon says nothing. */
+  label: string;
+  /** The number, set large. */
+  value: string;
+  /** What the number counts, set small beside it. */
+  unit: string;
+};
 
 /**
- * The line under the title, in the order it answers "is this one for me?":
- * what it is written in, how much of it there is, and how long it runs.
+ * How much of a level there is, and how long it runs.
+ *
+ * The number and its unit come apart because the box sets them at different
+ * sizes: "4" large and "bars" small is one fact read at a glance, where a bare
+ * "4" under the heading "Bars" left the reader to work out that the heading
+ * meant *how many*.
+ *
+ * The key and the meter are not here. They are notation, and the box draws
+ * them rather than naming them — a signature is quicker to recognise than a
+ * phrase is to read.
  *
  * The tempo is worked out rather than stored, because the two marks and the
  * bar count already say it -- one fewer column able to disagree with the rest.
  * It is the felt beat, so 6/8 counts two to the bar rather than six.
  *
  * Seconds rather than a timecode: these sections run half a minute, and `0:31`
- * is slower to read than `31s` for nothing gained.
+ * is slower to read than `31 sec` for nothing gained.
  */
-export function levelFacts(level: TranscriptionSummary): string {
+export function levelStats(level: TranscriptionSummary): LevelStat[] {
   const map = tempoMapOf(
     { start: level.markStart, end: level.markEnd },
     level.measures,
@@ -47,17 +58,37 @@ export function levelFacts(level: TranscriptionSummary): string {
   );
 
   return [
-    keyName(level),
-    `${level.meter.beats}/${level.meter.beatUnit}`,
-    level.measures === 1 ? "1 bar" : `${level.measures} bars`,
+    {
+      kind: "bars",
+      label: "Bars",
+      value: String(level.measures),
+      unit: level.measures === 1 ? "bar" : "bars",
+    },
+    {
+      kind: "notes",
+      label: "Notes",
+      value: String(level.noteCount),
+      unit: level.noteCount === 1 ? "note" : "notes",
+    },
     // The database will not hold marks that describe no tempo, so this stands
     // against a row no route can currently write rather than against a level.
-    map === undefined ? undefined : `${Math.round(beatsPerMinute(map))} BPM`,
-    level.noteCount === 1 ? "1 note" : `${level.noteCount} notes`,
-    `${Math.round(level.markEnd - level.markStart)}s`,
-  ]
-    .filter((part) => part !== undefined)
-    .join(" · ");
+    ...(map === undefined
+      ? []
+      : ([
+          {
+            kind: "tempo",
+            label: "Tempo",
+            value: String(Math.round(beatsPerMinute(map))),
+            unit: "BPM",
+          },
+        ] as const)),
+    {
+      kind: "length",
+      label: "Length",
+      value: String(Math.round(level.markEnd - level.markStart)),
+      unit: "sec",
+    },
+  ];
 }
 
 /**
@@ -83,21 +114,83 @@ export function levelState(level: TranscriptionSummary): string | undefined {
  * characters rather than running it. Nothing on this page may become
  * innerHTML.
  *
- * The pencil is its own control rather than the whole card being a link, and
- * that is deliberate: the card itself is going to open a level to *play* it,
- * and the two want telling apart. The icon is the only part of the card that
- * does anything today.
+ * A card carries the least that distinguishes one level from another — what it
+ * is called, and whether you have finished it. Everything else it used to
+ * print in a row of dot-separated facts is in the level's own box now, one
+ * press away, where there is room to lay it out and to say what each number
+ * means.
+ *
+ * The card opens that box and the pencil opens the editor, and the two are
+ * told apart the only way that keeps a keyboard and a screen reader working:
+ * the title is the control, its `::after` is stretched over the whole card,
+ * and the pencil is raised above that. Nesting one inside the other would be
+ * neither valid nor reachable by tab.
+ *
+ * A level still missing pitches does not open a box at all. There is no
+ * complete answer to mark an attempt against, which is the same thing
+ * `/api/levels/:id/puzzle` says by refusing it — so the pencil is the only way
+ * in, and the card already says why.
  */
-export function createLevelCard(level: TranscriptionSummary): HTMLLIElement {
+export function createLevelCard(
+  level: TranscriptionSummary,
+  options: { solved: boolean; onOpen: () => void },
+): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "level-card";
+
+  // The video this was written down from, as a picture.
+  //
+  // Sized in the markup as well as the stylesheet so the box is reserved
+  // before the image lands and the card does not jump. Hidden if it fails to
+  // load — a video taken down since would otherwise leave a broken-image icon
+  // where the picture should be, which looks like the site is broken rather
+  // than the video gone.
+  const art = document.createElement("img");
+  art.className = "level-art";
+  art.src = thumbnailUrl(level.videoId);
+  art.width = THUMBNAIL_SIZE.width;
+  art.height = THUMBNAIL_SIZE.height;
+  art.loading = "lazy";
+  art.decoding = "async";
+  art.alt = "";
+  art.referrerPolicy = "no-referrer";
+  art.addEventListener("error", () => {
+    art.hidden = true;
+  });
+  item.append(art);
 
   const head = document.createElement("div");
   head.className = "level-head";
 
   const title = document.createElement("h2");
   title.className = "level-title";
-  title.textContent = level.title;
+
+  if (level.unpitchedCount === 0) {
+    // A button rather than a link, because what it opens is a box on this page
+    // rather than an address. The cost is that a level can no longer be opened
+    // in a new tab from here; `/play?level=…` is still a real address, and the
+    // box is what leads to it.
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "level-open";
+    open.textContent = level.title;
+    open.addEventListener("click", options.onOpen);
+    title.append(open);
+    item.classList.add("is-playable");
+  } else {
+    title.textContent = level.title;
+  }
+
+  if (options.solved) {
+    const mark = document.createElement("span");
+    mark.className = "level-solved";
+    mark.textContent = "✓";
+    mark.title = "Solved";
+    // Kept out of the title's own text so a level called "Clair ✓" cannot
+    // claim to have been finished.
+    title.append(mark);
+    item.classList.add("is-solved");
+  }
 
   const edit = document.createElement("a");
   edit.className = "level-edit";
@@ -109,13 +202,18 @@ export function createLevelCard(level: TranscriptionSummary): HTMLLIElement {
   edit.innerHTML = pencilIcon();
 
   head.append(title, edit);
-  item.append(head);
+
+  // The words, padded away from the edge — the picture above is not, so the
+  // padding belongs to this rather than to the card.
+  const body = document.createElement("div");
+  body.className = "level-body";
+  body.append(head);
 
   if (level.subtitle !== undefined) {
     const subtitle = document.createElement("p");
     subtitle.className = "level-subtitle";
     subtitle.textContent = level.subtitle;
-    item.append(subtitle);
+    body.append(subtitle);
   }
 
   const state = levelState(level);
@@ -123,13 +221,9 @@ export function createLevelCard(level: TranscriptionSummary): HTMLLIElement {
     const unfinished = document.createElement("p");
     unfinished.className = "level-unfinished";
     unfinished.textContent = state;
-    item.append(unfinished);
+    body.append(unfinished);
   }
 
-  const facts = document.createElement("p");
-  facts.className = "level-facts";
-  facts.textContent = levelFacts(level);
-  item.append(facts);
-
+  item.append(body);
   return item;
 }

@@ -7,7 +7,12 @@
  */
 
 import { Hono } from "hono";
-import { decode, parseMelodyJson, type MelodyJson } from "../src/editor/codec.js";
+import {
+  decode,
+  encode,
+  parseMelodyJson,
+  type MelodyJson,
+} from "../src/editor/codec.js";
 import { measureCountOf } from "../src/editor/position.js";
 import type { Melody } from "../src/music/melody.js";
 import type { Mode, TimeSignature } from "../src/music/types.js";
@@ -18,9 +23,11 @@ import {
   countSoundingNotes,
   countUnpitchedNotes,
   detailsProblem,
+  gradeAttempt,
   isTranscriptionId,
   LIMITS,
   newTranscriptionId,
+  puzzleMelodyOf,
   type Clef,
   type TranscriptionRecord,
   type TranscriptionSummary,
@@ -92,7 +99,7 @@ const LEVELS_PAGE = 100;
  * spliced into a statement. Every value goes through `bind`.
  */
 const LEVEL_COLUMNS = `
-  id, title, subtitle, video_id, mark_start, mark_end,
+  id, title, subtitle, instructions, video_id, mark_start, mark_end,
   measures, clef, meter_beats, meter_unit,
   key_fifths, key_mode, note_count, unpitched_count, created_at
 `;
@@ -115,6 +122,7 @@ type LevelRow = {
   id: string;
   title: string;
   subtitle: string | null;
+  instructions: string | null;
   video_id: string;
   mark_start: number;
   mark_end: number;
@@ -144,6 +152,7 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
   id: row.id,
   title: row.title,
   subtitle: row.subtitle ?? undefined,
+  instructions: row.instructions ?? undefined,
   videoId: row.video_id,
   markStart: row.mark_start,
   markEnd: row.mark_end,
@@ -393,7 +402,7 @@ api.post("/api/levels", async (c) => {
   const id = newTranscriptionId();
   await c.env.DB.prepare(
     `INSERT INTO transcriptions (
-      id, title, subtitle, description, video_id, mark_start, mark_end,
+      id, title, subtitle, instructions, video_id, mark_start, mark_end,
       measures, clef, meter_beats, meter_unit, key_fifths, key_mode,
       note_count, unpitched_count, melody, created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -402,7 +411,7 @@ api.post("/api/levels", async (c) => {
       id,
       read.details.title,
       read.details.subtitle ?? null,
-      read.details.description ?? null,
+      read.details.instructions ?? null,
       videoId,
       marks.start,
       marks.end,
@@ -438,10 +447,10 @@ api.get("/api/levels/:id/source", async (c) => {
   }
 
   const row = (await c.env.DB.prepare(
-    `SELECT ${LEVEL_COLUMNS}, description, melody FROM transcriptions WHERE id = ?`,
+    `SELECT ${LEVEL_COLUMNS}, melody FROM transcriptions WHERE id = ?`,
   )
     .bind(id)
-    .first()) as (LevelRow & { description: string | null; melody: string }) | null;
+    .first()) as (LevelRow & { melody: string }) | null;
 
   if (row === null) {
     return c.json({ error: "There is no level at that address." }, 404);
@@ -449,7 +458,6 @@ api.get("/api/levels/:id/source", async (c) => {
 
   const record: TranscriptionRecord = {
     ...toSummary(row),
-    description: row.description ?? undefined,
     melody: JSON.parse(row.melody) as MelodyJson,
   };
   return c.json(record);
@@ -529,7 +537,7 @@ api.put("/api/levels/:id", async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE transcriptions
-        SET title = ?, subtitle = ?, description = ?,
+        SET title = ?, subtitle = ?, instructions = ?,
             mark_start = ?, mark_end = ?,
             key_fifths = ?, key_mode = ?,
             note_count = ?, unpitched_count = ?, melody = ?
@@ -538,7 +546,7 @@ api.put("/api/levels/:id", async (c) => {
     .bind(
       read.details.title,
       read.details.subtitle ?? null,
-      read.details.description ?? null,
+      read.details.instructions ?? null,
       marks.start,
       marks.end,
       derived.keyFifths,
@@ -552,6 +560,222 @@ api.put("/api/levels/:id", async (c) => {
 
   return c.json({ id });
 });
+
+// ---- playing ------------------------------------------------------------
+//
+// The two routes a puzzle is played through, and the reason the rest of this
+// file is so careful about which columns it names. Both of them hold the
+// answer in memory; neither lets any part of it into a response.
+//
+// `/puzzle` is the door `/source` is not: same row, same melody column, and
+// what comes back has had every pitch but one taken out of it. A page that
+// wanted the answer would have to ask `/source`, which is what will be shut
+// behind ownership once there is such a thing.
+
+/** Said by both routes about a draft, so the two cannot word it differently. */
+const UNFINISHED =
+  "That transcription is not finished, so there is nothing to play yet.";
+
+const NO_LEVEL = "There is no level at that address.";
+
+/** Room for an attempt at a melody's worth of notes and nothing like more. */
+const MAX_ATTEMPT_BYTES = 64 * 1024;
+
+/** The MIDI numbers a piano key can send. */
+const MIDI_LOWEST = 0;
+const MIDI_HIGHEST = 127;
+
+const isWhole = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value);
+
+/**
+ * The melody a row holds.
+ *
+ * Every row was written by `readSubmission` above, so what comes back out has
+ * already been through `parseMelodyJson` once. It is put through again rather
+ * than cast, because the alternative is that a row this codebase did not write
+ * -- a hand-run UPDATE, a restored backup -- becomes a thrown `decode` in the
+ * middle of a route. Unreadable is answered by the caller as a 500, which is
+ * the honest reply: nothing the player did caused it and nothing they can do
+ * fixes it.
+ */
+function readAnswer(stored: string): Melody | undefined {
+  try {
+    const json = parseMelodyJson(JSON.parse(stored));
+    return json === undefined ? undefined : decode(json);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A level's answer, ready to be stripped or graded.
+ *
+ * `columns` is spliced into SQL, so both callers pass a constant declared in
+ * this file and nothing else ever reaches it -- the same rule `LEVEL_COLUMNS`
+ * is held to. Every value still goes through `bind`.
+ */
+async function readAnswerRow<T extends Record<string, unknown>>(
+  db: Database,
+  id: string,
+  columns: string,
+): Promise<{ row: T; answer: Melody } | { status: 404 | 409; problem: string }> {
+  const row = (await db
+    .prepare(`SELECT ${columns} FROM transcriptions WHERE id = ?`)
+    .bind(id)
+    .first()) as (T & { unpitched_count: number; melody: string }) | null;
+
+  if (row === null) {
+    return { status: 404, problem: NO_LEVEL };
+  }
+  // An answer with blanks in it cannot mark anybody's attempt. Read off the
+  // column rather than the melody, which is the reason the column exists.
+  if (row.unpitched_count > 0) {
+    return { status: 409, problem: UNFINISHED };
+  }
+
+  const answer = readAnswer(row.melody);
+  if (answer === undefined) {
+    throw new Error(`The melody stored for level ${id} could not be read.`);
+  }
+  return { row, answer };
+}
+
+/**
+ * A level as something to play: everything a card shows, and the rhythm.
+ *
+ * The melody that comes back is `puzzleMelodyOf`'s, so it carries exactly one
+ * pitch -- the first sounding note, revealed whole where it is a tied run.
+ * Everything else arrives as a note awaiting a pitch, which is what the stave
+ * already draws with an x notehead.
+ */
+api.get("/api/levels/:id/puzzle", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const read = await readAnswerRow<LevelRow>(
+    c.env.DB,
+    id,
+    `${LEVEL_COLUMNS}, melody`,
+  );
+  if ("status" in read) {
+    return c.json({ error: read.problem }, read.status);
+  }
+
+  const record: TranscriptionRecord = {
+    ...toSummary(read.row),
+    melody: encode(puzzleMelodyOf(read.answer)),
+  };
+  return c.json(record);
+});
+
+/**
+ * Mark an attempt.
+ *
+ * What goes back is a verdict per note and two counts, and on no path anything
+ * more -- the solved reply included, which is the one most tempting to fill in
+ * with the melody now that the player has earned it. They have the pitches
+ * already: they typed them.
+ *
+ * This is an oracle, and knowingly so. Roughly forty of these requests can pin
+ * one note without anybody listening to anything. Nothing here prevents that;
+ * what answers it is that the page counts checks and shows the count beside
+ * the time, so a solve arrived at that way reads as one. When times start
+ * being compared, this is the route to revisit.
+ */
+api.post("/api/levels/:id/check", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const text = await c.req.raw.text();
+  if (text.length > MAX_ATTEMPT_BYTES) {
+    return c.json({ error: "That attempt is too large to read." }, 413);
+  }
+
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return c.json({ error: "The request was not JSON." }, 400);
+  }
+
+  const read = await readAnswerRow<{ melody: string }>(
+    c.env.DB,
+    id,
+    "unpitched_count, melody",
+  );
+  if ("status" in read) {
+    return c.json({ error: read.problem }, read.status);
+  }
+
+  const attempt = readAttempt(body, read.answer.eventCount);
+  if (attempt === undefined) {
+    return c.json({ error: "That is not an attempt at this level." }, 400);
+  }
+
+  const graded = gradeAttempt(read.answer, attempt);
+
+  // Every note, and only the notes. A pitch at an index the answer rests on is
+  // as much a sign of a confused caller as a missing one, and neither is
+  // something the page sends -- so both are turned away rather than marked.
+  for (const index of graded.verdicts.keys()) {
+    if (!attempt.has(index)) {
+      return c.json(
+        { error: "Every note needs a pitch before the attempt can be checked." },
+        400,
+      );
+    }
+  }
+  if (attempt.size !== graded.total) {
+    return c.json(
+      { error: "That attempt names something that is not a note to find." },
+      400,
+    );
+  }
+
+  return c.json({
+    verdicts: [...graded.verdicts].map(([index, correct]) => ({
+      index,
+      correct,
+    })),
+    correct: graded.correct,
+    total: graded.total,
+    solved: graded.correct === graded.total,
+  });
+});
+
+/**
+ * A pitch per note, if that is what arrived.
+ *
+ * Indices are the melody's own, so they are checked against its length: they
+ * come off the wire and reach `Melody.getEvent`, which throws on a stranger.
+ * Two entries for one index are refused rather than resolved, in the shape
+ * `readTiesJson` already uses -- a list saying the same thing twice is not one
+ * the page wrote, and picking a winner would be guessing at what was meant.
+ */
+function readAttempt(
+  body: unknown,
+  eventCount: number,
+): Map<number, number> | undefined {
+  if (!isObject(body) || !Array.isArray(body.pitches)) return undefined;
+
+  const attempt = new Map<number, number>();
+  for (const entry of body.pitches as unknown[]) {
+    if (!isObject(entry)) return undefined;
+    const { index, midi } = entry;
+    if (!isWhole(index) || index < 0 || index >= eventCount) return undefined;
+    if (!isWhole(midi) || midi < MIDI_LOWEST || midi > MIDI_HIGHEST) {
+      return undefined;
+    }
+    if (attempt.has(index)) return undefined;
+    attempt.set(index, midi);
+  }
+  return attempt;
+}
 
 // A path under /api naming nothing is answered as data, never as a page:
 // whatever asked for it wanted JSON, and should be told in JSON that there is

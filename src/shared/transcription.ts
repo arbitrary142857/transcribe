@@ -8,9 +8,9 @@
  * cannot hand out the pitches even by accident.
  */
 
-import type { MelodyJson } from "../editor/codec.js";
+import { decode, encode, type MelodyJson } from "../editor/codec.js";
 import type { Melody } from "../music/melody.js";
-import { Rest, UnpitchedNote } from "../music/note-event.js";
+import { Note, Rest, UnpitchedNote } from "../music/note-event.js";
 import type { Mode, TimeSignature } from "../music/types.js";
 
 /** The two clefs the setup page offers, and the two the database allows. */
@@ -20,14 +20,14 @@ export type Clef = "treble" | "bass";
 export type TranscriptionDetails = {
   title: string;
   subtitle?: string;
-  description?: string;
+  instructions?: string;
 };
 
 /** The same, settled: trimmed, normalized, and empty fields dropped. */
 export type CleanDetails = {
   title: string;
   subtitle: string | undefined;
-  description: string | undefined;
+  instructions: string | undefined;
 };
 
 /**
@@ -59,12 +59,21 @@ export type TranscriptionSummary = {
    * unfinished without anything having to open the melody.
    */
   unpitchedCount: number;
+  /**
+   * What the author wants known before it is played.
+   *
+   * Here rather than only on the whole record because the level list shows it:
+   * pressing a card opens a box with these in it, and a second request just to
+   * read a sentence the listing already had would be a strange thing to make
+   * anybody wait for. It is prose somebody wrote, not the answer, so nothing
+   * about the secrecy rule minds it travelling.
+   */
+  instructions: string | undefined;
   createdAt: number;
 };
 
 /** A whole row. Only a route that needs the answer should ever hold one. */
 export type TranscriptionRecord = TranscriptionSummary & {
-  description: string | undefined;
   melody: MelodyJson;
 };
 
@@ -75,9 +84,18 @@ export type TranscriptionRecord = TranscriptionSummary & {
 // as a raw SQLite error instead of a sentence.
 
 export const LIMITS = {
-  title: { min: 1, max: 100 },
-  subtitle: { max: 150 },
-  description: { max: 2000 },
+  /** One cap for both, because a subtitle is only a second line of naming. */
+  title: { min: 1, max: 128 },
+  subtitle: { max: 128 },
+  /**
+   * What the author wants known before the level is played.
+   *
+   * 600 because the instructions people write — "ignore the grace notes",
+   * "listen to the bass for a clue" — run a line or two apiece, so this holds
+   * about eight of them and fills the level's modal at a readable measure
+   * without becoming something to scroll.
+   */
+  instructions: { max: 600 },
   /** Note groupings. The puzzle gives the first away, so two is the least. */
   noteCount: { min: 2 },
   /** A sixteen-bar melody encodes to about four thousand bytes. */
@@ -193,6 +211,86 @@ export function firstSoundingNote(melody: Melody): number[] | undefined {
   return undefined;
 }
 
+// ---- the puzzle ---------------------------------------------------------
+
+/**
+ * The same music with the answer taken out: every pitch gone but the first
+ * sounding note's.
+ *
+ * A *copy*, never the melody handed in. `Melody` is mutable and the one this
+ * receives is the answer as it came out of the database, so stripping it in
+ * place would empty the copy of record. The round trip through the codec is
+ * how the editor's own history clones a melody, and reusing it means the
+ * clone and the save format cannot drift apart.
+ *
+ * What survives is what is public anyway: the key and the meter are their own
+ * columns, and the rhythm — every duration, tie and bracket — is the puzzle
+ * rather than the answer to it. What leaves is every pitch but one.
+ *
+ * The whole opening tied run is revealed rather than its head, and that is not
+ * generosity: `Melody.tie()` refuses to join a pitched note to an unpitched
+ * one, so a puzzle giving away half a run is a melody that `decode()` throws
+ * on at the other end. `firstSoundingNote()` returns the group for this reason.
+ */
+export function puzzleMelodyOf(melody: Melody): Melody {
+  const puzzle = decode(encode(melody));
+  const given = new Set(firstSoundingNote(puzzle) ?? []);
+
+  for (let index = 0; index < puzzle.eventCount; index++) {
+    if (given.has(index)) continue;
+    // A rest has no pitch to take, and clearPitch() throws rather than shrug.
+    if (puzzle.getEvent(index) instanceof Rest) continue;
+    puzzle.clearPitch(index);
+  }
+  return puzzle;
+}
+
+/**
+ * Which sounding notes an attempt got right.
+ *
+ * Keyed by the head of each tied run, counted exactly as `countSoundingNotes`
+ * counts — a run of four tied heads is one note to find and gets one verdict,
+ * which the page then paints across all four. Rests are not graded, because
+ * nobody was asked to find them.
+ *
+ * Compared by MIDI rather than by spelling. Nobody chooses a spelling: a pitch
+ * is entered by pressing a piano key and `spellForMelodyEvent` decides how to
+ * write it, so an answer written D-sharp has to accept the E-flat the key
+ * signature would have produced for the same sound. The cost is that a solved
+ * score may be notated a little differently from how it was authored, which is
+ * a fair price for not failing someone who heard it correctly.
+ *
+ * `total` counts the given note too, so it agrees with the `note_count` column
+ * and with the "12 notes" a card advertises.
+ *
+ * A note nobody answered is marked wrong rather than passed over. The check
+ * route will not accept a half-filled attempt, so this stands against a caller
+ * that has not asked yet rather than against a player.
+ */
+export function gradeAttempt(
+  melody: Melody,
+  attempt: ReadonlyMap<number, number>,
+): { verdicts: Map<number, boolean>; correct: number; total: number } {
+  const verdicts = new Map<number, boolean>();
+  let correct = 0;
+
+  for (let index = 0; index < melody.eventCount; index++) {
+    const event = melody.getEvent(index);
+    if (event instanceof Rest) continue;
+    // Every head after the first in a tied run is part of a sound already graded.
+    if (melody.isTiedToPrev(index)) continue;
+
+    // An unpitched answer belongs to a draft, which the route refuses. Nothing
+    // matches it, so nothing is marked right by it.
+    const right =
+      event instanceof Note && attempt.get(index) === event.pitch.toMidi();
+    verdicts.set(index, right);
+    if (right) correct += 1;
+  }
+
+  return { verdicts, correct, total: verdicts.size };
+}
+
 // ---- text ---------------------------------------------------------------
 //
 // None of this is what keeps the site safe. SQL injection is impossible
@@ -251,7 +349,7 @@ export function cleanDetails(raw: TranscriptionDetails): CleanDetails {
   return {
     title: tidy(raw.title),
     subtitle: orNothing(raw.subtitle),
-    description: orNothing(raw.description),
+    instructions: orNothing(raw.instructions),
   };
 }
 
@@ -296,11 +394,11 @@ export function detailsProblem(
   if (raw.subtitle !== undefined && typeof raw.subtitle !== "string") {
     return "The subtitle must be text.";
   }
-  if (raw.description !== undefined && typeof raw.description !== "string") {
-    return "The description must be text.";
+  if (raw.instructions !== undefined && typeof raw.instructions !== "string") {
+    return "The instructions must be text.";
   }
 
-  const { title, subtitle, description } = cleanDetails(raw);
+  const { title, subtitle, instructions } = cleanDetails(raw);
 
   if (showsNothing(title)) {
     return "A title is needed.";
@@ -313,15 +411,15 @@ export function detailsProblem(
     if (problem) return problem;
   }
 
-  if (description !== undefined) {
-    if (CONTROL_BEYOND_NEWLINE.test(description)) {
-      return "The description cannot hold control characters.";
+  if (instructions !== undefined) {
+    if (CONTROL_BEYOND_NEWLINE.test(instructions)) {
+      return "The instructions cannot hold control characters.";
     }
-    if (BIDI.test(description)) {
-      return "The description cannot reorder how it is shown.";
+    if (BIDI.test(instructions)) {
+      return "The instructions cannot reorder how they are shown.";
     }
-    if (characters(description) > LIMITS.description.max) {
-      return `The description is longer than ${LIMITS.description.max} characters.`;
+    if (characters(instructions) > LIMITS.instructions.max) {
+      return `The instructions are longer than ${LIMITS.instructions.max} characters.`;
     }
   }
 

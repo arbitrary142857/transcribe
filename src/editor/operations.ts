@@ -170,9 +170,13 @@ export function writeAt(
   const position = eventPositions(melody)[index]!;
   const newLength = duration.asWholeNoteFraction();
 
+  // Worth knowing about this and the throws below it: the editor shows what
+  // they say, word for word, in a tooltip beside the pointer. They are read by
+  // whoever is writing the music down, not by whoever is reading a stack — so
+  // they name what was tried rather than which array index it landed on.
   if (newLength.compare(span.length) > 0) {
     throw new RangeError(
-      `Cannot write ${duration} at index ${index}: there is only ${span.length} of a whole note of room before the next note or the barline`,
+      "That length does not fit before the next note or the barline.",
     );
   }
 
@@ -316,14 +320,14 @@ export function divideIntoTuplet(
   const event = melody.getEvent(index);
   if (!melody.getTupletSpan(index).tuplet.isNone()) {
     throw new RangeError(
-      `Cannot divide index ${index}: it is already inside a tuplet, and brackets do not nest`,
+      "That note is already inside a tuplet, and brackets do not nest.",
     );
   }
 
   const value = memberValue(event.duration.asWholeNoteFraction(), tuplet);
   if (!value) {
     throw new RangeError(
-      `Cannot divide index ${index} by ${tuplet}: the members would have no written value`,
+      "A tuplet that size has no written value at this length.",
     );
   }
 
@@ -348,7 +352,7 @@ export function divideIntoTuplet(
 export function undivideTuplet(melody: Melody, index: number): number {
   const bracket = melody.getTupletSpan(index);
   if (bracket.tuplet.isNone()) {
-    throw new RangeError(`Nothing at index ${index} is inside a tuplet`);
+    throw new RangeError("That note is not inside a tuplet.");
   }
 
   const first = melody.getEvent(bracket.start);
@@ -384,7 +388,7 @@ export function tieForward(melody: Melody, index: number): void {
   const next = melody.getEvent(index + 1);
 
   if (current instanceof Rest || next instanceof Rest) {
-    throw new TypeError("Cannot tie silence to anything");
+    throw new TypeError("A rest cannot be tied to anything.");
   }
   if (current instanceof Note) {
     melody.setPitch(index + 1, current.pitch);
@@ -393,4 +397,40 @@ export function tieForward(melody: Melody, index: number): void {
   }
 
   melody.tie(index);
+}
+
+/**
+ * The MIDI number a semitone nudge at `index` should count from.
+ *
+ * A note that already has a pitch counts from its own, which is what makes Up
+ * and Down raise and lower it.
+ *
+ * A note still waiting for one counts from the nearest pitched note *before*
+ * it, so the first press lands a semitone away from whatever was last written.
+ * Melodies mostly move by step, so that is usually within a key or two of the
+ * right answer — which matters most on the play page, where every note but the
+ * first starts blank and the arrows would otherwise do nothing at all until
+ * the piano had been used on each one.
+ *
+ * Backwards only, deliberately: looking forward as well would mean the same
+ * key press did different things depending on music the player has not written
+ * yet. `fallback` is where an opening note starts from, there being nothing
+ * behind it — the caller passes the middle of the clef's range.
+ *
+ * Nothing for a rest, which has no pitch to move.
+ */
+export function pitchNudgeFrom(
+  melody: Melody,
+  index: number,
+  fallback: number,
+): number | undefined {
+  const event = melody.getEvent(index);
+  if (event instanceof Rest) return undefined;
+  if (event instanceof Note) return event.pitch.toMidi();
+
+  for (let before = index - 1; before >= 0; before--) {
+    const candidate = melody.getEvent(before);
+    if (candidate instanceof Note) return candidate.pitch.toMidi();
+  }
+  return fallback;
 }

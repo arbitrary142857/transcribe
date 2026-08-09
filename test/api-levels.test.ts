@@ -6,6 +6,7 @@ import { KeySignature } from "../dist/music/key-signature.js";
 import { Melody } from "../dist/music/melody.js";
 import { Note, type NoteEvent, Rest, UnpitchedNote } from "../dist/music/note-event.js";
 import { Pitch } from "../dist/music/pitch.js";
+import { LIMITS } from "../dist/shared/transcription.js";
 import { api } from "../dist-worker/worker/routes.js";
 
 type Row = Record<string, unknown>;
@@ -15,7 +16,7 @@ const ROW = {
   id: "k3m9x2p7qw4t",
   title: "Clair de lune",
   subtitle: "Debussy",
-  description: "The opening phrase.",
+  instructions: "The opening phrase.",
   video_id: "dQw4w9WgXcQ",
   mark_start: 12.5,
   mark_end: 44.25,
@@ -163,6 +164,9 @@ describe("GET /api/levels", () => {
         id: "k3m9x2p7qw4t",
         title: "Clair de lune",
         subtitle: "Debussy",
+        // Carried by the listing because the level's box is opened straight
+        // from the card, and prose the author wrote is not the answer.
+        instructions: "The opening phrase.",
         videoId: "dQw4w9WgXcQ",
         markStart: 12.5,
         markEnd: 44.25,
@@ -276,7 +280,9 @@ describe("POST /api/levels", () => {
 
   it("refuses details the panel would have refused too", async () => {
     for (const details of [
-      { title: "a".repeat(101) },
+      // Read off the limit rather than restated, so raising the cap does not
+      // quietly turn this into a test of nothing.
+      { title: "a".repeat(LIMITS.title.max + 1) },
       { title: "   " },
       { title: "Clair\nde lune" },
       { title: 42 },
@@ -359,7 +365,7 @@ describe("POST /api/levels", () => {
   });
 
   it("refuses a body too large to be a transcription", async () => {
-    const huge = { ...submission(), description: "a".repeat(200_000) };
+    const huge = { ...submission(), instructions: "a".repeat(200_000) };
 
     const { response, asked } = await send("/api/levels", "POST", huge);
 
@@ -389,7 +395,7 @@ describe("GET /api/levels/:id/source", () => {
     assert.equal(response.status, 200);
     const record = (await response.json()) as Record<string, unknown>;
     assert.deepEqual(record.melody, melody);
-    assert.equal(record.description, "The opening phrase.");
+    assert.equal(record.instructions, "The opening phrase.");
   });
 
   it("turns away an id that could not be one, without asking the database", async () => {

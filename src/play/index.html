@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- IMPORTANT: Set the character set to UTF-8. Otherwise you may get weird symbols on the score. -->
+    <meta charset="utf-8" />
+    <!-- The page is a set of controls, not a document: a double tap is a second
+         click on a button, and a drag past the edge is not a request to reload. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>Playing a level · Daily Transcribe</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <nav class="site-nav">
+      <a class="site-name" href="/">Daily Transcribe</a>
+      <div class="site-links"><a href="/">Levels</a></div>
+    </nav>
+
+    <!-- The same band the editor uses, holding a different bar. Hidden until
+         the level has been fetched, so a page that cannot open one shows the
+         reason rather than an empty set of controls. -->
+    <div id="toolbar" hidden>
+      <div id="toolbar-inner">
+        <div id="play-bar"></div>
+        <div id="toolbar-body">
+          <!-- The rhythm belongs to the level, so none of the controls that
+               write one are here. These three are what the editor empties on
+               its way into pitch-only mode, and they exist so that it has
+               somewhere to find nothing. -->
+          <div id="controls" hidden>
+            <div id="durations"></div>
+            <div id="tuplets"></div>
+            <div id="actions"></div>
+          </div>
+          <div id="playback">
+            <div id="playback-controls"></div>
+            <div id="video"></div>
+          </div>
+        </div>
+        <p id="status" role="status"></p>
+      </div>
+    </div>
+
+    <main>
+      <!-- Filled only when there is no puzzle to show. -->
+      <div id="trouble"></div>
+
+      <div id="workspace">
+        <!-- The score has every one of its children replaced on each redraw,
+             so the marker that follows the video is a neighbour of it rather
+             than a child, and this is what holds the two together. -->
+        <div id="score-area">
+          <div id="score"></div>
+        </div>
+      </div>
+    </main>
+
+    <div id="keyboard-area" hidden>
+      <div id="keyboard"></div>
+      <div id="pitch-actions"></div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

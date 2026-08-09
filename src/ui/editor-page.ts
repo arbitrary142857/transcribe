@@ -23,7 +23,7 @@ import { createSignatureBar, type SignatureBar } from "./signature-bar.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { mountVideoPanel } from "./video-panel.js";
 
-export type AppElements = EditorElements & {
+export type EditorPageElements = EditorElements & {
   signatures: HTMLElement;
   setup: HTMLElement;
   workspace: HTMLElement;
@@ -38,19 +38,16 @@ export type AppElements = EditorElements & {
  * How the page was arrived at.
  *
  * A fresh transcription starts at the setup page; one opened from the level
- * list starts already written, with nothing left to settle. The mode rides
- * along unused for now — the switch in the bar still decides it — but it is
- * where the mode will come from once opening a level to play it and opening it
- * to edit it become two different doors.
+ * list starts already written, with nothing left to settle.
+ *
+ * There was a `mode` here once, waiting for the day playing a level and
+ * editing one became two different doors. They now are — `/play` is its own
+ * page with its own controller — so the field went with the guess it was
+ * standing in for.
  */
 export type Entry =
-  | { kind: "new"; mode?: "melody" | "pitches" }
-  | {
-      kind: "edit";
-      id: string;
-      record: TranscriptionRecord;
-      mode?: "melody" | "pitches";
-    };
+  | { kind: "new" }
+  | { kind: "edit"; id: string; record: TranscriptionRecord };
 
 /** What the melody was written down from, kept because saving needs it. */
 type Source = {
@@ -66,7 +63,7 @@ const OPENING_KEY = new KeySignature(new Pitch("C", 0, 4), "major");
 const EMPTY_DETAILS: TranscriptionDetails = {
   title: "",
   subtitle: "",
-  description: "",
+  instructions: "",
 };
 
 /**
@@ -84,10 +81,13 @@ const EMPTY_DETAILS: TranscriptionDetails = {
  * setup page would have settled is already settled, so `mount()` finds a melody
  * waiting and the setup page is never built at all.
  */
-export function createApp(elements: AppElements, entry: Entry = { kind: "new" }): void {
+export function createEditorPage(
+  elements: EditorPageElements,
+  entry: Entry = { kind: "new" },
+): void {
   let melody: Melody | undefined;
   let clef: Clef = "treble";
-  let pitchOnly = entry.mode === "pitches";
+  let pitchOnly = false;
   let editor: Editor | undefined;
   let history: History | undefined;
   let playback: Playback | undefined;
@@ -197,7 +197,7 @@ export function createApp(elements: AppElements, entry: Entry = { kind: "new" })
     details = {
       title: record.title,
       subtitle: record.subtitle ?? "",
-      description: record.description ?? "",
+      instructions: record.instructions ?? "",
     };
     markSaved();
     mount();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { keyName, levelFacts, levelState } from "../dist/ui/level-card.js";
+import { keyName, levelStats, levelState } from "../dist/ui/level-card.js";
 import type { TranscriptionSummary } from "../dist/shared/transcription.js";
 
 /** A level as the listing route hands one over. */
@@ -21,6 +21,7 @@ const level = (
   keyMode: "major",
   noteCount: 12,
   unpitchedCount: 0,
+  instructions: undefined,
   createdAt: 1_754_500_000_000,
   ...over,
 });
@@ -58,12 +59,20 @@ describe("keyName()", () => {
   });
 });
 
-describe("levelFacts()", () => {
-  it("says what it is in, how much there is, and how long it runs", () => {
-    assert.equal(
-      levelFacts(level()),
-      "C major · 4/4 · 4 bars · 120 BPM · 12 notes · 8s",
-    );
+describe("levelStats()", () => {
+  /** The stats by name, since the modal places each in its own box. */
+  const statsOf = (level: TranscriptionSummary) =>
+    Object.fromEntries(levelStats(level).map((stat) => [stat.kind, stat]));
+
+  it("gives each fact a number and a unit to print beside it", () => {
+    // Split rather than joined, because the box sets the number large and the
+    // unit small: "4" and "bars" are two different sizes of the same fact.
+    assert.deepEqual(levelStats(level()), [
+      { kind: "bars", label: "Bars", value: "4", unit: "bars" },
+      { kind: "notes", label: "Notes", value: "12", unit: "notes" },
+      { kind: "tempo", label: "Tempo", value: "120", unit: "BPM" },
+      { kind: "length", label: "Length", value: "8", unit: "sec" },
+    ]);
   });
 
   it("counts the beat a player feels, so 6/8 gets two to the bar", () => {
@@ -75,22 +84,38 @@ describe("levelFacts()", () => {
       markEnd: 2,
     });
 
-    assert.match(levelFacts(compound), /6\/8 · 2 bars · 120 BPM/);
+    assert.equal(statsOf(compound).tempo!.value, "120");
   });
 
   it("is unmoved by where in the video the section was taken from", () => {
-    assert.match(levelFacts(level({ markStart: 630, markEnd: 638 })), /120 BPM/);
+    assert.equal(statsOf(level({ markStart: 630, markEnd: 638 })).tempo!.value, "120");
+  });
+
+  it("rounds the length to the second, as a box is read at a glance", () => {
+    assert.equal(statsOf(level({ markStart: 0, markEnd: 31.6 })).length!.value, "32");
+    assert.equal(statsOf(level({ markStart: 0, markEnd: 31.4 })).length!.value, "31");
   });
 
   it("drops the s from a single bar and a single note", () => {
     const one = level({ measures: 1, noteCount: 1, markEnd: 2 });
 
-    assert.match(levelFacts(one), /· 1 bar ·/);
-    assert.match(levelFacts(one), /· 1 note ·/);
+    assert.equal(statsOf(one).bars!.unit, "bar");
+    assert.equal(statsOf(one).notes!.unit, "note");
   });
 
-  it("rounds the length to the second, as a card is read at a glance", () => {
-    assert.match(levelFacts(level({ markStart: 0, markEnd: 31.6 })), /· 32s$/);
-    assert.match(levelFacts(level({ markStart: 0, markEnd: 31.4 })), /· 31s$/);
+  it("leaves the tempo out when the marks describe none", () => {
+    // The database will not hold such a row, so this stands against a level no
+    // route can currently write rather than against one anybody will see.
+    const untimed = level({ markStart: 5, markEnd: 5 });
+
+    assert.equal("tempo" in statsOf(untimed), false);
+  });
+
+  it("says nothing about the key or the meter, which the box draws", () => {
+    // Printing them here as well would be the same fact twice in one box.
+    assert.deepEqual(
+      levelStats(level()).map((stat) => stat.kind),
+      ["bars", "notes", "tempo", "length"],
+    );
   });
 });

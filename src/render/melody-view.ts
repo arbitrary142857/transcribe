@@ -19,6 +19,15 @@ export type MelodyView = {
   moveSelection(direction: -1 | 1): void;
   /** Redraw from the melody's current state, keeping the selection. */
   refresh(): void;
+  /**
+   * Stop repainting on hover for `ms`.
+   *
+   * Hover painting redraws the whole score, which replaces every element in
+   * it — including any an animation is running on. Anything playing an effect
+   * over the notes asks for this first, or a twitch of the mouse cuts the
+   * effect off partway.
+   */
+  holdStill(ms: number): void;
   onSelectionChange(listener: (anchor: number | undefined) => void): void;
   destroy(): void;
 };
@@ -75,6 +84,16 @@ export function createMelodyView(
      * added on the way out would miss it.
      */
     onRender?: (rendered: MelodyRenderResult) => void;
+    /**
+     * The verdicts to draw, asked for afresh at every redraw.
+     *
+     * A function rather than two sets, because the sets in `options` are read
+     * once when the view is built and a puzzle's verdicts arrive later — a
+     * check answered after the score was drawn would otherwise never show.
+     * Everything else here is settled before the first draw and so is passed
+     * by value.
+     */
+    decorate?: () => Pick<RenderMelodyOptions, "correct" | "wrong">;
   } = {},
 ): MelodyView {
   const elementId = options.elementId ?? "output";
@@ -140,6 +159,7 @@ export function createMelodyView(
     clampToMelody();
     rendered = renderMelody(melody, {
       ...options,
+      ...options.decorate?.(),
       elementId,
       selected: only(anchor),
       hovered: only(hoverAnchor),
@@ -182,10 +202,13 @@ export function createMelodyView(
     select(hit === anchor ? undefined : hit);
   }
 
+  /** Until when hover repaints are held off. See `holdStill`. */
+  let stillUntil = 0;
+
   function onMouseMove(event: MouseEvent): void {
     const hit = noteAt(event);
     element!.style.cursor = hit === undefined ? "" : "pointer";
-    if (hit === hoverAnchor) {
+    if (hit === hoverAnchor || performance.now() < stillUntil) {
       return;
     }
     hoverAnchor = hit;
@@ -265,6 +288,9 @@ export function createMelodyView(
     select,
     moveSelection,
     refresh: draw,
+    holdStill(ms) {
+      stillUntil = performance.now() + ms;
+    },
     onSelectionChange(listener) {
       listeners.push(listener);
     },

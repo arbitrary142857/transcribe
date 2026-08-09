@@ -1,6 +1,7 @@
 import {
   convertToRestAt,
   divideIntoTuplet,
+  pitchNudgeFrom,
   roomAt,
   tieForward,
   undivideTuplet,
@@ -14,11 +15,15 @@ import { Rest, UnpitchedNote } from "../music/note-event.js";
 import type { Pitch } from "../music/pitch.js";
 import { spellForMelodyEvent, spellMidi, spellingContext } from "../music/spelling.js";
 import { createMelodyView, type MelodyView } from "../render/melody-view.js";
-import type { MelodyRenderResult } from "../render/render-melody.js";
+import type {
+  MelodyRenderResult,
+  RenderMelodyOptions,
+} from "../render/render-melody.js";
 import { createDurationGrid } from "./duration-grid.js";
 import { restIcon, tieIcon, unpitchedIcon, untieIcon } from "./icons.js";
 import { createTupletMenu } from "./tuplet-menu.js";
 import { createPianoKeyboard, rangeForClef } from "./piano-keyboard.js";
+import { createTooltip } from "./tooltip.js";
 import { isTypingTarget } from "./typing-guard.js";
 
 export type EditorElements = {
@@ -36,6 +41,8 @@ export type Editor = {
   readonly melody: Melody;
   /** The selected event right now, if one is selected. */
   selection(): number | undefined;
+  /** Hold off hover repaints, so an effect over the notes is not cut short. */
+  holdStill(ms: number): void;
   destroy(): void;
 };
 
@@ -80,6 +87,20 @@ export function createEditor(
      * either. An index past the melody's end is clamped by the view.
      */
     initialSelection?: number;
+    /**
+     * Events whose pitch may not be changed, asked for afresh each time.
+     *
+     * Empty in the editor, where nothing is settled. On the play page it holds
+     * the note the puzzle gave away and every note a check has confirmed: both
+     * were found rather than guessed, and losing one to a stray click is a loss
+     * no amount of writing over it recovers.
+     *
+     * Selection is deliberately not affected — a found note can still be
+     * clicked, to hear it or to measure the next one against it.
+     */
+    locked?: () => ReadonlySet<number>;
+    /** Verdict colouring, handed straight to the view. */
+    decorate?: () => Pick<RenderMelodyOptions, "correct" | "wrong">;
   } = {},
 ): Editor {
   const clef = options.clef ?? "treble";
@@ -90,7 +111,22 @@ export function createEditor(
     elementId: elements.score.id,
     clef,
     onRender: options.onRender,
+    decorate: options.decorate,
   });
+
+  /** Whether this event's pitch is settled and not to be written over. */
+  const isLocked = (index: number): boolean =>
+    options.locked?.().has(index) ?? false;
+
+  /**
+   * Where a refused press explains itself.
+   *
+   * Beside the pointer rather than in `elements.status`: the piano is at the
+   * bottom of the window and that line is at the top, and text appearing there
+   * grew the whole toolbar. `status` is left for the standing facts that are
+   * true whether or not anybody is pointing at anything.
+   */
+  const tooltip = createTooltip();
 
   let explanation: string | undefined;
 
@@ -162,13 +198,35 @@ export function createEditor(
 
   let transient: string | undefined;
 
+  /**
+   * Both of these are answers to something the pointer just did — a control
+   * refusing, or a greyed cell explaining itself on hover — so both go beside
+   * the pointer rather than into a line under the toolbar, where they were
+   * nowhere near the thing pressed and made the whole bar grow while they
+   * stood. The explanation wins, because it is about whatever is under the
+   * pointer right now.
+   */
   function showStatus(): void {
-    elements.status.textContent = explanation ?? transient ?? "";
+    tooltip.say(explanation ?? transient);
   }
 
   function report(message: string | undefined): void {
     transient = message;
     showStatus();
+  }
+
+  /**
+   * Say why an edit was refused, and keep the original for whoever is debugging.
+   *
+   * The operations throw sentences written to be read by the person editing —
+   * "That length does not fit before the next note or the barline" — so the
+   * message is shown as it stands rather than replaced by something vaguer.
+   * The two throws that still name an array index are bounds checks that only
+   * a bug reaches, which is exactly what the console line is for.
+   */
+  function refuse(error: unknown): void {
+    console.error(error);
+    report(error instanceof Error ? error.message : String(error));
   }
 
   // ---- editing ---------------------------------------------------------
@@ -193,7 +251,7 @@ export function createEditor(
     try {
       landed = edit(anchor);
     } catch (error) {
-      report(error instanceof Error ? error.message : String(error));
+      refuse(error);
       return;
     }
     report(undefined);
@@ -225,11 +283,24 @@ export function createEditor(
         anchor === undefined || melody.getEvent(anchor) instanceof Rest;
     }
 
+    // Greyed rather than left to refuse when pressed: on the play page most of
+    // the score becomes locked as it is solved, and a control that errors on
+    // most of its presses is worse than one that plainly cannot be pressed.
+    clearButton.disabled =
+      anchor === undefined ||
+      melody.getEvent(anchor) instanceof Rest ||
+      isLocked(anchor);
+
     const event = anchor === undefined ? undefined : melody.getEvent(anchor);
     keyboard.highlight(
       event && !(event instanceof Rest) && !(event instanceof UnpitchedNote)
         ? event.pitch.toMidi()
         : undefined,
+    );
+    // Nothing a piano key could do here, so the piano says so rather than
+    // waiting to refuse. A rest is the same case: it has no pitch to set.
+    keyboard.setEnabled(
+      anchor !== undefined && !(event instanceof Rest) && !isLocked(anchor),
     );
     showStatus();
   }
@@ -254,7 +325,7 @@ export function createEditor(
     try {
       written = writeAt(melody, anchor, duration, "note");
     } catch (error) {
-      report(error instanceof Error ? error.message : String(error));
+      refuse(error);
       return;
     }
 
@@ -262,8 +333,15 @@ export function createEditor(
     refresh(wasRest ? (after(melody, written) ?? written) : written);
   }
 
-  /** Give the selected note a pitch, spelled to suit the key and the bar. */
-  function pitchAt(midi: number): void {
+  /**
+   * Give the selected note a pitch, spelled to suit the key and the bar.
+   *
+   * `advance` is what makes the piano one click per note: filling a blank moves
+   * on to the next blank, so a whole melody can be pitched without going back
+   * to the stave. The arrow keys turn it off — a nudge that moved the selection
+   * would mean the second press of Up raised a different note than the first.
+   */
+  function pitchAt(midi: number, { advance = true } = {}): void {
     const anchor = view.getAnchor();
     if (anchor === undefined) {
       report("Select a note first.");
@@ -274,6 +352,10 @@ export function createEditor(
       report("A rest has no pitch — write a duration over it to make it a note.");
       return;
     }
+    if (isLocked(anchor)) {
+      report("That note is already found, and stays as it is.");
+      return;
+    }
     if (midi < range.lowest || midi > range.highest) {
       return;
     }
@@ -282,17 +364,44 @@ export function createEditor(
     melody.setPitch(anchor, spellForMelodyEvent(melody, anchor, midi));
 
     report(undefined);
-    // Filling in a pitch moves on to the next note still missing one, so a whole
-    // melody can be pitched without ever going back to the stave.
     refresh(
-      wasUnpitched ? (nextUnpitched(melody, anchor + 1) ?? anchor) : anchor,
+      wasUnpitched && advance
+        ? (nextUnpitched(melody, anchor + 1) ?? anchor)
+        : anchor,
     );
+  }
+
+  /**
+   * Move the selected note by a semitone, and say whether anything happened.
+   *
+   * Where the step counts from is `pitchNudgeFrom`'s business: its own pitch if
+   * it has one, otherwise the nearest pitched note before it. The answer is
+   * false for a rest and for nothing selected, so the key falls through to the
+   * page and still scrolls.
+   *
+   * A locked note and a pitch outside the clef's range are both refused by
+   * `pitchAt`, so neither is checked twice here.
+   */
+  function nudgePitch(step: 1 | -1): boolean {
+    const anchor = view.getAnchor();
+    if (anchor === undefined) return false;
+
+    const middle = Math.round((range.lowest + range.highest) / 2);
+    const from = pitchNudgeFrom(melody, anchor, middle);
+    if (from === undefined) return false;
+
+    pitchAt(from + step, { advance: false });
+    return true;
   }
 
   function clearPitchAt(): void {
     const anchor = view.getAnchor();
     if (anchor === undefined || melody.getEvent(anchor) instanceof Rest) {
       report("Select a note to take its pitch off.");
+      return;
+    }
+    if (isLocked(anchor)) {
+      report("That note is already found, and stays as it is.");
       return;
     }
     melody.clearPitch(anchor);
@@ -341,7 +450,7 @@ export function createEditor(
     try {
       tieForward(melody, anchor);
     } catch (error) {
-      report(error instanceof Error ? error.message : String(error));
+      refuse(error);
       return;
     }
     report(undefined);
@@ -407,7 +516,7 @@ export function createEditor(
       "\u232B",
     );
   }
-  actionButton(
+  const clearButton = actionButton(
     elements.pitchActions,
     unpitchedIcon(),
     "Clear pitch",
@@ -429,6 +538,12 @@ export function createEditor(
       case "ArrowLeft":
       case "ArrowRight":
         view.moveSelection(event.key === "ArrowRight" ? 1 : -1);
+        break;
+      case "ArrowUp":
+      case "ArrowDown":
+        // Left and right walk the melody; up and down move the note. Nothing
+        // is claimed when there is no pitch to move, so the page still scrolls.
+        if (!nudgePitch(event.key === "ArrowUp" ? 1 : -1)) return;
         break;
       case "Backspace":
       case "Delete":
@@ -475,8 +590,10 @@ export function createEditor(
   return {
     melody,
     selection: () => view.getAnchor(),
+    holdStill: (ms) => view.holdStill(ms),
     destroy() {
       window.removeEventListener("keydown", onKeyDown);
+      tooltip.destroy();
       view.destroy();
     },
   };

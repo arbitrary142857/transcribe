@@ -125,3 +125,25 @@ export function embedUrl(videoId: string, origin?: string): string {
   }
   return url.toString();
 }
+
+/**
+ * The still image YouTube keeps for a video.
+ *
+ * `mqdefault` is 320×180 — exactly 16:9, so a card can reserve its box before
+ * the picture arrives and nothing shifts. `maxresdefault` is sharper but does
+ * not exist for every video, and `hqdefault` is 4:3 with the picture
+ * letterboxed inside it, which would need cropping back out.
+ *
+ * Worth being honest about: this is a direct read of YouTube's image host, not
+ * the Data API, which is the route their API terms actually sanction for
+ * thumbnails. It is what everyone does and it has never been enforced against,
+ * but it is not the sanctioned path. The player itself remains their own embed
+ * under the rules `video-panel.ts` sets out. If this ever needs to go, it is
+ * one call site: the picture on a level card, and nothing else.
+ */
+export function thumbnailUrl(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+}
+
+/** The size that image comes at, for reserving its box. */
+export const THUMBNAIL_SIZE = { width: 320, height: 180 } as const;

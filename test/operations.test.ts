@@ -4,6 +4,7 @@ import {
   availableSpaceAt,
   convertToRestAt,
   emptyMelody,
+  pitchNudgeFrom,
   type Room,
   roomAt,
   tieForward,
@@ -13,7 +14,12 @@ import { Duration, NoteValue } from "../dist/music/duration.js";
 import { KeySignature } from "../dist/music/key-signature.js";
 import { splitIntoMeasures } from "../dist/music/measure.js";
 import { Melody } from "../dist/music/melody.js";
-import { Note, type NoteEvent, Rest } from "../dist/music/note-event.js";
+import {
+  Note,
+  type NoteEvent,
+  Rest,
+  UnpitchedNote,
+} from "../dist/music/note-event.js";
 import { Pitch } from "../dist/music/pitch.js";
 import { normalize } from "../dist/editor/normalize.js";
 
@@ -230,7 +236,12 @@ describe("writeAt()", () => {
     assert.throws(
       () => writeAt(melody, 0, HALF, "note"),
       (error: unknown) =>
-        error instanceof RangeError && /room/.test(error.message),
+        error instanceof RangeError &&
+        /does not fit/.test(error.message) &&
+        // The editor puts this in front of whoever is writing the music, word
+        // for word, so it has to say what they tried rather than where in an
+        // array it happened.
+        !/index/.test(error.message),
     );
   });
 
@@ -417,5 +428,72 @@ describe("Melody canTie()", () => {
     const melody = editable([new Note(C4, QUARTER), new Note(D4, QUARTER)]);
 
     assert.equal(melody.canTie(0), false);
+  });
+});
+
+describe("pitchNudgeFrom()", () => {
+  /** Somewhere obviously not near any note in these melodies. */
+  const FALLBACK = 71;
+
+  it("starts a pitched note from its own pitch", () => {
+    const melody = editable([new Note(D4, QUARTER)]);
+
+    assert.equal(pitchNudgeFrom(melody, 0, FALLBACK), D4.toMidi());
+  });
+
+  it("starts an unpitched note from the note before it", () => {
+    // Melodies mostly move by step, so the neighbour is the useful guess: one
+    // press of Up lands a semitone above whatever was last written.
+    const melody = editable([
+      new Note(D4, QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    assert.equal(pitchNudgeFrom(melody, 1, FALLBACK), D4.toMidi());
+  });
+
+  it("looks past rests and other blanks to find one", () => {
+    const melody = editable([
+      new Note(D4, QUARTER),
+      new UnpitchedNote(QUARTER),
+      new Rest(QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    assert.equal(pitchNudgeFrom(melody, 3, FALLBACK), D4.toMidi());
+  });
+
+  it("takes the nearest one, not the first", () => {
+    const melody = editable([
+      new Note(C4, QUARTER),
+      new Note(D4, QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    assert.equal(pitchNudgeFrom(melody, 2, FALLBACK), D4.toMidi());
+  });
+
+  it("falls back when nothing pitched comes before it", () => {
+    const melody = editable([
+      new Rest(QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+
+    assert.equal(pitchNudgeFrom(melody, 1, FALLBACK), FALLBACK);
+  });
+
+  it("never looks forward, so the answer does not depend on what is ahead", () => {
+    const melody = editable([
+      new UnpitchedNote(QUARTER),
+      new Note(D4, QUARTER),
+    ]);
+
+    assert.equal(pitchNudgeFrom(melody, 0, FALLBACK), FALLBACK);
+  });
+
+  it("gives a rest nothing, because a rest has no pitch to move", () => {
+    const melody = editable([new Note(D4, QUARTER), new Rest(QUARTER)]);
+
+    assert.equal(pitchNudgeFrom(melody, 1, FALLBACK), undefined);
   });
 });

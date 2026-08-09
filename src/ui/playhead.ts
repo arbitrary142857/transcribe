@@ -1,4 +1,5 @@
 import type { MelodyRenderResult } from "../render/render-melody.js";
+import { measureScore, NO_SCORE, type ScoreMetrics } from "./score-overlay.js";
 
 /**
  * The marker showing which note is sounding.
@@ -32,32 +33,14 @@ export function createPlayhead(container: HTMLElement): Playhead {
   container.append(bar);
 
   let rendered: MelodyRenderResult | undefined;
-  /** The score's own units per css pixel, and where its top-left sits. */
-  let scale = 1;
-  let offsetX = 0;
-  let offsetY = 0;
-  let showing: number | undefined;
-
   /**
-   * Re-measure the drawn score.
-   *
-   * Done once per redraw and never per frame: `getBoundingClientRect` forces the
-   * browser to settle the layout, and asking for that sixty times a second
-   * alongside the score's own hover redraws is how a page starts to stutter.
+   * Where the drawn score sits, re-measured once per redraw and never per
+   * frame: `getBoundingClientRect` forces the browser to settle the layout,
+   * and asking for that sixty times a second alongside the score's own hover
+   * redraws is how a page starts to stutter.
    */
-  function measure(): void {
-    if (!rendered) return;
-    const svg = rendered.svg;
-    const box = svg.getBoundingClientRect();
-    const width = svg.viewBox.baseVal.width || box.width;
-    scale = width === 0 ? 1 : box.width / width;
-
-    // The svg does not begin at the container's corner — the score is padded
-    // away from the controls above it — so its own offset has to be taken.
-    const outer = container.getBoundingClientRect();
-    offsetX = box.left - outer.left;
-    offsetY = box.top - outer.top;
-  }
+  let metrics: ScoreMetrics = NO_SCORE;
+  let showing: number | undefined;
 
   function place(): void {
     if (!rendered || showing === undefined) {
@@ -71,6 +54,7 @@ export function createPlayhead(container: HTMLElement): Playhead {
       return;
     }
 
+    const { scale, offsetX, offsetY } = metrics;
     const height = (line.bottom - line.top) * scale;
     bar.style.width = `${WIDTH * scale}px`;
     bar.style.height = `${height}px`;
@@ -89,7 +73,7 @@ export function createPlayhead(container: HTMLElement): Playhead {
 
     onScore(next) {
       rendered = next;
-      measure();
+      metrics = measureScore(container, next.svg);
       place();
     },
 

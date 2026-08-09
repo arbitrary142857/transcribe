@@ -383,3 +383,31 @@ export function pencilIcon(): string {
       `fill="currentColor" />`,
   );
 }
+
+/**
+ * A stretch of staff cut into bars, for "how many bars".
+ *
+ * Two staff lines rather than five: at this size five turn into a grey block,
+ * and what the icon has to say is the barlines dividing them.
+ */
+export function barsIcon(): string {
+  return svg(
+    `<line x1="2" y1="8" x2="22" y2="8" stroke="currentColor" stroke-width="0.9" opacity="0.5" />` +
+      `<line x1="2" y1="16" x2="22" y2="16" stroke="currentColor" stroke-width="0.9" opacity="0.5" />` +
+      [2, 9, 16, 22]
+        .map(
+          (x) =>
+            `<line x1="${x}" y1="7.5" x2="${x}" y2="16.5" stroke="currentColor" stroke-width="${STROKE}" stroke-linecap="round" />`,
+        )
+        .join(""),
+  );
+}
+
+/** A clock, for how long the excerpt runs. */
+export function lengthIcon(): string {
+  return svg(
+    `<circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="${STROKE}" />` +
+      `<path d="M12 7.2 L12 12 L15.4 14.2" fill="none" stroke="currentColor" ` +
+      `stroke-width="${STROKE}" stroke-linecap="round" stroke-linejoin="round" />`,
+  );
+}

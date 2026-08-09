@@ -15,9 +15,21 @@
 CREATE TABLE transcriptions (
   id           TEXT    PRIMARY KEY,
 
-  title        TEXT    NOT NULL CHECK (length(title) BETWEEN 1 AND 100),
-  subtitle     TEXT             CHECK (subtitle    IS NULL OR length(subtitle)    <= 150),
-  description  TEXT             CHECK (description IS NULL OR length(description) <= 2000),
+  title        TEXT    NOT NULL CHECK (length(title) BETWEEN 1 AND 128),
+  subtitle     TEXT             CHECK (subtitle IS NULL OR length(subtitle) <= 128),
+
+  -- What the author wants known before the level is played: "transcribe the
+  -- flute part", "ignore the grace notes", "listen to the bass for a clue".
+  -- Shown on the level's modal and behind the information button while playing.
+  --
+  -- 600 rather than a few thousand: instructions like those run one or two
+  -- lines apiece, so this holds about eight of them, and it fills the modal at
+  -- a readable measure without becoming something to scroll. Newlines are
+  -- allowed, because they are how those lines separate.
+  --
+  -- `length()` counts characters here rather than bytes, which is what lets
+  -- LIMITS in shared/transcription.ts mirror these numbers exactly.
+  instructions TEXT             CHECK (instructions IS NULL OR length(instructions) <= 600),
 
   -- The 11 characters YouTube names a video by; the rest of a pasted link is
   -- thrown away long before here, by readYouTubeLink().

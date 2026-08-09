@@ -17,6 +17,8 @@ import {
   LIMITS,
   type TranscriptionDetails,
 } from "../shared/transcription.js";
+import { createDisclosure } from "./disclosure.js";
+import { limitTyping } from "./text-entry.js";
 
 export type DetailsPanel = {
   /** The toggle and its panel, to be put in the bar. */
@@ -69,9 +71,11 @@ function createField(options: FieldOptions, onInput: () => void): Field {
   input.autocomplete = "off";
   input.spellcheck = true;
   input.placeholder = options.hint;
-  // Deliberately no maxlength: it counts UTF-16 units while every rule here
-  // counts characters, so a title of a hundred family emoji would be cut at
-  // sixty-two. Over-typing is allowed, shown, and refused by the button.
+  // No `maxlength`, still: it counts UTF-16 units while every rule here counts
+  // characters, so `maxlength="128"` would cut a title of family emoji off at
+  // sixty-two of them. `limitTyping` does the same job counting the same way
+  // the database does, so the box, the counter and the CHECK constraint agree.
+  limitTyping(input, () => options.max);
   if (options.required) {
     input.setAttribute("aria-required", "true");
   }
@@ -142,7 +146,7 @@ export function createDetailsPanel(
     onChange({
       title: title.input.value,
       subtitle: subtitle.input.value,
-      description: description.input.value,
+      instructions: instructions.input.value,
     });
 
   const title = createField(
@@ -158,33 +162,34 @@ export function createDetailsPanel(
     { label: "Subtitle", hint: "Debussy", max: LIMITS.subtitle.max },
     report,
   );
-  const description = createField(
+  const instructions = createField(
     {
-      label: "Description",
+      label: "Instructions",
       hint: "Anything worth knowing before playing it.",
-      max: LIMITS.description.max,
+      max: LIMITS.instructions.max,
       lines: 4,
     },
     report,
   );
 
-  panel.append(title.row, subtitle.row, description.row);
+  panel.append(title.row, subtitle.row, instructions.row);
 
-  let open = false;
-  const setOpen = (next: boolean) => {
-    open = next;
-    panel.hidden = !open;
-    toggle.setAttribute("aria-expanded", String(open));
-    toggle.classList.toggle("is-on", open);
-  };
+  const disclosure = createDisclosure({
+    root: element,
+    onChange(open) {
+      panel.hidden = !open;
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.classList.toggle("is-on", open);
+    },
+  });
 
-  toggle.addEventListener("click", () => setOpen(!open));
+  toggle.addEventListener("click", () => disclosure.toggle());
   // Escape closes, since a panel of text boxes holds attention in a way the
   // key chooser does not; nothing is lost by closing, because every keystroke
   // has already been reported.
   panel.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
-      setOpen(false);
+      disclosure.close();
       toggle.focus();
       event.stopPropagation();
     }
@@ -197,7 +202,7 @@ export function createDetailsPanel(
     update(details) {
       title.show(details.title);
       subtitle.show(details.subtitle ?? "");
-      description.show(details.description ?? "");
+      instructions.show(details.instructions ?? "");
 
       const named = details.title.trim() !== "";
       value.textContent = named ? details.title.trim() : "Untitled";
@@ -206,7 +211,7 @@ export function createDetailsPanel(
       value.classList.toggle("is-untitled", !named);
     },
     focusTitle() {
-      setOpen(true);
+      disclosure.open();
       title.input.focus();
     },
   };

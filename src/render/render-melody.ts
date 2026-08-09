@@ -117,6 +117,16 @@ export type RenderMelodyOptions = {
    * last note. Drawn faintly, so the page shows where writing has reached.
    */
   ghost?: ReadonlySet<number>;
+  /**
+   * Melody indices a puzzle has marked right, and marked wrong.
+   *
+   * Both are empty everywhere but the play page: the editor has nothing to be
+   * right or wrong about. A tied run is one sound and gets one verdict, so the
+   * caller puts every index of the run in the set rather than only its head —
+   * the same thing the tie-colouring rule below is checking for.
+   */
+  correct?: ReadonlySet<number>;
+  wrong?: ReadonlySet<number>;
 };
 
 /** A note's clickable area: its notehead and stem, padded. */
@@ -226,6 +236,8 @@ export function renderMelody(
     selected = new Set<number>(),
     hovered = new Set<number>(),
     ghost = new Set<number>(),
+    correct = new Set<number>(),
+    wrong = new Set<number>(),
   } = options;
 
   const element = document.getElementById(elementId);
@@ -486,17 +498,30 @@ export function renderMelody(
 
   // Styling has to happen before draw(): Factory.draw() routes elements through
   // drawWithStyle(), which applies each element's own style to the context.
-  const selectedStyle = asStyle(cssColor("--note-selected", "#b4432c"));
-  const hoveredStyle = asStyle(cssColor("--note-hovered", "#c99a86"));
   const placeholderStyle = asStyle(cssColor("--note-placeholder", "#9a9086"));
   const ghostStyle = asStyle(cssColor("--note-ghost", "#cfc8bd"));
+  const correctStyle = asStyle(cssColor("--note-correct", "#1c7f3c"));
+  const wrongStyle = asStyle(cssColor("--note-wrong", "#b8770a"));
 
-  // Selection wins over hover, so pointing at an already-selected note leaves
-  // it looking exactly as it did. Both win over the standing colours below,
-  // which say what an event *is* rather than what the pointer is doing.
+  /**
+   * What a note's colour says.
+   *
+   * Only what the note *is* — found, not found, waiting for a pitch, not music
+   * yet. Where the pointer and the selection are is said by the halo instead,
+   * drawn behind the note by `drawHalos` below.
+   *
+   * Those two used to be here, at the top of this list, which meant selecting
+   * a note hid whatever its colour was saying: an amber note went rust the
+   * moment you clicked it, exactly when you most wanted to know it was amber.
+   * Splitting the two channels is what lets a note be wrong and selected at
+   * once, and it is the reason the halo exists rather than merely being
+   * prettier than a recolour.
+   *
+   * Wrong is checked before found only for tidiness; no index is ever in both.
+   */
   const styleOf = (index: number): ElementStyle | undefined => {
-    if (selected.has(index)) return selectedStyle;
-    if (hovered.has(index)) return hoveredStyle;
+    if (wrong.has(index)) return wrongStyle;
+    if (correct.has(index)) return correctStyle;
     if (melody.getEvent(index) instanceof UnpitchedNote) {
       return placeholderStyle;
     }
@@ -579,7 +604,57 @@ export function renderMelody(
   svg.style.width = "100%";
   svg.style.height = "auto";
 
+  drawHalos(svg, regions, selected, hovered);
+
   return { svg, notes, regions, anchors, lines: lineBoxes };
+}
+
+/** How far the halo stands off the note's own bounds, in svg units. */
+const HALO_PADDING = 3;
+const HALO_RADIUS = 5;
+
+/**
+ * Draw the halo behind the selected note, and a fainter one under the pointer.
+ *
+ * Behind, literally: these go in as the svg's first children, so the glyph is
+ * drawn over them and nothing is obscured. That is also why this runs after
+ * `factory.draw()` — the geometry it needs is only final once the score has
+ * been laid out, and it is the same geometry `hitRegion` already worked out
+ * for click targets, so the halo covers exactly what a click would hit.
+ *
+ * Selection wins where a note is both: pointing at the note you already have
+ * selected should leave it looking as it did.
+ *
+ * A shape rather than a recolour, so that the note's own colour is left free
+ * to mean something else. See `styleOf`.
+ */
+function drawHalos(
+  svg: SVGSVGElement,
+  regions: readonly NoteHitRegion[],
+  selected: ReadonlySet<number>,
+  hovered: ReadonlySet<number>,
+): void {
+  const halos: SVGRectElement[] = [];
+
+  for (const region of regions) {
+    const isSelected = selected.has(region.melodyIndex);
+    if (!isSelected && !hovered.has(region.melodyIndex)) continue;
+
+    const halo = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    halo.setAttribute("x", String(region.x - HALO_PADDING));
+    halo.setAttribute("y", String(region.y - HALO_PADDING));
+    halo.setAttribute("width", String(region.w + HALO_PADDING * 2));
+    halo.setAttribute("height", String(region.h + HALO_PADDING * 2));
+    halo.setAttribute("rx", String(HALO_RADIUS));
+    // Classed rather than styled, so the colours live in the stylesheet with
+    // every other colour on the page.
+    halo.setAttribute("class", isSelected ? "note-halo" : "note-halo-hover");
+    halos.push(halo);
+  }
+
+  if (halos.length > 0) {
+    svg.prepend(...halos);
+  }
 }
 
 /**
@@ -593,6 +668,34 @@ export function renderMelody(
 function hitRegion(
   note: StaveNote,
 ): { x: number; y: number; w: number; h: number } | undefined {
+  // A rest is asked for its drawn box instead of being measured.
+  //
+  // Everything below works from `getNoteHeadBounds`, which for a rest reports
+  // the one staff position the glyph hangs at — so padding it by a notehead's
+  // radius described a box about a fifth of a quarter rest's real height. That
+  // made rests hard to click long before it made their halo look short.
+  //
+  // This runs after `factory.draw()`, so the glyph is on the page and can be
+  // asked how big it is. Only rests: a note's box would then swallow its
+  // accidentals, dots and ledger lines, which is exactly what the geometry
+  // below is written to leave out of a click target.
+  if (note.isRest()) {
+    const group = note.getSVGElement();
+    // Narrowed rather than cast: `getSVGElement` is declared to return the
+    // base SVGElement, and only the graphics subtype can be measured.
+    const drawn =
+      group instanceof SVGGraphicsElement ? group.getBBox() : undefined;
+    if (drawn && drawn.width > 0 && drawn.height > 0) {
+      return {
+        x: drawn.x - HIT_PADDING,
+        y: drawn.y - HIT_PADDING,
+        w: drawn.width + 2 * HIT_PADDING,
+        h: drawn.height + 2 * HIT_PADDING,
+      };
+    }
+    // A score that is not on the page yet measures as nothing; fall through.
+  }
+
   // These are the centres of the outermost noteheads, not their edges.
   const { yTop, yBottom } = note.getNoteHeadBounds();
   if (!Number.isFinite(yTop) || !Number.isFinite(yBottom)) {

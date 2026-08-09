@@ -1,16 +1,10 @@
 import { KeySignature, keyForFifths } from "../music/key-signature.js";
 import type { Mode } from "../music/types.js";
 import { renderKeyDiagram } from "../render/key-diagram.js";
+import { keyLabel } from "./key-label.js";
 
 /** How far around the circle the chooser goes in each direction. */
 const FURTHEST = 7;
-
-const ACCIDENTAL_LABEL: Record<number, string> = {
-  [-2]: "𝄫", [-1]: "♭", 0: "", 1: "♯", 2: "𝄪",
-};
-
-const keyLabel = (key: KeySignature) =>
-  `${key.tonic.letter}${ACCIDENTAL_LABEL[key.tonic.accidental] ?? ""} ${key.mode}`;
 
 export type KeyPanelOptions = {
   clef: string;

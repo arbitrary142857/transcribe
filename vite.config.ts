@@ -42,9 +42,9 @@ export default defineConfig({
   environments: {
     client: {
       build: {
-        // Each entry becomes a page: `/`, `/edit`, and the 404 the asset host
-        // reaches for when a path names no file. Vite finds only `index.html`
-        // by itself, so the other two are named.
+        // Each entry becomes a page: `/`, `/edit`, `/play`, and the 404 the
+        // asset host reaches for when a path names no file. Vite finds only
+        // `index.html` by itself, so the rest are named.
         //
         // Named under `client` rather than at the top level, and that is not
         // tidiness: the Cloudflare plugin builds the Worker as a second
@@ -54,6 +54,7 @@ export default defineConfig({
           input: {
             home: from("./src/index.html"),
             edit: from("./src/edit/index.html"),
+            play: from("./src/play/index.html"),
             notFound: from("./src/404.html"),
           },
         },

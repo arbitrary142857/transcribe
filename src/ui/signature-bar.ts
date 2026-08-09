@@ -1,14 +1,10 @@
 import type { KeySignature } from "../music/key-signature.js";
 import type { TranscriptionDetails } from "../shared/transcription.js";
+import { chip, REDO_KEY, UNDO_KEY } from "./chip.js";
 import { createDetailsPanel } from "./details-panel.js";
+import { createDisclosure } from "./disclosure.js";
+import { keyLabel } from "./key-label.js";
 import { renderKeyPanel } from "./key-panel.js";
-
-const ACCIDENTAL_LABEL: Record<number, string> = {
-  [-2]: "𝄫", [-1]: "♭", 0: "", 1: "♯", 2: "𝄪",
-};
-
-const keyLabel = (key: KeySignature) =>
-  `${key.tonic.letter}${ACCIDENTAL_LABEL[key.tonic.accidental] ?? ""} ${key.mode}`;
 
 export type SignatureBarState = {
   key: KeySignature;
@@ -37,30 +33,6 @@ export type SignatureBarHandlers = {
 export type SignatureBar = {
   update(state: SignatureBarState): void;
 };
-
-/**
- * Whether this looks like an Apple keyboard.
- *
- * Only decides which way to print the shortcut; both are listened for either
- * way, so guessing wrong costs a label rather than a feature.
- */
-const APPLE = /mac|iphone|ipad|ipod/i.test(
-  navigator.userAgent + " " + (navigator.platform ?? ""),
-);
-
-/** The modifier as its own keyboard prints it. */
-export const UNDO_KEY = APPLE ? "⌘Z" : "Ctrl+Z";
-export const REDO_KEY = APPLE ? "⇧⌘Z" : "Ctrl+Y";
-
-function chip(label: string, shortcut: string, run: () => void) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "chip";
-  button.title = `${label} (${shortcut})`;
-  button.innerHTML = `${label}<kbd class="chip-key">${shortcut}</kbd>`;
-  button.addEventListener("click", run);
-  return button;
-}
 
 /**
  * The bar above the music: what it is called, which key it is in, which way
@@ -105,27 +77,27 @@ export function createSignatureBar(
   keyPanel.className = "key-panel";
   keyPanel.hidden = true;
 
-  let keyOpen = false;
-  const setKeyOpen = (next: boolean) => {
-    keyOpen = next;
-    keyPanel.hidden = !keyOpen;
-    keyToggle.setAttribute("aria-expanded", String(keyOpen));
-    keyToggle.classList.toggle("is-on", keyOpen);
-    if (keyOpen && shown) {
+  const keyDisclosure = createDisclosure({
+    root: keyGroup,
+    onChange(open) {
+      keyPanel.hidden = !open;
+      keyToggle.setAttribute("aria-expanded", String(open));
+      keyToggle.classList.toggle("is-on", open);
+      if (!open || !shown) return;
       // Drawn on opening rather than up front: fifteen staves is real work, and
       // most sessions never change key at all.
       renderKeyPanel(keyPanel, {
         clef: shown.clef,
         current: shown.key,
         onPick: (key) => {
-          setKeyOpen(false);
+          keyDisclosure.close();
           handlers.onKey(key);
         },
       });
-    }
-  };
+    },
+  });
 
-  keyToggle.addEventListener("click", () => setKeyOpen(!keyOpen));
+  keyToggle.addEventListener("click", () => keyDisclosure.toggle());
   keyGroup.append(keyToggle, keyPanel);
 
   // ---- details ---------------------------------------------------------
@@ -166,11 +138,18 @@ export function createSignatureBar(
   submit.className = "submit-button";
   submit.addEventListener("click", handlers.onSubmit);
 
-  // Says why it cannot be pressed, in the shape the setup page's Start button
-  // already uses: the button greys and the sentence appears beside it.
+  // Says why it cannot be pressed — but only when pointed at. Standing in the
+  // bar, this sentence was permanent furniture on a page where the button is
+  // grey most of the time, so it is out of the flow now and revealed on hover.
+  //
+  // A disabled button takes neither pointer events nor focus, which is why the
+  // hover lives on the group and why this stays in the accessibility tree
+  // (opacity, not `display: none`) with the button pointing at it.
   const submitNote = document.createElement("p");
   submitNote.className = "submit-note";
+  submitNote.id = "submit-note";
   submitNote.setAttribute("role", "status");
+  submit.setAttribute("aria-describedby", submitNote.id);
 
   const submitGroup = document.createElement("div");
   submitGroup.className = "submit-group";

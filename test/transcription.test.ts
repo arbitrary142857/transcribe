@@ -5,16 +5,19 @@ import { KeySignature } from "../dist/music/key-signature.js";
 import { Melody } from "../dist/music/melody.js";
 import { Note, type NoteEvent, Rest, UnpitchedNote } from "../dist/music/note-event.js";
 import { Pitch } from "../dist/music/pitch.js";
+import { decode, encode, parseMelodyJson } from "../dist/editor/codec.js";
 import {
   cleanDetails,
   countSoundingNotes,
   countUnpitchedNotes,
   detailsProblem,
   firstSoundingNote,
+  gradeAttempt,
   ID_LENGTH,
   isTranscriptionId,
   LIMITS,
   newTranscriptionId,
+  puzzleMelodyOf,
 } from "../dist/shared/transcription.js";
 
 const C4 = new Pitch("C", 0, 4);
@@ -228,14 +231,14 @@ describe("detailsProblem()", () => {
     assert.notEqual(detailsProblem({ title: "gnp\u202Exe.exe" }), undefined);
   });
 
-  it("allows newlines in a description, which is written in paragraphs", () => {
+  it("allows newlines in instructions, which are written a line at a time", () => {
     assert.equal(
-      detailsProblem({ title: "Clair de lune", description: "One.\n\nTwo." }),
+      detailsProblem({ title: "Clair de lune", instructions: "One.\n\nTwo." }),
       undefined,
     );
-    // Everything else a description holds is still held to the same rule.
+    // Everything else instructions hold is still held to the same rule.
     assert.notEqual(
-      detailsProblem({ title: "Clair de lune", description: "One.\u0000Two." }),
+      detailsProblem({ title: "Clair de lune", instructions: "One.\u0000Two." }),
       undefined,
     );
   });
@@ -244,15 +247,16 @@ describe("detailsProblem()", () => {
     // A family emoji is 8 UTF-16 units and 5 characters. SQLite's length()
     // counts characters, so counting the other way would pass text here and
     // then fail the CHECK constraint on the way in.
-    const title = "👨‍👩‍👧".repeat(20); // 100 characters, 160 UTF-16 units
-    assert.equal(title.length, 160);
+    // 25 families is 125 characters; three letters bring it to exactly the cap.
+    const title = "👨‍👩‍👧".repeat(25) + "abc";
     assert.equal([...title].length, LIMITS.title.max);
+    assert.ok(title.length > LIMITS.title.max, "not counting UTF-16 units");
 
     assert.equal(detailsProblem({ title }), undefined);
     assert.notEqual(detailsProblem({ title: `${title}a` }), undefined);
   });
 
-  it("refuses a title past its hundred characters", () => {
+  it("refuses a title past its cap", () => {
     assert.equal(
       detailsProblem({ title: "a".repeat(LIMITS.title.max) }),
       undefined,
@@ -263,11 +267,11 @@ describe("detailsProblem()", () => {
     );
   });
 
-  it("refuses a description past its two thousand characters", () => {
+  it("refuses instructions past their cap", () => {
     assert.notEqual(
       detailsProblem({
         title: "Clair de lune",
-        description: "a".repeat(LIMITS.description.max + 1),
+        instructions: "a".repeat(LIMITS.instructions.max + 1),
       }),
       undefined,
     );
@@ -289,14 +293,14 @@ describe("cleanDetails()", () => {
     assert.deepEqual(cleanDetails({ title: "  Clair de lune  " }), {
       title: "Clair de lune",
       subtitle: undefined,
-      description: undefined,
+      instructions: undefined,
     });
   });
 
   it("drops a field that was only spaces, rather than storing emptiness", () => {
     assert.deepEqual(
-      cleanDetails({ title: "Clair de lune", subtitle: "   ", description: "" }),
-      { title: "Clair de lune", subtitle: undefined, description: undefined },
+      cleanDetails({ title: "Clair de lune", subtitle: "   ", instructions: "" }),
+      { title: "Clair de lune", subtitle: undefined, instructions: undefined },
     );
   });
 
@@ -308,5 +312,177 @@ describe("cleanDetails()", () => {
 
     assert.equal(composed, decomposed);
     assert.equal([...decomposed].length, 4);
+  });
+});
+
+describe("puzzleMelodyOf()", () => {
+  it("gives away the first note and takes the pitch off every note after it", () => {
+    const melody = melodyOf([
+      new Note(C4, QUARTER),
+      new Note(E4, QUARTER),
+      new Note(C4, QUARTER),
+    ]);
+
+    const puzzle = puzzleMelodyOf(melody);
+
+    assert.ok(puzzle.getEvent(0) instanceof Note);
+    assert.ok(puzzle.getEvent(1) instanceof UnpitchedNote);
+    assert.ok(puzzle.getEvent(2) instanceof UnpitchedNote);
+  });
+
+  it("gives away the whole tied run, so what is left still decodes", () => {
+    // Melody.tie() refuses to join a pitched note to an unpitched one. Revealing
+    // only the head of the opening run would build a melody that throws on the
+    // way back in -- which is the failure this whole function exists to avoid.
+    const melody = melodyOf(notes(4));
+    melody.tie(0);
+    melody.tie(1);
+
+    const puzzle = puzzleMelodyOf(melody);
+    const overTheWire = JSON.parse(JSON.stringify(encode(puzzle))) as unknown;
+    const parsed = parseMelodyJson(overTheWire);
+
+    assert.notEqual(parsed, undefined);
+    assert.doesNotThrow(() => decode(parsed!));
+    for (const index of [0, 1, 2]) {
+      assert.ok(puzzle.getEvent(index) instanceof Note);
+    }
+    assert.ok(puzzle.getEvent(3) instanceof UnpitchedNote);
+  });
+
+  it("keeps every rest a rest, since a rest was never an answer", () => {
+    const melody = melodyOf([
+      new Rest(QUARTER),
+      new Note(C4, QUARTER),
+      new Rest(QUARTER),
+      new Note(E4, QUARTER),
+    ]);
+
+    const puzzle = puzzleMelodyOf(melody);
+
+    assert.ok(puzzle.getEvent(0) instanceof Rest);
+    assert.ok(puzzle.getEvent(1) instanceof Note);
+    assert.ok(puzzle.getEvent(2) instanceof Rest);
+    assert.ok(puzzle.getEvent(3) instanceof UnpitchedNote);
+  });
+
+  it("leaves the melody it was handed untouched", () => {
+    // Melody is mutable and this one is the answer, held by whatever route
+    // called in. Stripping it in place would empty the copy of record.
+    const melody = melodyOf([new Note(C4, QUARTER), new Note(E4, QUARTER)]);
+
+    puzzleMelodyOf(melody);
+
+    assert.equal(countUnpitchedNotes(melody), 0);
+  });
+
+  it("carries the key, the meter and the rhythm across", () => {
+    // All three are public: the key and the meter are their own columns, and
+    // the rhythm is the puzzle rather than the answer to it.
+    const melody = melodyOf([new Note(C4, QUARTER), new Note(E4, QUARTER)]);
+
+    const puzzle = puzzleMelodyOf(melody);
+
+    assert.ok(puzzle.keySignature.isEqual(melody.keySignature));
+    assert.deepEqual(puzzle.timeSignature, melody.timeSignature);
+    assert.equal(puzzle.eventCount, melody.eventCount);
+    assert.equal(countSoundingNotes(puzzle), countSoundingNotes(melody));
+  });
+
+  it("finds nothing to give away in a melody of rests", () => {
+    const melody = melodyOf([new Rest(QUARTER), new Rest(QUARTER)]);
+
+    assert.equal(countSoundingNotes(puzzleMelodyOf(melody)), 0);
+  });
+});
+
+describe("gradeAttempt()", () => {
+  it("marks a note by how it sounds, not by how it is spelled", () => {
+    // You never choose a spelling -- you press a piano key and spellForMelodyEvent
+    // decides -- so an answer written D sharp has to accept the E flat that the
+    // key signature would have produced for the same sound.
+    const melody = melodyOf([
+      new Note(C4, QUARTER),
+      new Note(new Pitch("D", 1, 4), QUARTER),
+    ]);
+
+    const graded = gradeAttempt(
+      melody,
+      new Map([
+        [0, C4.toMidi()],
+        [1, new Pitch("E", -1, 4).toMidi()],
+      ]),
+    );
+
+    assert.equal(graded.verdicts.get(1), true);
+    assert.equal(graded.correct, 2);
+    assert.equal(graded.total, 2);
+  });
+
+  it("hears the octave, so the right letter in the wrong one is wrong", () => {
+    const melody = melodyOf([new Note(C4, QUARTER), new Note(E4, QUARTER)]);
+
+    const graded = gradeAttempt(
+      melody,
+      new Map([
+        [0, C4.toMidi()],
+        [1, new Pitch("E", 0, 5).toMidi()],
+      ]),
+    );
+
+    assert.equal(graded.verdicts.get(1), false);
+    assert.equal(graded.correct, 1);
+  });
+
+  it("keys its verdicts by the head of a tied run, which is one sound", () => {
+    const melody = melodyOf(notes(3, C4));
+    melody.tie(0);
+    melody.tie(1);
+
+    const graded = gradeAttempt(melody, new Map([[0, C4.toMidi()]]));
+
+    assert.deepEqual([...graded.verdicts.keys()], [0]);
+    assert.equal(graded.total, 1);
+    assert.equal(graded.correct, 1);
+  });
+
+  it("skips rests, which nobody is asked to find", () => {
+    const melody = melodyOf([
+      new Rest(QUARTER),
+      new Note(C4, QUARTER),
+      new Rest(QUARTER),
+    ]);
+
+    const graded = gradeAttempt(melody, new Map([[1, C4.toMidi()]]));
+
+    assert.deepEqual([...graded.verdicts.keys()], [1]);
+    assert.equal(graded.total, 1);
+  });
+
+  it("marks a note nobody answered wrong rather than overlooking it", () => {
+    const melody = melodyOf([new Note(C4, QUARTER), new Note(E4, QUARTER)]);
+
+    const graded = gradeAttempt(melody, new Map([[0, C4.toMidi()]]));
+
+    assert.equal(graded.verdicts.get(1), false);
+    assert.equal(graded.correct, 1);
+    assert.equal(graded.total, 2);
+  });
+
+  it("counts the given note among the total, as the card's note count does", () => {
+    // A card advertising twelve notes and a puzzle reporting eleven correct out
+    // of eleven would be two numbers describing the same melody and disagreeing.
+    const melody = melodyOf(notes(3));
+
+    const graded = gradeAttempt(
+      melody,
+      new Map([
+        [0, C4.toMidi()],
+        [1, C4.toMidi()],
+        [2, C4.toMidi()],
+      ]),
+    );
+
+    assert.equal(graded.total, countSoundingNotes(melody));
   });
 });

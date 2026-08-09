@@ -49,6 +49,15 @@ export type PianoKeyboard = {
   readonly range: KeyboardRange;
   /** Mark the key sounding `midi`, or clear the mark with `undefined`. */
   highlight(midi: number | undefined): void;
+  /**
+   * Whether the keys can be pressed at all.
+   *
+   * Off while the selected note is one the puzzle has already confirmed. The
+   * alternative is a keyboard that looks live and answers every press with a
+   * refusal, which is a worse way to learn a note is settled than the keys
+   * simply going quiet.
+   */
+  setEnabled(enabled: boolean): void;
 };
 
 /**
@@ -71,7 +80,7 @@ export function createPianoKeyboard(
   const keys = document.createElement("div");
   keys.className = "keyboard-keys";
 
-  const byMidi = new Map<number, HTMLElement>();
+  const byMidi = new Map<number, HTMLButtonElement>();
   const centreOn = Math.round((range.lowest + range.highest) / 2);
   let whiteIndex = 0;
   let centreOffset = 0;
@@ -126,6 +135,17 @@ export function createPianoKeyboard(
       marked?.classList.add("key-selected");
       // A selected note can be off-screen after arrow-key navigation.
       marked?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    },
+
+    setEnabled(enabled) {
+      keys.classList.toggle("is-off", !enabled);
+      // Announced as well as drawn: the keys are buttons, and a screen reader
+      // reading out eighty live buttons that do nothing is the same problem in
+      // another medium.
+      keys.setAttribute("aria-disabled", String(!enabled));
+      for (const key of byMidi.values()) {
+        key.disabled = !enabled;
+      }
     },
   };
 }

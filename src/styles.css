@@ -3,13 +3,32 @@
   --page-bg: #f7f5f1;
   --ink: #1c1a17;
   --rule: #cfc8bd;
-  /* Read by the renderer to colour a selected note and its ties. */
+  /* The app's accent: buttons, focus rings, the halo around a selected note. */
   --note-selected: #b4432c;
   --note-hovered: #d09a86;
   /* A note whose rhythm is written but whose pitch is not chosen yet. */
   --note-placeholder: #8d8378;
   /* Trailing rests: the spare bar waiting to be written into, not music yet. */
   --note-ghost: #c8c1b6;
+  /* A puzzle's verdict on a note: found, and not found.
+
+     Green and amber rather than green and red. Red against green is the one
+     pair that fails for the ~8% of men with a red-green colour deficiency, and
+     it fails completely — the two become the same colour, with no lightness
+     difference left to tell them apart. Green against amber stays distinct
+     under every common form of it, which is what lets the verdict be carried
+     by colour alone without a second marker cluttering every wrong note.
+
+     Selection no longer competes with these: it is a halo now, not a
+     recolour, so a note can be amber and selected at the same time. */
+  --note-correct: #1c7f3c;
+  --note-wrong: #b8770a;
+
+  /* The halo behind the selected note, and the fainter one under the pointer.
+     A shape rather than a colour, so the note keeps its own. */
+  --note-halo: #f0d9c8;
+  --note-halo-ring: #b4432c;
+  --note-halo-hover: #efe6da;
   --white-key-width: 56px;
   --black-key-width: 36px;
   --white-key-height: 152px;
@@ -528,9 +547,14 @@ main {
    The video follows the controls rather than being pushed to the far edge
    because in pitch-only mode there are no controls, and a video pinned right
    would leave the whole band empty in front of it. */
+/* Centred, so the tools sit under the middle of the bar rather than starting
+   at its left edge. It matters most on the play page, where the rhythm
+   controls are absent entirely and the video was left hugging one side of a
+   full-width band. */
 #toolbar-body {
   display: flex;
   align-items: flex-start;
+  justify-content: center;
   gap: 1rem;
 }
 
@@ -554,12 +578,20 @@ main {
 /* Set apart from the melody controls by clear space rather than a rule: the
    two are different jobs — one writes the music down, the other works the
    video — and the gap says so without drawing a wall. */
+/* The panel is centred against the video rather than lined up with its top:
+   the two are one unit, and the panel is the shorter of them. */
 #playback {
   flex: 0 0 auto;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.75rem;
   margin-left: 1.5rem;
+}
+
+/* Alone in the band — which is the play page, where there are no rhythm
+   controls beside it — there is nothing to be set apart from. */
+#toolbar-body > #playback:only-child {
+  margin-left: 0;
 }
 
 /* The player sits at YouTube's own floor of 200px each way rather than as large
@@ -1832,20 +1864,116 @@ main.page {
    melody is not among them, so nothing here has to remember to leave the
    pitches out. */
 
+/* Three across.
+
+   Two made a handsome card and a soft picture: the thumbnail YouTube always
+   has is 320px wide, and half of this page is nearer six hundred, so it was
+   being blown up past half again its size. Three keeps the upscale slight. */
 .level-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: 0.9rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* Every card the same size, whatever it is called.
+
+   A grid row already stretches its cards to match each other; what would break
+   that is a title running to four lines while its neighbour takes one. So the
+   picture has a fixed ratio, the title is held to two lines and the subtitle to
+   one, and the height stops depending on the words. */
 .level-card {
-  padding: 0.95rem 1.05rem;
+  /* The anchor for the title's stretched hit area below. */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
   background: #faf8f4;
   border: 1px solid var(--rule);
   border-radius: 8px;
+}
+
+/* The video this was written down from.
+
+   `height: auto` is load-bearing. The `height="180"` attribute on the element
+   is a presentational hint, so it beats `aspect-ratio` whenever a width is
+   also set — the box came out as wide as the card by 180px tall, and `cover`
+   cropped the picture to fit it. Letting the height follow keeps the file's
+   own 320×180 shape.
+
+   `contain` rather than `cover` so nothing is ever cut off, whatever shape
+   YouTube returns; for the 16:9 these come in, the two are the same thing. */
+.level-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  background: #1c1a17;
+  border-bottom: 1px solid var(--rule);
+}
+
+.level-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  padding: 0.95rem 1.15rem 1.1rem;
+}
+
+.level-title,
+.level-subtitle {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.level-title {
+  -webkit-line-clamp: 2;
+}
+
+.level-subtitle {
+  -webkit-line-clamp: 1;
+}
+
+.level-card.is-playable:hover {
+  border-color: #b0a89b;
+  background: #fffdf9;
+}
+
+/* The whole card opens the level's box.
+
+   Done by stretching the title control's own ::after over the card rather than
+   by wrapping the card in one: the pencil is a link, and nesting controls is
+   neither valid nor reachable by tab. This way there is exactly one focusable
+   thing per destination, and the card reads as one target. */
+.level-open {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.level-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+}
+
+.level-open:focus-visible::after {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 2px;
+}
+
+.level-card.is-playable:hover .level-open {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* The title takes the room and the pencil keeps its corner. */
@@ -1863,8 +1991,13 @@ main.page {
   overflow-wrap: anywhere;
 }
 
-/* Quiet until reached for: a card is for reading first and editing second. */
+/* Quiet until reached for: a card is for reading first and editing second.
+
+   Raised above the title's stretched hit area, or the card's play link would
+   swallow every press meant for the pencil. */
 .level-edit {
+  position: relative;
+  z-index: 1;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -2298,5 +2431,578 @@ main.page {
 
   #score {
     padding-top: 0.35rem;
+  }
+}
+
+/* ---- Playing a level ---- */
+
+/* Laid out like the editor's bar above the music, because it sits in the same
+   band and holds the same kinds of thing — but built from its own parts: the
+   three controls that bar exists for (the key chooser, the details boxes, the
+   melody/pitches switch) are exactly what playing a level takes away. */
+#play-bar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+
+.play-naming {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.play-title {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+/* The way back to what the author wrote, beside the name it belongs to. */
+.play-info {
+  flex: 0 0 auto;
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-left: 0.35rem;
+  padding: 0;
+  font: inherit;
+  font-size: 0.75rem;
+  font-style: italic;
+  line-height: 1;
+  color: #6c6459;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.play-info:hover {
+  color: var(--ink);
+  background: #f3ece0;
+  border-color: #b3aa9d;
+}
+
+/* Raised from a caption to a second line of naming: at 0.78rem against the
+   title it read as a footnote to something it is actually part of. */
+.play-subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+  color: #57504a;
+  overflow-wrap: anywhere;
+}
+
+.play-subtitle:empty {
+  display: none;
+}
+
+/* Read, never pressed. Shaped like the editor's key toggle so the two pages
+   agree about where the key lives, but flat and inert — the key is part of the
+   level here, and a control offering something that cannot be done is worse
+   than no control. A stave with no accidentals is A minor as readily as C
+   major, so this is the only thing on the page that says which. */
+.play-key {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  background: #f3ece0;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.play-key-label,
+.play-checks {
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8d8378;
+}
+
+.play-key-value {
+  font-size: 0.9rem;
+}
+
+/* The clock and the attempt count, boxed.
+
+   A box because this is the only thing on the page that moves while you are
+   not touching anything, and as loose type it disappeared into the furniture.
+   Amber while the puzzle is open, green once it is solved — which is now the
+   only thing that says the clock has stopped, the banner that used to say so
+   having been the wrong size for the news. */
+.play-clock {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+  background: #fdf3dd;
+  border: 1px solid #e0c489;
+  border-radius: 6px;
+}
+
+.play-clock-value {
+  /* Tabular figures, so the ticking seconds do not shove the minutes about. */
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+  line-height: 1.1;
+}
+
+.play-checks:empty {
+  display: none;
+}
+
+.play-clock.is-solved {
+  background: #e6f3ea;
+  border-color: var(--note-correct);
+  color: var(--note-correct);
+}
+
+.play-clock.is-solved .play-checks {
+  color: var(--note-correct);
+}
+
+/* One pop, on the change from running to stopped. The class is taken off when
+   the animation ends, so redrawing the bar twice a second cannot retrigger it. */
+.play-clock.is-stopping {
+  animation: clock-stop 460ms cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+@keyframes clock-stop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+/* The tick beside a solved level's title. */
+.play-solved-mark {
+  margin-left: 0.4rem;
+  color: var(--note-correct);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .play-clock.is-stopping {
+    animation: none;
+  }
+}
+
+/* ---- The halo behind a selected note ---- */
+
+/* Drawn inside the score's own svg, as its first children, so the notehead and
+   stem sit on top of it. Not a recolour: the note keeps whatever its colour is
+   saying — found, not found, still waiting for a pitch — and this says only
+   where you are. That separation is the whole point; before it, selecting an
+   amber note turned it rust and hid the verdict you had just asked for.
+
+   The playhead is a translucent blue bar sitting over the whole svg, so these
+   two stack rather than compete: halo under the glyph, playhead over both. */
+.note-halo {
+  fill: var(--note-halo);
+  stroke: var(--note-halo-ring);
+  stroke-width: 1.5;
+}
+
+.note-halo-hover {
+  fill: var(--note-halo-hover);
+  stroke: none;
+}
+
+/* ---- What the score does when a check comes back ---- */
+
+/* The layer bursts are drawn into, over the stave and beside the playhead.
+   Never a target: the score underneath is hit-tested on every mouse move. */
+.score-effects {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Positioned on the notehead by transform; the dots fly from its centre. */
+.note-burst {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+.note-burst span {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  background: var(--note-correct);
+  border-radius: 50%;
+  animation: note-burst 460ms ease-out forwards;
+  transform: rotate(var(--angle)) translateY(0);
+}
+
+@keyframes note-burst {
+  from {
+    opacity: 1;
+    transform: rotate(var(--angle)) translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: rotate(var(--angle)) translateY(-16px) scale(0.4);
+  }
+}
+
+/* A note saying no. Applied to the svg group VexFlow wraps each note in, so it
+   is the notehead itself that moves rather than something drawn over it. */
+.is-shaking {
+  animation: note-shake 340ms ease-in-out;
+}
+
+@keyframes note-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+/* Both effects are decoration over information the colour already carries, so
+   there is nothing to replace them with — they simply do not run. The
+   JavaScript checks this too, and skips building the dots at all. */
+@media (prefers-reduced-motion: reduce) {
+  .note-burst span,
+  .is-shaking {
+    animation: none;
+  }
+}
+
+/* ---- A keyboard with nothing to do ---- */
+
+/* Reached when the selected note is one the puzzle has already confirmed, or
+   when a rest is selected, or when nothing is. Draining the colour out of the
+   keys says "not now" before a press does, which is better than eighty live-
+   looking buttons that each answer with a refusal.
+
+   The whole rack fades rather than each key being restyled: the black keys are
+   positioned over the white ones and two separate disabled looks would have to
+   keep agreeing with each other. */
+.keyboard-keys.is-off {
+  /* Enough to read as "not now", not so much that it reads as broken. */
+  opacity: 0.72;
+  filter: saturate(0.85);
+}
+
+.keyboard-keys.is-off .key {
+  cursor: not-allowed;
+}
+
+/* ---- Refusals, beside the pointer ---- */
+
+/* Fixed rather than absolute: it is placed from clientX/clientY, which are
+   viewport coordinates, and it has to escape the toolbar's own stacking and
+   overflow to sit over the keyboard at the foot of the window. */
+.tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 20;
+  max-width: 18rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: #fffdf9;
+  background: rgb(28 26 23 / 92%);
+  border-radius: 6px;
+  /* Never a target. It appears under the pointer by definition, and one that
+     swallowed the next click would make the control it explains unpressable. */
+  pointer-events: none;
+}
+
+/* ---- Boxes that hold still ---- */
+
+/* Standing facts, unlike the refusals above: why a button is grey, what the
+   tempo is, that a save failed. They keep their places in the bar — but the
+   bar must not grow when they fill, or writing a note would shove the music
+   down a line. Each reserves the room its longest ordinary message needs, so
+   text arriving changes what the box says and never how tall it is. */
+#status {
+  margin: 0;
+  min-height: 1.15rem;
+  font-size: 0.78rem;
+  line-height: 1.15rem;
+  color: #8d8378;
+}
+
+/* The playback panel's line is a standing fact — "2 bars · 120 BPM" — so it
+   keeps its place and simply reserves the room its longest message needs. Two
+   lines' worth, in `em` so it tracks the font size through the narrow-window
+   rules. Its `:empty { display: none }` is overridden, since collapsing to
+   nothing is the jump being fixed. */
+.playback-note {
+  min-height: 2.5em;
+  overflow: hidden;
+}
+
+.playback-note:empty {
+  display: block;
+}
+
+/* Why Submit or Check is grey, shown only when pointed at.
+
+   Out of the flow entirely, which is stronger than reserving room for it: it
+   cannot change the bar's height at all. That matters because these buttons
+   are grey for most of a session — a title has not been typed, notes are still
+   blank — so as permanent text it was a sentence the page always carried and
+   nobody ever needed twice.
+
+   Faded rather than removed: a disabled button cannot be focused, so a
+   keyboard user would never reach this. Keeping it rendered but transparent
+   keeps it in the accessibility tree, and the button's `aria-describedby`
+   points at it. */
+.submit-group {
+  position: relative;
+}
+
+.submit-note {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 4;
+  width: max-content;
+  max-width: 15rem;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  color: #fffdf9;
+  background: rgb(28 26 23 / 92%);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.submit-group:hover .submit-note {
+  opacity: 1;
+}
+
+/* Nothing to say, nothing to show — even under the pointer. */
+.submit-note:empty {
+  display: block;
+  opacity: 0;
+}
+
+/* ---- A level you have finished ---- */
+
+.level-solved {
+  margin-left: 0.45rem;
+  font-size: 0.9em;
+  color: var(--note-correct);
+}
+
+.level-card.is-solved {
+  border-color: #a9ceb6;
+  background: #f6fbf7;
+}
+
+/* Hover is three classes and the solved rule above is two, so without this the
+   pointer paints a finished level back to white — which reads as the card
+   forgetting. It keeps its green and deepens instead. */
+.level-card.is-solved.is-playable:hover {
+  border-color: #8dbfa0;
+  background: #eef7f1;
+}
+
+/* ---- A level's own box ---- */
+
+.level-modal {
+  width: min(38rem, calc(100vw - 3rem));
+  max-width: none;
+}
+
+/* A 128-character title with no spaces in it would otherwise run off the page.
+   `anywhere` rather than `break-word`, which leaves an unbroken run intact. */
+.modal-title,
+.level-modal-subtitle {
+  overflow-wrap: anywhere;
+}
+
+.level-modal-subtitle {
+  margin: -0.35rem 0 0;
+  color: #6c6459;
+}
+
+.level-modal-solved {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--note-correct);
+}
+
+/* ---- What the music is ---- */
+
+/* The two signatures, set apart from the measured facts under them: these say
+   what the music is, those say how much of it there is. */
+.level-drawn {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.9rem;
+  margin: 1.1rem 0 0.9rem;
+}
+
+/* Shrink to what is in them. Splitting the modal evenly between the two left a
+   meter forty units wide adrift in half a dialog, and a box far larger than
+   its contents reads as something failing to load. */
+.level-signature {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem 0.7rem;
+}
+
+.level-signature-heading {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8d8378;
+}
+
+/* Width comes from the diagram, set inline in `signaturePanel` — the svg draws
+   to whatever room it is given, so this is the only thing deciding its scale. */
+.level-stave {
+  flex: 0 0 auto;
+}
+
+.level-stave svg {
+  width: 100%;
+  height: auto;
+}
+
+/* The key's own name, in the chip the key chooser uses for the same job. A
+   signature of no accidentals is A minor as readily as C major, so the stave
+   alone cannot say which — the meter panel needs no such line and has none. */
+.level-signature-name {
+  margin: 0;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.8rem;
+  color: #6c6459;
+  background: #f3ece0;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* ---- How much of it there is ---- */
+
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.6rem;
+}
+
+/* Icon, number, unit — in that order and on one line, so the number sits
+   against the thing it counts rather than under a heading to be interpreted. */
+.level-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.level-stat-icon {
+  flex: 0 0 auto;
+  display: flex;
+  color: #8d8378;
+}
+
+.level-stat-icon svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.level-stat-value {
+  display: flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.level-stat-number {
+  font-size: 1.35rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.level-stat-unit {
+  font-size: 0.72rem;
+  color: #8d8378;
+}
+
+.level-instructions-heading {
+  margin: 1.1rem 0 0.4rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8d8378;
+}
+
+/* The edge the instructions scroll inside.
+
+   Without one, text that ran past the room available simply stopped partway
+   down the dialog, which reads as cut off rather than as more to come. A
+   border and an inset fill say where the text ends and that the end is not the
+   end of it. Focusable, because a region that scrolls has to be reachable by
+   keyboard as well as by wheel. */
+.level-instructions-box {
+  max-height: 11rem;
+  overflow-y: auto;
+  padding: 0.7rem 0.85rem;
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+
+.level-instructions-box:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
+/* The author's own line breaks, kept. `pre-wrap` rather than turning newlines
+   into markup, and a paragraph rather than a disabled textarea — that would
+   show the same characters while reading as a broken input. */
+.level-instructions {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #3c3630;
+}
+
+/* Play is a link, not a button, so it needs the confirm's look spelled out. */
+.level-modal-play {
+  display: inline-block;
+  text-decoration: none;
+  text-align: center;
+}
+
+@media (max-width: 62rem) {
+  .level-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* One column once two would be too narrow to carry a picture and a title. */
+@media (max-width: 40rem) {
+  .level-list {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
