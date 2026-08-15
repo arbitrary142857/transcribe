@@ -20,6 +20,16 @@ export const ACCIDENTAL_STRING: Record<Accidental, string> = {
   2: "##",
 };
 
+/**
+ * Frequency in Hz of a MIDI note number; A4 = 69 = 440 Hz by default.
+ *
+ * Outside the class because the piano is handed a key to sound rather than a
+ * pitch to write: which of D♯ and E♭ was meant is a question about notation,
+ * and the string does not care.
+ */
+export const frequencyOfMidi = (midi: number, a4Hz = 440): number =>
+  a4Hz * 2 ** ((midi - 69) / 12);
+
 export class Pitch {
   constructor(
     public letter: LetterName,
@@ -43,7 +53,7 @@ export class Pitch {
 
   /** Frequency in Hz; A4 = 440 Hz by default. */
   toFrequency(a4Hz = 440): number {
-    return a4Hz * 2 ** ((this.toMidi() - 69) / 12);
+    return frequencyOfMidi(this.toMidi(), a4Hz);
   }
 
   /** Pitch-class chroma: semitone within the octave, 0–11. */
