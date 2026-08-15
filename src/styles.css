@@ -2129,8 +2129,19 @@ main.page {
    matches the box. For the 4:3 ones — the only sizes a video uploaded below
    720p has above `mqdefault` — the 16:9 frame sits centred inside black bars,
    and covering a 16:9 box takes exactly those bars off: sixty rows top and
-   bottom of a 640×480, leaving a true 640×360. See `SHARPER` in youtube.ts. */
+   bottom of a 640×480, leaving a true 640×360. See `SHARPER` in youtube.ts.
+
+   Taken out of the flow to get that box, rather than `height: 100%`, which is a
+   percentage of a height that came from `aspect-ratio` and is not resolved
+   against one everywhere. Where it is not, it falls back to `auto`, the picture
+   takes its own 4:3 shape — and the frame, being a flex item with an automatic
+   minimum, grows to fit it instead of holding its ratio. The card then stands
+   taller than every other card with a black bar across the top of it, which is
+   the whole fault this avoids. Absolute against the frame's own edges needs no
+   percentage resolved and contributes no content height to grow. */
 .level-art {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
