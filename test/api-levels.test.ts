@@ -70,6 +70,9 @@ const call = async (
 const get = (path: string, options?: { rows?: readonly Row[]; first?: Row }) =>
   call(path, undefined, options);
 
+const remove = (path: string, options?: { first?: Row }) =>
+  call(path, { method: "DELETE" }, options);
+
 const send = (
   path: string,
   method: "POST" | "PUT",
@@ -561,6 +564,49 @@ describe("PUT /api/levels/:id", () => {
     );
 
     assert.equal(response.status, 400);
+  });
+});
+
+describe("DELETE /api/levels/:id", () => {
+  it("removes the level and says nothing back", async () => {
+    const { response, asked } = await remove("/api/levels/k3m9x2p7qw4t", {
+      first: ROW,
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(await response.text(), "");
+    assert.match(asked.at(-1)!.sql, /DELETE FROM transcriptions/);
+  });
+
+  it("names the row to delete by binding it, never by splicing it", async () => {
+    // The id arrives in a URL, so the one thing that must never happen is for
+    // it to reach the statement as text.
+    const { asked } = await remove("/api/levels/k3m9x2p7qw4t", { first: ROW });
+
+    const statement = asked.at(-1)!;
+    assert.equal(statement.sql.includes("k3m9x2p7qw4t"), false);
+    assert.deepEqual(statement.values, ["k3m9x2p7qw4t"]);
+  });
+
+  it("turns away an id that could not be one, without asking the database", async () => {
+    for (const id of ["nope", "AAAAAAAAAAAA", "..%2F..%2Fetc"]) {
+      const { response, asked } = await remove(`/api/levels/${id}`);
+      assert.equal(response.status, 404, `looked up ${id}`);
+      assert.deepEqual(asked, []);
+    }
+  });
+
+  it("says so plainly when there is no such level, and deletes nothing", async () => {
+    // Answering 204 either way would be simpler and would say that a mistyped
+    // address had done something.
+    const { response, asked } = await remove("/api/levels/k3m9x2p7qw4t");
+
+    assert.equal(response.status, 404);
+    assert.equal(typeof (await errorOf(response)), "string");
+    assert.equal(
+      asked.some((statement) => /DELETE/.test(statement.sql)),
+      false,
+    );
   });
 });
 

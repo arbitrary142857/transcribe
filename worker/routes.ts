@@ -561,6 +561,43 @@ api.put("/api/levels/:id", async (c) => {
   return c.json({ id });
 });
 
+/**
+ * Throw a level away.
+ *
+ * A workbench tool rather than a feature: there is no ownership yet, so there is
+ * nobody this could belong to and nothing it could check. It exists to make a
+ * local database workable while the rest is being built, and it goes — or grows
+ * an owner — before any of this is somewhere strangers can reach.
+ *
+ * The row is looked up before it is deleted, so a mistyped address is answered
+ * with "there is no such level" rather than with the silence that means "done".
+ * Being wrong about which level was removed is the one mistake here that cannot
+ * be taken back.
+ */
+api.delete("/api/levels/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: "There is no level at that address." }, 404);
+  }
+
+  const row = await c.env.DB.prepare(
+    `SELECT id FROM transcriptions WHERE id = ?`,
+  )
+    .bind(id)
+    .first();
+
+  if (row === null) {
+    return c.json({ error: "There is no level at that address." }, 404);
+  }
+
+  await c.env.DB.prepare(`DELETE FROM transcriptions WHERE id = ?`)
+    .bind(id)
+    .run();
+
+  // Nothing left to describe, so nothing is sent.
+  return c.body(null, 204);
+});
+
 // ---- playing ------------------------------------------------------------
 //
 // The two routes a puzzle is played through, and the reason the rest of this
