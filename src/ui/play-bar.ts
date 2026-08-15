@@ -81,8 +81,8 @@ export function createPlayBar(
   info.type = "button";
   info.className = "play-info";
   info.textContent = "i";
-  info.title = "About this level";
-  info.setAttribute("aria-label", "About this level");
+  info.title = "About";
+  info.setAttribute("aria-label", "About");
   info.addEventListener("click", handlers.onAbout);
 
   title.append(titleText, solvedMark, info);

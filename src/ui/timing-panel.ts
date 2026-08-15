@@ -1,3 +1,5 @@
+import type { Hearing } from "../playback/playalong.js";
+import { createHearingSwitch } from "./hearing-switch.js";
 import type { TimingField, TimingState } from "../playback/timing-fields.js";
 import {
   lockClosedIcon,
@@ -26,9 +28,10 @@ export type TimingPanelState = {
   /** The derived tempo, already formatted, or undefined for "—". */
   bpmText: string | undefined;
   metronomeOn: boolean;
+  /** What the section is heard as; absent where there is nothing to play. */
+  hearing?: Hearing;
   /** Whether the metronome and the lock have a tempo to work with. */
   timed: boolean;
-  note: string;
 };
 
 export type TimingPanelHandlers = {
@@ -40,6 +43,8 @@ export type TimingPanelHandlers = {
   onTypeBpm(bpm: number): void;
   onToggleLock(): void;
   onMetronome(on: boolean): void;
+  /** Absent on the setup page, which has no melody to sound. */
+  onHearing?(hearing: Hearing): void;
   /** A letter key pressed inside one of the time boxes. */
   onLetter(letter: string, shift: boolean): boolean;
 };
@@ -79,7 +84,7 @@ function markButton(
   const button = document.createElement("button");
   button.type = "button";
   button.className = "playback-mark-button";
-  button.title = `${title} (${shortcut.toUpperCase()})`;
+  button.title = title;
   button.setAttribute("aria-label", title);
   button.innerHTML = `<kbd class="cell-key">${shortcut.toUpperCase()}</kbd>${icon}`;
   button.addEventListener("click", run);
@@ -118,13 +123,13 @@ export function createTimingPanel(
 
   const startButton = markButton(
     markStartIcon(),
-    "Mark the start of the first bar",
+    "Mark start",
     "i",
     () => handlers.onMark("start"),
   );
   const endButton = markButton(
     markEndIcon(),
-    "Mark the end of the last bar",
+    "Mark end",
     "o",
     () => handlers.onMark("end"),
   );
@@ -165,7 +170,7 @@ export function createTimingPanel(
   metronome.type = "button";
   metronome.className = "playback-toggle timing-metronome";
   metronome.setAttribute("aria-pressed", "false");
-  metronome.title = "Click along with the marked tempo";
+  metronome.title = "Metronome";
   metronome.innerHTML = `<span class="playback-toggle-icon">${metronomeIcon()}</span>`;
   metronome.addEventListener("click", () => {
     handlers.onMetronome(metronome.getAttribute("aria-pressed") !== "true");
@@ -194,17 +199,21 @@ export function createTimingPanel(
 
   tempoRow.append(metronome, labelled("BPM"), bpm, lock);
 
-  const note = document.createElement("p");
-  note.className = "playback-note";
-  note.setAttribute("role", "status");
+  // Only where there is a melody to play: the setup page has settled nothing
+  // yet, so there is nothing for the notes to be.
+  const hearing = handlers.onHearing
+    ? createHearingSwitch(handlers.onHearing)
+    : undefined;
 
+  // Row for row the playback panel's order, which is what keeps the two exactly
+  // as tall as each other when the switch above them is pressed.
   panel.append(
     speed.element,
+    ...(hearing ? [hearing.element] : []),
     startRow,
     endRow,
     ...(editableMeasures ? [measuresRow] : []),
     tempoRow,
-    note,
   );
   element.append(panel);
 
@@ -252,14 +261,13 @@ export function createTimingPanel(
       lock.classList.toggle("is-on", state.timing.locked);
       lock.innerHTML = state.timing.locked ? lockClosedIcon() : lockOpenIcon();
       lock.title = state.timing.locked
-        ? "Unlock the tempo, so the marks move it again"
-        : "Lock the tempo, so editing one mark moves the other";
+        ? "Unlock tempo"
+        : "Lock tempo";
 
       metronome.disabled = !state.timed;
       metronome.setAttribute("aria-pressed", String(state.metronomeOn));
       metronome.classList.toggle("is-on", state.metronomeOn);
-
-      note.textContent = state.note;
+      hearing?.update(state.hearing ?? "video", state.timed);
     },
 
     flash(fields) {

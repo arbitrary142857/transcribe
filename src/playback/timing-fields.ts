@@ -37,6 +37,21 @@ export type TimingAction =
   | { kind: "nudge"; field: "start" | "end"; seconds: number }
   | { kind: "toggle-lock" };
 
+/**
+ * The box an action wrote into directly, when it was not typed into.
+ *
+ * `autoEdited` names what moved as a *consequence* — the tempo, or the partner
+ * mark under a lock — and deliberately leaves out the field being acted on,
+ * since somebody typing into a box can see what they typed. Marking is the
+ * exception: the value lands from a button or a shortcut, and the box it lands
+ * in is often not the thing being looked at.
+ */
+export function markedField(action: TimingAction): readonly TimingField[] {
+  if (action.kind === "mark-start") return ["start"];
+  if (action.kind === "mark-end") return ["end"];
+  return [];
+}
+
 export type TimingStep = {
   readonly state: TimingState;
   /** Fields rewritten beyond the one acted on — the page flashes these. */

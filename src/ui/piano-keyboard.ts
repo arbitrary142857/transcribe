@@ -43,6 +43,14 @@ export type PianoKeyboardOptions = {
   /** How to name a key: the spelling that pitch would be written with. */
   spell: (midi: number) => Pitch;
   onPick: (midi: number) => void;
+  /**
+   * Say why the keys are dead, or clear the message with `undefined`.
+   *
+   * Called on hover. Eighty greyed buttons are the one thing on this page most
+   * likely to be pressed in the belief that they do something, and pointing at
+   * one is the moment to say otherwise — before the press rather than after it.
+   */
+  onExplain?: (reason: string | undefined) => void;
 };
 
 export type PianoKeyboard = {
@@ -50,14 +58,27 @@ export type PianoKeyboard = {
   /** Mark the key sounding `midi`, or clear the mark with `undefined`. */
   highlight(midi: number | undefined): void;
   /**
-   * Whether the keys can be pressed at all.
+   * Whether a press would write a pitch to the selection, and why not.
    *
-   * Off while the selected note is one the puzzle has already confirmed. The
-   * alternative is a keyboard that looks live and answers every press with a
-   * refusal, which is a worse way to learn a note is settled than the keys
-   * simply going quiet.
+   * False while nothing is selected, while a rest is, and while the selected
+   * note is one the puzzle has already confirmed. Kept apart from whether the
+   * keys respond at all, because with the sound on they still do something
+   * worth doing — see `setSounding`. The reason is what a dead key says when
+   * it is pointed at.
    */
-  setEnabled(enabled: boolean): void;
+  setWritable(writable: boolean, reason?: string): void;
+  /**
+   * Whether pressing a key makes a sound.
+   *
+   * This is what decides whether a key that cannot write is dead or merely
+   * quiet about writing. Off, a key with nothing to write is disabled outright:
+   * it would do nothing at all, and a control that looks live and answers every
+   * press with a refusal is a worse way to learn a note is settled than the
+   * keys going quiet. On, every key stays live, because hearing a pitch is
+   * reason enough to press one — most of all against a note already found,
+   * which is exactly what the next note is measured by ear against.
+   */
+  setSounding(sounding: boolean): void;
 };
 
 /**
@@ -69,7 +90,7 @@ export type PianoKeyboard = {
  */
 export function createPianoKeyboard(
   element: HTMLElement,
-  { clef = "treble", spell, onPick }: PianoKeyboardOptions,
+  { clef = "treble", spell, onPick, onExplain }: PianoKeyboardOptions,
 ): PianoKeyboard {
   element.replaceChildren();
 
@@ -108,7 +129,15 @@ export function createPianoKeyboard(
     name.textContent = `${pitch.letter}${ACCIDENTAL_GLYPH[pitch.accidental]}${pitch.octave}`;
     key.append(name);
 
-    key.addEventListener("click", () => onPick(midi));
+    key.addEventListener("click", () => {
+      // Dead keys refuse here, since they are no longer `disabled` and so are
+      // perfectly pressable. Hovering one has already said why.
+      if (!writable && !sounding) {
+        onExplain?.(why);
+        return;
+      }
+      onPick(midi);
+    });
     byMidi.set(midi, key);
     keys.append(key);
   }
@@ -126,6 +155,43 @@ export function createPianoKeyboard(
   });
 
   let marked: HTMLElement | undefined;
+  let writable = false;
+  let sounding = false;
+  let why: string | undefined;
+
+  /**
+   * A key does nothing only when it can neither write nor sound, and that is
+   * the only case it is disabled in.
+   */
+  function apply(): void {
+    const useless = !writable && !sounding;
+    keys.classList.toggle("is-off", useless);
+    // Marked separately from disabled, so a keyboard that will sound but not
+    // write can say so rather than looking exactly like one that will write.
+    keys.classList.toggle("is-listening", !writable && sounding);
+    // Announced as well as drawn: the keys are buttons, and a screen reader
+    // reading out eighty live buttons that do nothing is the same problem in
+    // another medium.
+    //
+    // `aria-disabled` rather than the real attribute, because a `disabled`
+    // button receives no mouse events at all — it could not be hovered, and a
+    // dead key that cannot say why it is dead is the thing being fixed. The
+    // press is refused below instead.
+    keys.setAttribute("aria-disabled", String(useless));
+    for (const key of byMidi.values()) {
+      key.setAttribute("aria-disabled", String(useless));
+    }
+    if (!useless) onExplain?.(undefined);
+  }
+
+  // Read on the rack rather than on each key, which is one listener instead of
+  // eighty and needs no rebinding as keys come and go.
+  keys.addEventListener("mousemove", () => {
+    onExplain?.(writable || sounding ? undefined : why);
+  });
+  keys.addEventListener("mouseleave", () => onExplain?.(undefined));
+
+  apply();
 
   return {
     range,
@@ -137,15 +203,15 @@ export function createPianoKeyboard(
       marked?.scrollIntoView({ block: "nearest", inline: "nearest" });
     },
 
-    setEnabled(enabled) {
-      keys.classList.toggle("is-off", !enabled);
-      // Announced as well as drawn: the keys are buttons, and a screen reader
-      // reading out eighty live buttons that do nothing is the same problem in
-      // another medium.
-      keys.setAttribute("aria-disabled", String(!enabled));
-      for (const key of byMidi.values()) {
-        key.disabled = !enabled;
-      }
+    setWritable(next, reason) {
+      writable = next;
+      why = reason;
+      apply();
+    },
+
+    setSounding(next) {
+      sounding = next;
+      apply();
     },
   };
 }

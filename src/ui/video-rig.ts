@@ -5,6 +5,8 @@ import {
   type ClockState,
 } from "../playback/clock.js";
 import { createMetronome, type Metronome } from "../playback/metronome.js";
+import { createPiano, type Piano, type PianoNote } from "../playback/piano.js";
+import { heldAt, notesBetween } from "../playback/playalong.js";
 import type { PlayerLife } from "../playback/section-play.js";
 import { beatsBetween, type TempoMap } from "../playback/tempo-map.js";
 import { adoptPlayer, type PlayerHandle } from "./youtube-player.js";
@@ -62,6 +64,17 @@ export type VideoRig = {
    * to start from a click.
    */
   setMetronome(map: TempoMap | undefined): void;
+  /**
+   * Play these notes along with the video, or stop with `undefined`.
+   *
+   * The seconds are video seconds, so the caller re-hands them whenever the
+   * melody or the tempo moves; handing them over drops whatever was lined up
+   * from the reading before. Like the metronome, the first call carrying notes
+   * must come from inside a user gesture.
+   */
+  setPlayalong(notes: readonly PianoNote[] | undefined): void;
+  /** Silence the video itself, for hearing the transcription on its own. */
+  setMuted(muted: boolean): void;
   subscribe(listener: RigListener): () => void;
   destroy(): void;
 };
@@ -72,6 +85,21 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
   let metronome: Metronome | undefined;
   let map: TempoMap | undefined;
   let scheduledThrough = 0;
+
+  let piano: Piano | undefined;
+  let playalong: readonly PianoNote[] | undefined;
+  /** The playalong's own watermark: the two are switched on independently. */
+  let playedThrough = 0;
+  /**
+   * Whether the note already sounding is still owed.
+   *
+   * Set wherever the watermark falls back to the present — a seek, a pause, a
+   * change of speed, a new melody, the piano being switched on — because that
+   * is the only time a window can open in the middle of a note. In steady
+   * running the watermark is a horizon *ahead* of now, so nothing that has
+   * already begun ever falls inside one.
+   */
+  let catchUp = false;
   let frame = 0;
   const listeners: RigListener[] = [];
 
@@ -91,6 +119,11 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
       // coming — a seek, a pause, a change of speed all break the line.
       metronome?.silence();
       scheduledThrough = at;
+      piano?.silence();
+      playedThrough = at;
+      // Landing mid-note is the ordinary case for a seek, a loop wrap and a
+      // resume, and the note being landed in is owed rather than lost.
+      catchUp = true;
     }
     if (stepped.moved) {
       for (const listener of listeners) listener.onJump?.(at, sample.wall);
@@ -105,15 +138,41 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
 
   const scheduler = setInterval(() => {
     pump();
-    if (!metronome || !map || !clock?.playing) return;
+    if (!clock?.playing) return;
     const at = now();
+    // The horizon is wall time, so at half speed it reaches half as far into
+    // the video — which is what keeps the lead time the same however fast the
+    // video runs.
     const until = at + HORIZON_SECONDS * clock.rate;
-    // Never behind the moment: a window reaching into the past would ask for
-    // clicks that have already been missed.
-    const from = Math.max(scheduledThrough, at);
-    if (until <= from) return;
-    metronome.schedule(beatsBetween(map, from, until), at, clock.rate);
-    scheduledThrough = until;
+
+    if (metronome && map) {
+      // Never behind the moment: a window reaching into the past would ask for
+      // clicks that have already been missed.
+      const from = Math.max(scheduledThrough, at);
+      if (until > from) {
+        metronome.schedule(beatsBetween(map, from, until), at, clock.rate);
+        scheduledThrough = until;
+      }
+    }
+
+    // Its own watermark, because the two are switched on and off separately
+    // and one of them starting must not skip the other past a window.
+    if (piano && playalong) {
+      const from = Math.max(playedThrough, at);
+      // The note the line was picked up in the middle of, joined part-way
+      // through. Asked about `at` rather than `from`, and answered strictly, so
+      // a note beginning exactly on the seam belongs to the window below and is
+      // never struck by both.
+      if (catchUp) {
+        catchUp = false;
+        const held = heldAt(playalong, at);
+        if (held) piano.schedule([held], at, clock.rate);
+      }
+      if (until > from) {
+        piano.schedule(notesBetween(playalong, from, until), at, clock.rate);
+        playedThrough = until;
+      }
+    }
   }, TICK_MS);
 
   const ready = adoptPlayer(iframe).then((adopted) => {
@@ -157,6 +216,25 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
       }
     },
 
+    setPlayalong(notes) {
+      playalong = notes;
+      // Whatever was lined up was lined up from a reading of the melody that
+      // has just been replaced. Dropped rather than left to sound: a note
+      // scheduled a keystroke ago is a note that is no longer written.
+      piano?.silence();
+      if (notes) {
+        piano ??= createPiano();
+        playedThrough = now();
+        // Whatever is written where the video already stands is owed: switching
+        // the piano on mid-phrase picks that note up part-way through rather
+        // than waiting for the next one, and an edit made while it plays no
+        // longer leaves a hole where the held note was.
+        catchUp = true;
+      }
+    },
+
+    setMuted: (muted) => handle?.setMuted(muted),
+
     subscribe(listener) {
       listeners.push(listener);
       return () => {
@@ -169,6 +247,7 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
       cancelAnimationFrame(frame);
       clearInterval(scheduler);
       metronome?.close();
+      piano?.close();
       handle?.destroy();
     },
   };

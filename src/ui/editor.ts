@@ -11,7 +11,7 @@ import { eventPositions } from "../editor/position.js";
 import type { Duration } from "../music/duration.js";
 import type { KeySignature } from "../music/key-signature.js";
 import type { Melody } from "../music/melody.js";
-import { Rest, UnpitchedNote } from "../music/note-event.js";
+import { Note, Rest, UnpitchedNote } from "../music/note-event.js";
 import type { Pitch } from "../music/pitch.js";
 import { spellForMelodyEvent, spellMidi, spellingContext } from "../music/spelling.js";
 import { createMelodyView, type MelodyView } from "../render/melody-view.js";
@@ -19,11 +19,13 @@ import type {
   MelodyRenderResult,
   RenderMelodyOptions,
 } from "../render/render-melody.js";
+import { createPiano, type Piano } from "../playback/piano.js";
 import { createDurationGrid } from "./duration-grid.js";
 import { restIcon, tieIcon, unpitchedIcon, untieIcon } from "./icons.js";
+import { createSwitch } from "./switch.js";
 import { createTupletMenu } from "./tuplet-menu.js";
 import { createPianoKeyboard, rangeForClef } from "./piano-keyboard.js";
-import { createTooltip } from "./tooltip.js";
+import { pageTooltip } from "./tooltip.js";
 import { isTypingTarget } from "./typing-guard.js";
 
 export type EditorElements = {
@@ -33,6 +35,15 @@ export type EditorElements = {
   durations: HTMLElement;
   tuplets: HTMLElement;
   actions: HTMLElement;
+  /**
+   * The box holding the three groups above.
+   *
+   * Wanted only so that pitch-only mode can take the whole thing out of the
+   * layout rather than leave an empty box in it: emptied but present, it is a
+   * flex item of no width that still opens the band's gap and still counts as a
+   * sibling, so the video beside it sits off to one side of centre.
+   */
+  controls?: HTMLElement;
   status: HTMLElement;
   keyboard: HTMLElement;
 };
@@ -101,16 +112,32 @@ export function createEditor(
     locked?: () => ReadonlySet<number>;
     /** Verdict colouring, handed straight to the view. */
     decorate?: () => Pick<RenderMelodyOptions, "correct" | "wrong">;
+    /**
+     * Whether the piano sounds, when the editor is built.
+     *
+     * Held by the page rather than here, because the editor is torn down and
+     * rebuilt for every undo, mode switch and key change, and a setting that
+     * lived here would silently switch itself off partway through a session.
+     */
+    sound?: boolean;
+    /** Said whenever the toggle is pressed, so the page can remember it. */
+    onSound?: (sounding: boolean) => void;
   } = {},
 ): Editor {
   const clef = options.clef ?? "treble";
   const pitchOnly = options.pitchOnly ?? false;
   const range = rangeForClef(clef);
 
+  /** The score as it now stands, for putting a refusal on the note it is about. */
+  let drawn: MelodyRenderResult | undefined;
+
   const view: MelodyView = createMelodyView(melody, {
     elementId: elements.score.id,
     clef,
-    onRender: options.onRender,
+    onRender: (rendered) => {
+      drawn = rendered;
+      options.onRender?.(rendered);
+    },
     decorate: options.decorate,
   });
 
@@ -126,7 +153,7 @@ export function createEditor(
    * grew the whole toolbar. `status` is left for the standing facts that are
    * true whether or not anybody is pointing at anything.
    */
-  const tooltip = createTooltip();
+  const tooltip = pageTooltip();
 
   let explanation: string | undefined;
 
@@ -134,14 +161,46 @@ export function createEditor(
   const nameInKey = (midi: number): Pitch =>
     spellMidi(midi, spellingContext(melody.keySignature, []));
 
+  /**
+   * Whether a press is heard, and the piano that does the hearing.
+   *
+   * The piano is built on the first note actually sounded rather than with the
+   * editor: it holds an `AudioContext`, and one made outside a gesture arrives
+   * suspended.
+   */
+  let sounding = options.sound ?? false;
+  let piano: Piano | undefined;
+
+  /** Sound a pitch, if the toggle is on. */
+  function hear(midi: number): void {
+    if (!sounding) return;
+    piano ??= createPiano();
+    piano.play(midi);
+  }
+
   const keyboard = createPianoKeyboard(elements.keyboard, {
     clef,
     spell: nameInKey,
-    onPick: pitchAt,
+    onExplain: (reason) => {
+      explanation = reason;
+      showStatus();
+    },
+    // Every press is heard, whether or not it writes. Writing is `pitchAt`'s
+    // business and it declines where it must; being declined is not a reason
+    // to have heard nothing.
+    onPick: (midi) => {
+      hear(midi);
+      pitchAt(midi, { heard: true });
+    },
   });
 
   // Whoever is not building these still owns clearing them: pitch-only mode is
-  // reached by rebuilding over a page that was writing rhythm a moment ago.
+  // reached by rebuilding over a page that was writing rhythm a moment ago. The
+  // box around them goes too, rather than staying as an empty one — see
+  // `EditorElements.controls`.
+  if (elements.controls) {
+    elements.controls.hidden = pitchOnly;
+  }
   if (pitchOnly) {
     elements.durations.replaceChildren();
     elements.tuplets.replaceChildren();
@@ -196,37 +255,34 @@ export function createEditor(
     return count;
   }
 
-  let transient: string | undefined;
-
   /**
-   * Both of these are answers to something the pointer just did — a control
-   * refusing, or a greyed cell explaining itself on hover — so both go beside
-   * the pointer rather than into a line under the toolbar, where they were
-   * nowhere near the thing pressed and made the whole bar grow while they
-   * stood. The explanation wins, because it is about whatever is under the
-   * pointer right now.
+   * Put a reason beside the pointer, or take it away.
+   *
+   * The one thing the tooltip is for now: a control that is visibly dead saying
+   * why, while it is pointed at. Two controls raise these — the greyed duration
+   * cells and the piano when there is nothing to write to — and both are hover,
+   * so the pointer is where the answer belongs.
+   *
+   * There used to be a second kind, raised when an action declined: "select a
+   * note first", "that is already a rest". They are gone. A message that
+   * appears after a press has already let somebody press a thing that was never
+   * going to work, and every one of those cases is a control that could say so
+   * beforehand instead — which is what these two now do.
    */
   function showStatus(): void {
-    tooltip.say(explanation ?? transient);
-  }
-
-  function report(message: string | undefined): void {
-    transient = message;
-    showStatus();
+    tooltip.say(explanation);
   }
 
   /**
-   * Say why an edit was refused, and keep the original for whoever is debugging.
+   * Keep a refused edit for whoever is debugging.
    *
-   * The operations throw sentences written to be read by the person editing —
-   * "That length does not fit before the next note or the barline" — so the
-   * message is shown as it stands rather than replaced by something vaguer.
-   * The two throws that still name an array index are bounds checks that only
-   * a bug reaches, which is exactly what the console line is for.
+   * Nothing is shown. The operations throw sentences meant to be read, but the
+   * controls that can throw are greyed before they are pressed, so anything
+   * reaching here is a bug rather than a refusal — and a bug belongs in the
+   * console rather than in a tooltip.
    */
   function refuse(error: unknown): void {
     console.error(error);
-    report(error instanceof Error ? error.message : String(error));
   }
 
   // ---- editing ---------------------------------------------------------
@@ -244,7 +300,6 @@ export function createEditor(
   function runEdit(edit: (index: number) => number): void {
     const anchor = view.getAnchor();
     if (anchor === undefined) {
-      report("Select a note or a rest first.");
       return;
     }
     let landed: number;
@@ -254,8 +309,54 @@ export function createEditor(
       refuse(error);
       return;
     }
-    report(undefined);
     refresh(Math.min(landed, melody.eventCount - 1));
+  }
+
+  /**
+   * Why Tie will not act, or nothing if it will.
+   *
+   * One line each, and each naming what is in the way rather than restating the
+   * rule — the greyed duration cells' wording. The order is the order the
+   * reasons are met in: nothing selected, nowhere to tie to, then the four ways
+   * two events can fail to be one sound.
+   */
+  function whyNoTie(): string | undefined {
+    const anchor = view.getAnchor();
+    if (anchor === undefined) return "Select a note to tie it";
+    if (anchor + 1 >= melody.eventCount) return "Nothing after it to tie to";
+    // Already tied leaves nothing to do, so the pair reads as one control with
+    // two states rather than as two that are both live.
+    if (tiedForward()) return "Already tied";
+
+    const here = melody.getEvent(anchor);
+    const next = melody.getEvent(anchor + 1);
+    if (here instanceof Rest || next instanceof Rest) {
+      return "A rest cannot be tied";
+    }
+    // A tie says two noteheads are one sound, which neither can claim while
+    // only one of them has decided what that sound is.
+    if (here instanceof Note && !(next instanceof Note)) {
+      return "The next note has no pitch yet";
+    }
+    if (next instanceof Note && !(here instanceof Note)) {
+      return "This note has no pitch yet";
+    }
+    return melody.canTie(anchor) ? undefined : "The next note is a different pitch";
+  }
+
+  /** Why Untie will not act, or nothing if it will. */
+  function whyNoUntie(): string | undefined {
+    if (view.getAnchor() === undefined) return "Select a tied note to untie it";
+    return tiedForward() ? undefined : "This note is not tied";
+  }
+
+  /** Why Clear pitch will not act, or nothing if it will. */
+  function whyNoClear(): string | undefined {
+    const anchor = view.getAnchor();
+    if (anchor === undefined) return "Select a note to clear it";
+    if (melody.getEvent(anchor) instanceof Rest) return "A rest has no pitch";
+    if (isLocked(anchor)) return "That note is already found";
+    return undefined;
   }
 
   function syncControls(): void {
@@ -267,16 +368,10 @@ export function createEditor(
     tuplets?.update(melody, anchor);
 
     // A tie can only be made where one is possible and only removed where one
-    // exists, so both say so before they are pressed rather than after.
-    if (tieButton) {
-      // Already tied leaves nothing to do, so the pair reads as one control
-      // with two states rather than as two that are both live.
-      tieButton.disabled =
-        anchor === undefined || !melody.canTie(anchor) || tiedForward();
-    }
-    if (untieButton) {
-      untieButton.disabled = !tiedForward();
-    }
+    // exists, so both say so before they are pressed rather than after — and
+    // now say which of the several reasons it is, while being pointed at.
+    grey(tieButton, whyNoTie());
+    grey(untieButton, whyNoUntie());
     // Silence is already silence, so there is nothing here to turn into it.
     if (restButton) {
       restButton.disabled =
@@ -286,10 +381,7 @@ export function createEditor(
     // Greyed rather than left to refuse when pressed: on the play page most of
     // the score becomes locked as it is solved, and a control that errors on
     // most of its presses is worse than one that plainly cannot be pressed.
-    clearButton.disabled =
-      anchor === undefined ||
-      melody.getEvent(anchor) instanceof Rest ||
-      isLocked(anchor);
+    grey(clearButton, whyNoClear());
 
     const event = anchor === undefined ? undefined : melody.getEvent(anchor);
     keyboard.highlight(
@@ -297,11 +389,19 @@ export function createEditor(
         ? event.pitch.toMidi()
         : undefined,
     );
-    // Nothing a piano key could do here, so the piano says so rather than
-    // waiting to refuse. A rest is the same case: it has no pitch to set.
-    keyboard.setEnabled(
-      anchor !== undefined && !(event instanceof Rest) && !isLocked(anchor),
-    );
+    // Whether a press would write, and — for a key that will not — the reason,
+    // which it says when pointed at. Whether it does anything at all is the
+    // sound toggle's business: with the piano on, a key that cannot write can
+    // still be listened to, and then it has nothing to explain.
+    const stopping =
+      anchor === undefined
+        ? "Select a note to give it a pitch"
+        : event instanceof Rest
+          ? "A rest has no pitch"
+          : isLocked(anchor)
+            ? "That note is already found"
+            : undefined;
+    keyboard.setWritable(stopping === undefined, stopping);
     showStatus();
   }
 
@@ -316,7 +416,6 @@ export function createEditor(
   function writeSelected(duration: Duration): void {
     const anchor = view.getAnchor();
     if (anchor === undefined) {
-      report("Select a note or a rest first.");
       return;
     }
 
@@ -329,7 +428,6 @@ export function createEditor(
       return;
     }
 
-    report(undefined);
     refresh(wasRest ? (after(melody, written) ?? written) : written);
   }
 
@@ -340,20 +438,26 @@ export function createEditor(
    * on to the next blank, so a whole melody can be pitched without going back
    * to the stave. The arrow keys turn it off — a nudge that moved the selection
    * would mean the second press of Up raised a different note than the first.
+   *
+   * `heard` says the caller has already sounded this pitch, which the piano's
+   * own keys do before they ask for anything to be written. It turns off both
+   * the sounding below and the lines of text explaining a refusal: a press that
+   * answered with the note it stands for has not gone unanswered, and saying so
+   * in words as well would be wrong about what happened.
    */
-  function pitchAt(midi: number, { advance = true } = {}): void {
+  function pitchAt(
+    midi: number,
+    { advance = true, heard = false } = {},
+  ): void {
     const anchor = view.getAnchor();
     if (anchor === undefined) {
-      report("Select a note first.");
       return;
     }
     const event = melody.getEvent(anchor);
     if (event instanceof Rest) {
-      report("A rest has no pitch — write a duration over it to make it a note.");
       return;
     }
     if (isLocked(anchor)) {
-      report("That note is already found, and stays as it is.");
       return;
     }
     if (midi < range.lowest || midi > range.highest) {
@@ -362,8 +466,10 @@ export function createEditor(
 
     const wasUnpitched = event instanceof UnpitchedNote;
     melody.setPitch(anchor, spellForMelodyEvent(melody, anchor, midi));
+    // Every way a pitch is set passes through here, so hooking the sound on to
+    // it is what makes the arrow keys sound as well as the piano's own.
+    if (!heard) hear(midi);
 
-    report(undefined);
     refresh(
       wasUnpitched && advance
         ? (nextUnpitched(melody, anchor + 1) ?? anchor)
@@ -396,28 +502,52 @@ export function createEditor(
 
   function clearPitchAt(): void {
     const anchor = view.getAnchor();
-    if (anchor === undefined || melody.getEvent(anchor) instanceof Rest) {
-      report("Select a note to take its pitch off.");
-      return;
-    }
-    if (isLocked(anchor)) {
-      report("That note is already found, and stays as it is.");
-      return;
-    }
+    if (anchor === undefined || melody.getEvent(anchor) instanceof Rest) return;
+    // The button is greyed and the piano is dead in this case, both of which
+    // say so on hover; there is nothing left for a press to explain.
+    if (isLocked(anchor)) return;
     melody.clearPitch(anchor);
-    report(undefined);
     refresh(anchor);
   }
 
   function backspace(): void {
     const anchor = view.getAnchor();
     if (anchor === undefined) {
-      report("Select a note to turn it into a rest.");
       return;
     }
     const index = convertToRestAt(melody, anchor);
-    report(undefined);
     refresh(Math.min(index, melody.eventCount - 1));
+  }
+
+  /**
+   * One rung down: a note loses its pitch, a note without one becomes silence.
+   *
+   * Backspace takes off the most particular thing the selection still carries,
+   * so the same key does the whole ladder — pitched note, then unpitched note,
+   * then nothing left to take. Going straight from a written note to a rest
+   * would throw away the rhythm as well as the pitch on a single press, and the
+   * rhythm is usually the part that was right.
+   *
+   * The bottom rung differs by mode, because the rhythm is only yours to change
+   * in one of them: pitch-only mode stops after the pitch.
+   */
+  function backspaceLadder(): void {
+    const anchor = view.getAnchor();
+    if (anchor === undefined) return;
+    const event = melody.getEvent(anchor);
+
+    // A pitched note goes through `clearPitchAt`, which is also the only one of
+    // the two that refuses a note the puzzle has already found — so the ladder
+    // must never let a locked note reach the rung below.
+    if (event instanceof Note) {
+      clearPitchAt();
+      return;
+    }
+    // The bottom of the ladder, and it says nothing: an unpitched note in
+    // pitch-only mode has no rhythm of yours to take away, and a rest has
+    // nothing left at all.
+    if (pitchOnly || event instanceof Rest) return;
+    backspace();
   }
 
   /** Whether the selection is already tied to the event after it. */
@@ -433,18 +563,15 @@ export function createEditor(
   function untieSelected(): void {
     const anchor = view.getAnchor();
     if (anchor === undefined || !tiedForward()) {
-      report("Select a note that is tied to the one after it.");
       return;
     }
     melody.untie(anchor);
-    report(undefined);
     refresh(anchor);
   }
 
   function tieSelected(): void {
     const anchor = view.getAnchor();
     if (anchor === undefined || anchor + 1 >= melody.eventCount) {
-      report("Select a note to tie it to the one after it.");
       return;
     }
     try {
@@ -453,11 +580,34 @@ export function createEditor(
       refuse(error);
       return;
     }
-    report(undefined);
     refresh(anchor);
   }
 
   // ---- action buttons --------------------------------------------------
+
+  /**
+   * Why each greyed action is greyed.
+   *
+   * Only for the ones marked dead rather than disabled. A `disabled` button
+   * receives no mouse events at all, so it can be neither pointed at nor asked
+   * anything — the same wall the greyed duration cells and the dead piano keys
+   * ran into, and the same way round it: `aria-disabled` plus a class, with the
+   * press refused in the handler.
+   */
+  const deadReason = new Map<HTMLButtonElement, string>();
+
+  function grey(
+    button: HTMLButtonElement | undefined,
+    reason: string | undefined,
+  ): void {
+    if (!button) return;
+    if (reason === undefined) {
+      deadReason.delete(button);
+    } else {
+      deadReason.set(button, reason);
+    }
+    button.setAttribute("aria-disabled", String(reason !== undefined));
+  }
 
   /** An action drawn as what it does, with the words underneath. */
   function actionButton(
@@ -474,13 +624,35 @@ export function createEditor(
     const printed = shortcut && shortcut.length === 1 && /[a-z]/i.test(shortcut)
       ? shortcut.toUpperCase()
       : shortcut;
-    button.title = printed ? `${title} (${printed})` : title;
+    // No `title`. The words are printed under the icon and the key on it, so a
+    // tooltip here could only repeat one of the two.
     button.setAttribute("aria-label", label);
     // The key is printed on the control rather than hidden in a tooltip, which
     // is the only way anybody finds out a shortcut exists.
     const key = `<kbd class="action-key">${printed ?? ""}</kbd>`;
     button.innerHTML = `${key}<span class="action-icon">${icon}</span><span class="action-label">${label}</span>`;
-    button.addEventListener("click", run);
+    button.addEventListener("click", () => {
+      const dead = deadReason.get(button);
+      if (dead === undefined) {
+        run();
+        return;
+      }
+      // Pointing at it has said this already; a press says it again rather than
+      // answering with nothing at all.
+      explanation = dead;
+      showStatus();
+    });
+    // Read on the button rather than the row, since each has its own answer.
+    // Silent while the control is live: the words are printed under the icon
+    // and the key on its face, so there is nothing left to add.
+    button.addEventListener("mousemove", () => {
+      explanation = deadReason.get(button);
+      showStatus();
+    });
+    button.addEventListener("mouseleave", () => {
+      explanation = undefined;
+      showStatus();
+    });
     into.append(button);
     return button;
   }
@@ -516,13 +688,45 @@ export function createEditor(
       "\u232B",
     );
   }
+  // Beside the piano, because it is about what the piano does — and above the
+  // action, because it is a setting rather than a deed: it says how the keys
+  // will behave from now on, where Clear pitch does one thing once.
+  const soundSwitch = createSwitch({
+    label: "Piano sound",
+    title: "Hear each pitch as it is set",
+    checked: sounding,
+    onChange: (on) => {
+      sounding = on;
+      showSound();
+      options.onSound?.(sounding);
+    },
+  });
+  elements.pitchActions.append(soundSwitch.element);
+
+  // Backspace, because that is the key that does it: taking the pitch off is
+  // the first rung of the ladder in `backspaceLadder`, and there is no second
+  // key for it.
   const clearButton = actionButton(
     elements.pitchActions,
     unpitchedIcon(),
     "Clear pitch",
     "Take the pitch off the selection, leaving its rhythm",
     clearPitchAt,
+    "\u232B",
   );
+
+  function showSound(): void {
+    soundSwitch.set(sounding);
+    keyboard.setSounding(sounding);
+    // Silence means silence: a context left open holds the audio hardware for
+    // a page that has said it does not want it.
+    if (!sounding) {
+      piano?.close();
+      piano = undefined;
+    }
+  }
+
+  showSound();
 
   // ---- keyboard --------------------------------------------------------
 
@@ -547,8 +751,7 @@ export function createEditor(
         break;
       case "Backspace":
       case "Delete":
-        if (pitchOnly) return;
-        backspace();
+        backspaceLadder();
         break;
       case "t":
       case "T":
@@ -564,7 +767,7 @@ export function createEditor(
         // A digit writes the length it is printed on — the dotted one with
         // Shift held — when that length fits. Matched on the physical key,
         // because Shift+1 types "!" and the shortcut must not care.
-        const digit = /^Digit([1-5])$/.exec(event.code)?.[1];
+        const digit = /^Digit([1-6])$/.exec(event.code)?.[1];
         if (pitchOnly || !digit || !grid?.press(digit, event.shiftKey)) {
           return;
         }
@@ -575,7 +778,6 @@ export function createEditor(
   }
 
   view.onSelectionChange((anchor) => {
-    report(undefined);
     syncControls();
     options.onSelect?.(anchor);
     // Useful while working on the editor, not worth a permanent line of the
@@ -593,7 +795,10 @@ export function createEditor(
     holdStill: (ms) => view.holdStill(ms),
     destroy() {
       window.removeEventListener("keydown", onKeyDown);
-      tooltip.destroy();
+      // Hushed, not destroyed: the tooltip belongs to the page and the controls
+      // beside the video go on using it after this editor is gone.
+      tooltip.say(undefined);
+      piano?.close();
       view.destroy();
     },
   };

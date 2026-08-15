@@ -59,7 +59,7 @@ export function createTupletMenu(
     // The bracket is what will actually appear over the notes, which says more
     // than a bare number did and needs no caption to be read.
     button.innerHTML = tupletIcon(tuplet.numNotes);
-    button.title = `${name} — ${tuplet.numNotes} in the time of ${tuplet.inTimeOf}`;
+    button.title = name;
     button.setAttribute("aria-label", `${name}, ${tuplet}`);
     button.setAttribute("aria-pressed", "false");
     (apart ? aside : grid).append(button);

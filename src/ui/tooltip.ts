@@ -42,13 +42,37 @@ function trackPointer(): void {
   );
 }
 
+/** A point in viewport pixels for a message to sit above. */
+export type Spot = { readonly x: number; readonly y: number };
+
 export type Tooltip = {
-  /** Say this beside the pointer, or clear it with `undefined`. */
-  say(message: string | undefined): void;
-  destroy(): void;
+  /**
+   * Say this above `at`, or beside the pointer when no place is given.
+   *
+   * A place is what a refusal raised from the keyboard needs. The pointer is
+   * the right anchor for an explanation of whatever is being hovered, and the
+   * wrong one for everything else: pressing a key does not move the mouse, so
+   * the answer appeared wherever the mouse had been abandoned — or, if it had
+   * not moved at all since the page loaded, in the corner of the window.
+   */
+  say(message: string | undefined, at?: Spot): void;
 };
 
-export function createTooltip(): Tooltip {
+let shared: Tooltip | undefined;
+
+/**
+ * The page's tooltip, made the first time anything wants to speak.
+ *
+ * There is one because there is only ever one thing being pointed at. It is
+ * also the only way the controls beside the video can have one at all: the
+ * editor made its own and threw it away on every rebuild, and the playback panel
+ * outlives a great many of those.
+ */
+export function pageTooltip(): Tooltip {
+  return (shared ??= createTooltip());
+}
+
+function createTooltip(): Tooltip {
   trackPointer();
 
   const element = document.createElement("div");
@@ -67,7 +91,7 @@ export function createTooltip(): Tooltip {
   }
 
   return {
-    say(message) {
+    say(message, at) {
       if (message === undefined) {
         hide();
         return;
@@ -82,21 +106,17 @@ export function createTooltip(): Tooltip {
       // Placed after unhiding, so the box has a width to be centred on and can
       // be kept inside the window rather than half off the edge.
       const box = element.getBoundingClientRect();
+      const spot = at ?? { x: pointerX, y: pointerY };
       const x = Math.min(
-        Math.max(pointerX, box.width / 2 + 8),
+        Math.max(spot.x, box.width / 2 + 8),
         window.innerWidth - box.width / 2 - 8,
       );
-      const y = Math.max(pointerY - RISE, box.height + 8);
+      const y = Math.max(spot.y - RISE, box.height + 8);
       element.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
 
       timer = setTimeout(() => {
         if (element.textContent === showing) hide();
       }, LINGER_MS);
-    },
-
-    destroy() {
-      hide();
-      element.remove();
     },
   };
 }

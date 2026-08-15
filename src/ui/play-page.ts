@@ -25,6 +25,9 @@ import {
 } from "../puzzle/stopwatch.js";
 import {
   attemptOf,
+  judgedOf,
+  rememberVerdicts,
+  verdictsFrom,
   checkProblem,
   marksOf,
   verdictsOf,
@@ -35,6 +38,7 @@ import {
   type TranscriptionRecord,
 } from "../shared/transcription.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
+import { keepingScroll } from "./score-overlay.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
 import { openLevelModal } from "./level-modal.js";
 import { createPlayBar, type PlayBar } from "./play-bar.js";
@@ -98,6 +102,15 @@ export function createPlayPage(
   let editor: Editor | undefined;
   let playback: Playback | undefined;
   let bar: PlayBar | undefined;
+  /**
+   * Whether the piano sounds as pitches are set.
+   *
+   * Off at the start of every puzzle, and not remembered between them: hearing
+   * the pitches is a way of solving one, and turning it on for a level says
+   * nothing about the next. Held here rather than in the editor, which `mount`
+   * rebuilds from nothing on every edit.
+   */
+  let sound = false;
 
   // ---- what was left here last time --------------------------------------
 
@@ -120,14 +133,20 @@ export function createPlayPage(
 
   if (restored) {
     restorePitches(restored.pitches);
+    // Every verdict any check has given, so the stave opens coloured as it was
+    // left — and so the notes already found open locked, which is the same set.
+    verdicts = verdictsFrom(restored.judged);
     if (restored.solvedAt !== undefined) {
       // Solved on a previous visit. Every note it holds was confirmed by the
       // server then, so they are marked as the verdicts they earned -- keyed
       // by value like any other, which is what keeps them honest.
       const attempt = attemptOf(melody);
-      verdicts = verdictsOf(
-        attempt,
-        [...attempt.keys()].map((index) => ({ index, correct: true })),
+      verdicts = rememberVerdicts(
+        verdicts,
+        verdictsOf(
+          attempt,
+          [...attempt.keys()].map((index) => ({ index, correct: true })),
+        ),
       );
       solved = true;
     }
@@ -177,6 +196,7 @@ export function createPlayPage(
     checkCount,
     solvedAt: solved ? (restored?.solvedAt ?? Date.now()) : undefined,
     pitches: [...attemptOf(melody)].map(([index, midi]) => ({ index, midi })),
+    judged: judgedOf(verdicts),
   });
 
   function save(): void {
@@ -211,6 +231,12 @@ export function createPlayPage(
   }
 
   function mount(): void {
+    // Wrapped whole: tearing the score down collapses the document, and the
+    // browser throws the scroll offset away with it — see `keepingScroll`.
+    keepingScroll(rebuild);
+  }
+
+  function rebuild(): void {
     const selected = editor?.selection();
     editor?.destroy();
     showBar();
@@ -223,6 +249,10 @@ export function createPlayPage(
       // The rhythm is the level's. Nothing here writes durations, ties or
       // rests, and this is what takes those controls off the page.
       pitchOnly: true,
+      sound,
+      onSound: (next) => {
+        sound = next;
+      },
       initialSelection: selected,
       locked: () => (solved ? everything : marks().locked),
       decorate: () => {
@@ -231,6 +261,11 @@ export function createPlayPage(
       },
       onEdit: () => {
         history.record(melody);
+        // Handed over again, or the notes played along with the video would be
+        // the ones this page was opened with: the rig holds them in video
+        // seconds, which is a reading of the melody rather than a view of it,
+        // and only whoever owns the melody knows it has moved.
+        playback?.follow(melody);
         // A pitch changed, so a verdict about the old one no longer applies.
         // Nothing has to be cleared: marksOf() reads the melody afresh.
         report = undefined;
@@ -297,7 +332,10 @@ export function createPlayPage(
       // every check would set off the whole green half of the score again.
       const alreadyFound = marks().correct;
 
-      verdicts = verdictsOf(attempt, answered.verdicts);
+      // Added to, not replaced: a note told twice that it is wrong was told
+    // about two different pitches, and going back to the first one should not
+    // need a third check to be marked again.
+    verdicts = rememberVerdicts(verdicts, verdictsOf(attempt, answered.verdicts));
       checkCount += 1;
 
       if (answered.solved) {

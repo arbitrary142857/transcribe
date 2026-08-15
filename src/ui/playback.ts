@@ -20,9 +20,13 @@ import {
   type Marks,
   type TempoMap,
 } from "../playback/tempo-map.js";
+import { eventAtSeconds } from "../playback/follow.js";
+import type { PianoNote } from "../playback/piano.js";
+import { soundingNotes, type Hearing } from "../playback/playalong.js";
 import { toMilliseconds } from "../playback/timecode.js";
 import {
   bpmOf,
+  markedField,
   stepTiming,
   timingProblem,
   type TimingAction,
@@ -119,6 +123,8 @@ export function createPlayback(
   /** When each event begins and ends, in video seconds; indexed like the melody. */
   let onsets: number[] = [];
   let ends: number[] = [];
+  /** The melody as something to play: sounding notes only, in video seconds. */
+  let played: PianoNote[] = [];
   /** The melody last taken on, so a re-timing can recompute against it. */
   let following: Melody | undefined;
 
@@ -136,6 +142,14 @@ export function createPlayback(
     : undefined;
 
   let metronomeOn = false;
+  /**
+   * What is heard while the section plays.
+   *
+   * One setting rather than two toggles, because "both silent" and "both at
+   * once" are equally easy to land on by accident when they are independent,
+   * and only one of those is ever wanted.
+   */
+  let hearing: Hearing = "video";
   let followOn = map !== undefined;
   let hasSelection = false;
 
@@ -147,23 +161,12 @@ export function createPlayback(
 
   // ---- what the panels say ---------------------------------------------
 
-  function note(): string {
-    if (trouble) return trouble;
-    if (rejected) return rejected;
-    const wrong = problem();
-    if (wrong) return wrong;
-    if (!map) return "The timing does not add up.";
-    const bars = config.measures === 1 ? "1 bar" : `${config.measures} bars`;
-    return `${bars} · ${Math.round(beatsPerMinute(map))} BPM`;
-  }
-
   function refresh(): void {
     const shared = {
       ready: rigReady,
       rates: rig.rates(),
       rate: rig.rate(),
       timed: map !== undefined && problem() === undefined,
-      note: note(),
     };
 
     panel.update({
@@ -175,6 +178,7 @@ export function createPlayback(
       canPlay: rigReady && map !== undefined,
       hasSelection,
       metronomeOn,
+      hearing,
       followOn,
     });
 
@@ -186,6 +190,7 @@ export function createPlayback(
         return bpm === undefined ? undefined : String(Math.round(bpm * 10) / 10);
       })(),
       metronomeOn,
+      hearing,
     });
 
     if (modes) {
@@ -245,6 +250,10 @@ export function createPlayback(
   rig.ready
     .then(() => {
       rigReady = true;
+      // Said again now there is a player to say it to. Muting is a request
+      // rather than a state, and one made before the player answered went
+      // nowhere — which would leave the video audible under the transcription.
+      rig.setMuted(hearing === "notes");
       refresh();
     })
     .catch((error: unknown) => {
@@ -262,12 +271,35 @@ export function createPlayback(
       // Any pair of marks is legal. An end at-or-before the start is simply
       // an end that means nothing — the machine ignores it — while the start
       // keeps its whole meaning.
-      section = setRange(section, { start: sectionStart, end: sectionEnd });
+      const range = { start: sectionStart, end: sectionEnd };
+      // Handed over as a fact rather than set behind the machine's back: moving
+      // the marks can leave the playhead outside the section, and only the
+      // machine knows whether that calls for a wrap, a pause or nothing. Every
+      // route here is a committed change — the time fields commit on blur and
+      // Enter, never per keystroke — so this cannot fire mid-typing.
+      if (rigReady) {
+        run(stepSection(section, { kind: "range", range, now: rig.now() }));
+      } else {
+        section = setRange(section, range);
+      }
     }
     refresh();
   }
 
-  function setMark(field: "start" | "end", seconds: number): void {
+  /**
+   * Write one section mark.
+   *
+   * `announced` flashes the box, and is on for every route except typing into
+   * it and stepping it: those two are the box's own controls, so the caret is
+   * already there and a pulse would only be telling somebody what they just
+   * did. The rest — the mark buttons, the from-the-selected-note buttons, the
+   * reset, and `I` / `O` / `⇧I` / `⇧O` — land a value somewhere the eye is not.
+   */
+  function setMark(
+    field: "start" | "end",
+    seconds: number,
+    { announced = true } = {},
+  ): void {
     const value = Math.max(0, toMilliseconds(seconds));
     if (field === "start") {
       sectionStart = value;
@@ -275,6 +307,7 @@ export function createPlayback(
       sectionEnd = value;
     }
     applyRange();
+    if (announced) panel.flash(field);
   }
 
   const markNow = (field: "start" | "end") => {
@@ -324,6 +357,9 @@ export function createPlayback(
     if (metronomeOn) {
       rig.setMetronome(map);
     }
+    // `takeOnsets` has already re-handed the notes when there is a melody; this
+    // is the case where the marks stopped describing a tempo at all.
+    if (!following) sendPlayalong();
     options.onRetime?.({ start: timing.start!, end: timing.end! });
     refresh();
   }
@@ -343,8 +379,30 @@ export function createPlayback(
     }
     rejected = undefined;
     timing = step.state;
-    timingPanel?.flash(step.autoEdited);
+    timingPanel?.flash([...step.autoEdited, ...markedField(action)]);
     retime();
+  }
+
+  /**
+   * Choose what is heard, and make it so.
+   *
+   * Muting is a request rather than a state — the iframe API has no mute event,
+   * so YouTube's own button can move it behind our back — which is why this is
+   * re-asserted on every change rather than tracked.
+   *
+   * Called inside a press, which is what lets the piano's audio context be
+   * made at all.
+   */
+  function setHearing(next: Hearing): void {
+    const before = hearing;
+    hearing = map === undefined ? "video" : next;
+    rig.setMuted(hearing === "notes");
+    // Only when the piano itself goes on or off. Handing the notes over drops
+    // whatever is ringing, and moving between two positions that both sound
+    // them changes nothing about the notes — so Both and Notes swap without
+    // cutting the note being held across the switch.
+    if ((before === "video") !== (hearing === "video")) sendPlayalong();
+    refresh();
   }
 
   function playPause(): void {
@@ -478,13 +536,13 @@ export function createPlayback(
         refresh();
         return;
       }
-      setMark(field, seconds);
+      setMark(field, seconds, { announced: false });
     },
 
     onNudge(field, seconds) {
       const current = field === "start" ? sectionStart : sectionEnd;
       if (current === undefined) return;
-      setMark(field, current + seconds);
+      setMark(field, current + seconds, { announced: false });
     },
 
     onFromNote: fromNote,
@@ -495,6 +553,8 @@ export function createPlayback(
       rig.setMetronome(metronomeOn ? map : undefined);
       refresh();
     },
+
+    onHearing: setHearing,
 
     onFollow(on) {
       followOn = on && map !== undefined;
@@ -539,6 +599,7 @@ export function createPlayback(
             rig.setMetronome(metronomeOn ? map : undefined);
             refresh();
           },
+          onHearing: setHearing,
           onLetter,
         },
         { measures: "fixed" },
@@ -553,6 +614,8 @@ export function createPlayback(
     if (!map) {
       onsets = [];
       ends = [];
+      played = [];
+      sendPlayalong();
       return;
     }
     const positions = eventPositions(melody);
@@ -562,26 +625,32 @@ export function createPlayback(
     ends = positions.map((position) =>
       secondsAtPosition(map!, position.start.add(position.length).toNumber()),
     );
+    // The one place whole notes become seconds. `soundingNotes` measures in the
+    // melody's own units, which do not move when the marks do; these do.
+    played = soundingNotes(melody).map((note) => ({
+      start: secondsAtPosition(map!, note.start),
+      end: secondsAtPosition(map!, note.end),
+      midi: note.midi,
+    }));
+    sendPlayalong();
+  }
+
+  /**
+   * Hand the rig what to play, or nothing.
+   *
+   * Called again on every edit and every re-timing, both of which move the
+   * notes: the rig drops whatever it had lined up, because those were the notes
+   * as they stood a keystroke ago.
+   */
+  function sendPlayalong(): void {
+    rig.setPlayalong(hearing === "video" ? undefined : played);
   }
 
   /** Which event is sounding at a video second, or none outside the music. */
   function eventAt(seconds: number): number | undefined {
-    if (!map || onsets.length === 0) return undefined;
+    if (!map) return undefined;
     if (seconds < map.start || seconds > map.end) return undefined;
-
-    let low = 0;
-    let high = onsets.length - 1;
-    let found = 0;
-    while (low <= high) {
-      const middle = (low + high) >> 1;
-      if (onsets[middle]! <= seconds) {
-        found = middle;
-        low = middle + 1;
-      } else {
-        high = middle - 1;
-      }
-    }
-    return found;
+    return eventAtSeconds(onsets, seconds);
   }
 
   refresh();

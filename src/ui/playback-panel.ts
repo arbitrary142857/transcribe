@@ -13,6 +13,7 @@ import {
 } from "./icons.js";
 import { createSpeedRow } from "./speed-row.js";
 import { createTimeField, type TimeField } from "./time-field.js";
+import { pageTooltip } from "./tooltip.js";
 
 /**
  * The melody page's playback controls.
@@ -25,6 +26,9 @@ import { createTimeField, type TimeField } from "./time-field.js";
  * user types into, and rebuilding one between keystrokes takes the caret
  * with it.
  */
+import type { Hearing } from "../playback/playalong.js";
+import { createHearingSwitch } from "./hearing-switch.js";
+
 export type PlaybackPanelState = {
   ready: boolean;
   rates: readonly number[];
@@ -40,10 +44,11 @@ export type PlaybackPanelState = {
   /** Whether a note is selected, for the set-from-note buttons. */
   hasSelection: boolean;
   metronomeOn: boolean;
+  /** What the section is heard as. */
+  hearing: Hearing;
   followOn: boolean;
   /** Whether the frozen tempo exists — gates metronome and follow. */
   timed: boolean;
-  note: string;
 };
 
 export type PlaybackPanelHandlers = {
@@ -58,12 +63,43 @@ export type PlaybackPanelHandlers = {
   /** Put one mark back to the melody's own start or end. */
   onResetMark(field: "start" | "end"): void;
   onMetronome(on: boolean): void;
+  onHearing(hearing: Hearing): void;
   onFollow(on: boolean): void;
   /** A letter pressed inside a section field; shift distinguishes variants. */
   onLetter(letter: string, shift: boolean): boolean;
 };
 
-export type PlaybackPanel = { update(state: PlaybackPanelState): void };
+export type PlaybackPanel = {
+  update(state: PlaybackPanelState): void;
+  /**
+   * Say that a mark was moved by something other than typing into it.
+   *
+   * A press of `I`, or a mark button, or the reset — anything that writes a
+   * timestamp the user was not looking at the caret in. The same warm pulse
+   * the setup page uses when the tempo moves a mark on its own, so the two
+   * mean the same thing wherever they appear.
+   */
+  flash(field: "start" | "end"): void;
+};
+
+/**
+ * Why a greyed button is greyed, for the ones greyed rather than disabled.
+ *
+ * Only the set-from-the-selected-note pair is in here. A `disabled` button
+ * receives no mouse events at all and so cannot be pointed at, which is fine
+ * for a transport that is plainly waiting on the video and no use for a button
+ * whose face says nothing about wanting a note selected first.
+ */
+const deadReason = new WeakMap<HTMLButtonElement, string>();
+
+function grey(button: HTMLButtonElement, reason: string | undefined): void {
+  if (reason === undefined) {
+    deadReason.delete(button);
+  } else {
+    deadReason.set(button, reason);
+  }
+  button.setAttribute("aria-disabled", String(reason !== undefined));
+}
 
 function iconButton(
   className: string,
@@ -75,11 +111,27 @@ function iconButton(
   const button = document.createElement("button");
   button.type = "button";
   button.className = className;
-  button.title = shortcut ? `${title} (${shortcut})` : title;
+  // The name only. The key is printed on the button in a `<kbd>`, and a
+  // tooltip repeating it would be the same fact twice.
+  button.title = title;
   button.setAttribute("aria-label", title);
   button.innerHTML =
     (shortcut ? `<kbd class="cell-key">${shortcut}</kbd>` : "") + icon;
-  button.addEventListener("click", run);
+  button.addEventListener("click", () => {
+    const dead = deadReason.get(button);
+    if (dead === undefined) {
+      run();
+      return;
+    }
+    pageTooltip().say(dead);
+  });
+  // Nothing to say while it is live: the OS tooltip carries the name, and this
+  // one is for the reason a control cannot be used.
+  button.addEventListener("mousemove", () => {
+    const dead = deadReason.get(button);
+    if (dead !== undefined) pageTooltip().say(dead);
+  });
+  button.addEventListener("mouseleave", () => pageTooltip().say(undefined));
   return button;
 }
 
@@ -135,8 +187,8 @@ export function createPlaybackPanel(
       "playback-mark-button",
       isStart ? markStartIcon() : markEndIcon(),
       isStart
-        ? "Set the start of playback to now"
-        : "Set the end of playback to now",
+        ? "Start now"
+        : "End now",
       () => handlers.onMark(field),
       isStart ? "I" : "O",
     );
@@ -144,8 +196,8 @@ export function createPlaybackPanel(
       "playback-mark-button",
       isStart ? noteStartIcon() : noteEndIcon(),
       isStart
-        ? "Set the start of playback to the selected note"
-        : "Set the end of playback to the end of the selected note",
+        ? "Start at note"
+        : "End at note",
       () => handlers.onFromNote(field),
       isStart ? "⇧I" : "⇧O",
     );
@@ -153,8 +205,8 @@ export function createPlaybackPanel(
       "playback-mark-button playback-mark-reset",
       restoreIcon(),
       isStart
-        ? "Put the start of playback back to the melody's start"
-        : "Put the end of playback back to the melody's end",
+        ? "Reset start"
+        : "Reset end",
       () => handlers.onResetMark(field),
     );
     const row = document.createElement("div");
@@ -178,21 +230,21 @@ export function createPlaybackPanel(
   const play = iconButton(
     "playback-transport-button playback-play",
     playIcon(),
-    "Play the marked section",
+    "Play",
     handlers.onPlayPause,
     "␣",
   );
   const jumpBack = iconButton(
     "playback-transport-button",
     jumpBackIcon(),
-    "Back to the start of playback",
+    "Back to start",
     handlers.onJumpBack,
     "R",
   );
   const loop = iconButton(
     "playback-transport-button",
     loopIcon(),
-    "Loop the marked section",
+    "Loop",
     () => handlers.onLoop(loop.getAttribute("aria-pressed") !== "true"),
   );
   loop.setAttribute("aria-pressed", "false");
@@ -202,7 +254,7 @@ export function createPlaybackPanel(
   const metronome = toggle(metronomeIcon(), "Metronome", handlers.onMetronome);
   const follow = toggle(
     playheadIcon(),
-    "Follow the music on the stave",
+    "Follow",
     handlers.onFollow,
   );
 
@@ -219,17 +271,15 @@ export function createPlaybackPanel(
 
   transport.append(play, jumpBack, loop, metronome, follow, more);
 
-  // The speed and the section fields fold away on a narrow screen; the
-  // transport stays out, being what is reached for mid-take.
+  const hearing = createHearingSwitch(handlers.onHearing);
+
+  // The speed, what is heard and the section fields fold away on a narrow
+  // screen; the transport stays out, being what is reached for mid-take.
   const extra = document.createElement("div");
   extra.className = "playback-extra";
-  extra.append(speed.element, marksColumn);
+  extra.append(speed.element, hearing.element, marksColumn);
 
-  const note = document.createElement("p");
-  note.className = "playback-note";
-  note.setAttribute("role", "status");
-
-  panel.append(extra, transport, note);
+  panel.append(extra, transport);
   element.append(panel);
 
   return {
@@ -243,7 +293,17 @@ export function createPlaybackPanel(
         row.timeField.show(seconds, true);
         row.timeField.setDisabled(!state.ready);
         row.mark.disabled = !state.ready;
-        row.fromNote.disabled = !state.ready || !state.hasSelection;
+        // Greyed rather than disabled, so it can be asked what it is waiting
+        // for. Waiting on the video is the panel's whole state and says itself;
+        // waiting on a selection is a fact about the score across the page.
+        grey(
+          row.fromNote,
+          !state.ready
+            ? "The video is still loading"
+            : state.hasSelection
+              ? undefined
+              : "Select a note first",
+        );
         row.reset.disabled = !state.ready || !state.timed;
       }
 
@@ -251,14 +311,14 @@ export function createPlaybackPanel(
       play.innerHTML =
         `<kbd class="cell-key">␣</kbd>` +
         (state.playing ? pauseIcon() : playIcon());
-      play.title = state.playing
-        ? "Pause the section (␣)"
-        : "Play the marked section (␣)";
+      play.title = state.playing ? "Pause" : "Play";
       jumpBack.disabled = !state.canPlay;
 
       loop.disabled = !state.timed;
       loop.setAttribute("aria-pressed", String(state.looping));
       loop.classList.toggle("is-on", state.looping);
+
+      hearing.update(state.hearing, state.timed);
 
       for (const [button, on, gated] of [
         [metronome, state.metronomeOn, state.timed],
@@ -268,8 +328,10 @@ export function createPlaybackPanel(
         button.setAttribute("aria-pressed", String(on));
         button.classList.toggle("is-on", on);
       }
+    },
 
-      note.textContent = state.note;
+    flash(field) {
+      (field === "start" ? start : end).timeField.flash();
     },
   };
 }

@@ -29,7 +29,14 @@ export type SectionFact =
   | { kind: "tick"; now: number; wall: number }
   /** The reading is somewhere it could not have got to by playing. */
   | { kind: "jump"; to: number; wall: number }
-  | { kind: "state"; state: PlayerLife; now: number; wall: number };
+  | { kind: "state"; state: PlayerLife; now: number; wall: number }
+  /**
+   * The marks were moved, which redraws the section under the playhead.
+   *
+   * No `wall`: the other three are readings taken from the player at a moment,
+   * and this is somebody typing. There is no sample behind it to timestamp.
+   */
+  | { kind: "range"; range: SectionRange; now: number };
 
 export type SectionCommand =
   | { kind: "seek"; to: number }
@@ -84,9 +91,21 @@ export function stepSection(
 ): SectionStep {
   switch (fact.kind) {
     case "tick": {
+      // Only a playing video moves, so only a playing video is watched.
+      //
+      // That is not merely an optimisation: a video resumes a moment before its
+      // player says so, and ticks arriving in that window would otherwise walk
+      // `prev` past the end mark while the transport still believed itself
+      // paused. A crossing that has been stepped over cannot be crossed again,
+      // so the section would run to the end of the video. Holding the memory
+      // still while paused keeps the pre-pause position as the baseline, which
+      // is exactly what the first playing tick needs to measure against.
+      if (!state.playing) {
+        return still(state);
+      }
+
       const crossed =
         hasEnd(state.range) &&
-        state.playing &&
         state.prev !== undefined &&
         state.prev < state.range.end &&
         fact.now >= state.range.end;
@@ -111,6 +130,39 @@ export function stepSection(
       // A teleport is not a crossing, whoever made it; the detector starts
       // over from where the video landed.
       return still({ ...state, prev: fact.to, stopAt: undefined });
+
+    case "range": {
+      // Moving the marks is not a crossing either — the playhead has not gone
+      // anywhere — so the detector re-bases where the video already is.
+      const moved = { ...state, range: fact.range, prev: fact.now };
+
+      // But it can leave the playhead outside the section that was just drawn
+      // round it, and from outside the end mark there is no crossing left to
+      // wait for: the video would play to the end of the video and, looping,
+      // never come round. So being left behind the end is treated as flowing
+      // over it — the same answer `pressPlay` already gives to being asked to
+      // play from outside the section.
+      //
+      // Only past the *end*, and only when the end means something: a mark at
+      // or before the start is no end at all, which is also what a half-typed
+      // one looks like on its way past. A playhead before the start is left
+      // alone; it will reach the section on its own.
+      const left =
+        state.playing && hasEnd(fact.range) && fact.now >= fact.range.end;
+      if (!left) {
+        return still(moved);
+      }
+      if (state.looping) {
+        return {
+          state: moved,
+          commands: [{ kind: "seek", to: fact.range.start }],
+        };
+      }
+      return {
+        state: { ...moved, stopAt: fact.range.end },
+        commands: [{ kind: "pause" }],
+      };
+    }
 
     case "state": {
       switch (fact.state) {
@@ -160,11 +212,16 @@ export function stepSection(
  * From anywhere else it means the section from its top.
  */
 export function pressPlay(state: SectionState, now: number): SectionStep {
+  // Believed at once rather than when the player gets round to saying so.
+  // `playing` is what the transport *means* to do, and the boundary is only
+  // watched while it means to be playing — so waiting for the player here would
+  // leave the first stretch of the resume unwatched.
+  const meaning = { ...state, playing: true };
   if (inside(state.range, now)) {
-    return { state, commands: [{ kind: "play" }] };
+    return { state: meaning, commands: [{ kind: "play" }] };
   }
   return {
-    state,
+    state: meaning,
     commands: [{ kind: "seek", to: state.range.start }, { kind: "play" }],
   };
 }

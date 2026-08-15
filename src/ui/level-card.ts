@@ -9,9 +9,9 @@
 
 import { beatsPerMinute, tempoMapOf } from "../playback/tempo-map.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
-import { pencilIcon } from "./icons.js";
+import { pencilIcon, trashIcon } from "./icons.js";
 import { keyLabelOfFifths } from "./key-label.js";
-import { THUMBNAIL_SIZE, thumbnailUrl } from "./youtube.js";
+import { THUMBNAIL_SIZE, sharpenThumbnail, thumbnailUrl } from "./youtube.js";
 
 /** The key written the way it is spoken: `D♭ major`, `A minor`. */
 export const keyName = (level: TranscriptionSummary): string =>
@@ -107,6 +107,17 @@ export function levelState(level: TranscriptionSummary): string | undefined {
 }
 
 /**
+ * How much is left, without the word the badge already carries.
+ *
+ * The badge reads "Unfinished"; its tooltip should add the count rather than
+ * say the same word again.
+ */
+export const countLeft = (level: TranscriptionSummary): string =>
+  level.unpitchedCount === 1
+    ? "1 note needs a pitch"
+    : `${level.unpitchedCount} notes need pitches`;
+
+/**
  * Built from elements with their text set, never from markup.
  *
  * That is not house style for its own sake: a title is written by whoever
@@ -133,18 +144,34 @@ export function levelState(level: TranscriptionSummary): string | undefined {
  */
 export function createLevelCard(
   level: TranscriptionSummary,
-  options: { solved: boolean; onOpen: () => void },
+  options: {
+    solved: boolean;
+    onOpen: () => void;
+    /**
+     * Throw this level away, if there is anywhere to throw it.
+     *
+     * A workbench tool while there is no ownership and no way to get a level
+     * back — see the route it calls. Absent, and the card carries no such
+     * button at all.
+     */
+    onDelete?: () => void;
+  },
 ): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "level-card";
 
-  // The video this was written down from, as a picture.
+  // The video this was written down from, as a picture, in a box of its own.
   //
-  // Sized in the markup as well as the stylesheet so the box is reserved
-  // before the image lands and the card does not jump. Hidden if it fails to
-  // load — a video taken down since would otherwise leave a broken-image icon
-  // where the picture should be, which looks like the site is broken rather
-  // than the video gone.
+  // The box is what keeps the card's height honest. Sized in the markup as well
+  // as the stylesheet so it is reserved before the picture lands, and left
+  // standing when the picture never comes: a video taken down since would
+  // otherwise take the whole 16:9 block out with it and leave that card shorter
+  // than every other card on the page. The image is hidden and its dark backing
+  // shows through, which reads as a video that is gone rather than as a site
+  // that is broken.
+  const frame = document.createElement("div");
+  frame.className = "level-frame";
+
   const art = document.createElement("img");
   art.className = "level-art";
   art.src = thumbnailUrl(level.videoId);
@@ -157,7 +184,32 @@ export function createLevelCard(
   art.addEventListener("error", () => {
     art.hidden = true;
   });
-  item.append(art);
+  sharpenThumbnail(art, level.videoId);
+  frame.append(art);
+
+  // Both states go over the picture rather than under the words. A card is one
+  // fixed height, and a line that only some levels carry would either make
+  // those taller or leave an empty line on every other card for the sake of a
+  // few. The ✓ has to leave the title anyway — see `.level-open` below.
+  if (options.solved) {
+    const mark = document.createElement("span");
+    mark.className = "level-badge level-badge-solved";
+    mark.textContent = "✓";
+    mark.title = "Solved";
+    frame.append(mark);
+    item.classList.add("is-solved");
+  }
+
+  const state = levelState(level);
+  if (state !== undefined) {
+    const unfinished = document.createElement("span");
+    unfinished.className = "level-badge level-badge-unfinished";
+    unfinished.textContent = "Unfinished";
+    unfinished.title = countLeft(level);
+    frame.append(unfinished);
+  }
+
+  item.append(frame);
 
   const head = document.createElement("div");
   head.className = "level-head";
@@ -170,6 +222,11 @@ export function createLevelCard(
     // rather than an address. The cost is that a level can no longer be opened
     // in a new tab from here; `/play?level=…` is still a real address, and the
     // box is what leads to it.
+    //
+    // The two-line clamp lives on this, not on the heading around it. A button
+    // is an inline-block, so the heading saw a single line box — the button —
+    // and clamping it at two clamped nothing at all, which is how a title of a
+    // hundred characters came to run down the whole page.
     const open = document.createElement("button");
     open.type = "button";
     open.className = "level-open";
@@ -181,27 +238,33 @@ export function createLevelCard(
     title.textContent = level.title;
   }
 
-  if (options.solved) {
-    const mark = document.createElement("span");
-    mark.className = "level-solved";
-    mark.textContent = "✓";
-    mark.title = "Solved";
-    // Kept out of the title's own text so a level called "Clair ✓" cannot
-    // claim to have been finished.
-    title.append(mark);
-    item.classList.add("is-solved");
-  }
-
   const edit = document.createElement("a");
-  edit.className = "level-edit";
+  edit.className = "level-tool level-edit";
   edit.href = `/edit?level=${encodeURIComponent(level.id)}`;
-  edit.title = `Edit ${level.title}`;
+  edit.title = "Edit";
   edit.setAttribute("aria-label", `Edit ${level.title}`);
   // The only innerHTML on this page, and it holds a constant from icons.ts —
   // never anything that came out of the database.
   edit.innerHTML = pencilIcon();
 
-  head.append(title, edit);
+  // Both raised above the title's stretched `::after` by `.level-tool`, and
+  // grouped so that the gap between them is theirs rather than the head's.
+  const tools = document.createElement("div");
+  tools.className = "level-tools";
+  tools.append(edit);
+
+  if (options.onDelete) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "level-tool level-delete";
+    remove.title = "Delete";
+    remove.setAttribute("aria-label", `Delete ${level.title}`);
+    remove.innerHTML = trashIcon();
+    remove.addEventListener("click", options.onDelete);
+    tools.append(remove);
+  }
+
+  head.append(title, tools);
 
   // The words, padded away from the edge — the picture above is not, so the
   // padding belongs to this rather than to the card.
@@ -209,20 +272,13 @@ export function createLevelCard(
   body.className = "level-body";
   body.append(head);
 
-  if (level.subtitle !== undefined) {
-    const subtitle = document.createElement("p");
-    subtitle.className = "level-subtitle";
-    subtitle.textContent = level.subtitle;
-    body.append(subtitle);
-  }
-
-  const state = levelState(level);
-  if (state !== undefined) {
-    const unfinished = document.createElement("p");
-    unfinished.className = "level-unfinished";
-    unfinished.textContent = state;
-    body.append(unfinished);
-  }
+  // Always drawn, empty or not. The slot is one line tall either way, so a
+  // level with no subtitle makes a card exactly as tall as one with a subtitle
+  // — which is the whole of what keeps the grid even.
+  const subtitle = document.createElement("p");
+  subtitle.className = "level-subtitle";
+  subtitle.textContent = level.subtitle ?? "";
+  body.append(subtitle);
 
   item.append(body);
   return item;

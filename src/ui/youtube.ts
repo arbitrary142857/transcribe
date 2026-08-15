@@ -129,10 +129,14 @@ export function embedUrl(videoId: string, origin?: string): string {
 /**
  * The still image YouTube keeps for a video.
  *
- * `mqdefault` is 320×180 — exactly 16:9, so a card can reserve its box before
- * the picture arrives and nothing shifts. `maxresdefault` is sharper but does
- * not exist for every video, and `hqdefault` is 4:3 with the picture
- * letterboxed inside it, which would need cropping back out.
+ * `mqdefault` is 320×180 — exactly 16:9, and the one size that exists for every
+ * video ever uploaded. So it is what a card asks for first: the picture is there
+ * immediately, at the right shape, and nothing shifts.
+ *
+ * It is also not enough on its own. A card is drawn 370px wide across three
+ * columns and nearly 600px in one, and a screen at two device pixels to the
+ * CSS pixel paints that over 740–1180 real ones — a 320px file blown up two to
+ * nearly four times. `sharpenThumbnail` goes and finds something bigger.
  *
  * Worth being honest about: this is a direct read of YouTube's image host, not
  * the Data API, which is the route their API terms actually sanction for
@@ -145,5 +149,75 @@ export function thumbnailUrl(videoId: string): string {
   return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 }
 
-/** The size that image comes at, for reserving its box. */
+/** The shape that image comes at, for reserving its box. */
 export const THUMBNAIL_SIZE = { width: 320, height: 180 } as const;
+
+/**
+ * The bigger stills, best first.
+ *
+ * The first two are 1280×720 and 16:9, so either drops straight into the box.
+ * Neither is guaranteed: `maxresdefault` exists only where the video was
+ * uploaded at 720p or better, and `hq720` is undocumented but present rather
+ * more often. A video uploaded below 720p has neither, and used to fall all the
+ * way back to the 320×180 — a quarter of the picture the card is drawn at, and
+ * an eighth of it on a retina screen.
+ *
+ * The last two are the 4:3 sizes, and they are here because the black bars they
+ * carry cost nothing to remove: a 16:9 frame sits centred in a 4:3 still, so
+ * `object-fit: cover` on a 16:9 box crops exactly the bars and nothing else —
+ * 640×480 becomes a true 640×360, 480×360 a true 480×270. The one thing lost is
+ * the promise `contain` used to make, that no picture is ever cut: a video
+ * genuinely shot in 4:3 has no bars to take, and is trimmed instead.
+ */
+const SHARPER = [
+  "maxresdefault",
+  "hq720",
+  "sddefault",
+  "hqdefault",
+] as const;
+
+/**
+ * Whether a still that arrived is worth putting on the card.
+ *
+ * Wider than the one already showing, which says both of the things that need
+ * saying. A missing size sometimes answers 404 and sometimes answers 200 with a
+ * 120×90 grey square, and swapping that in would replace a real thumbnail with
+ * a blank one; and a size no bigger than `mqdefault` is not worth a second
+ * request either way.
+ */
+export function worthSwapping(width: number): boolean {
+  return width > THUMBNAIL_SIZE.width;
+}
+
+/**
+ * Quietly replace a card's picture with a sharper one, if there is one.
+ *
+ * Loaded off to one side and swapped in only once it has arrived whole, rather
+ * than set as the `src` and hoped for. Pointing the element straight at a size
+ * that may not exist would fire its `error` handler — which is how the card
+ * decides the video is gone — and a level would lose its picture for having
+ * been uploaded in 2009.
+ */
+export function sharpenThumbnail(
+  image: HTMLImageElement,
+  videoId: string,
+  sizes: readonly string[] = SHARPER,
+): void {
+  const [size, ...rest] = sizes;
+  if (size === undefined) return;
+
+  const probe = new Image();
+  probe.referrerPolicy = "no-referrer";
+  probe.decoding = "async";
+  probe.addEventListener("load", () => {
+    if (worthSwapping(probe.naturalWidth)) {
+      image.src = probe.src;
+    } else {
+      sharpenThumbnail(image, videoId, rest);
+    }
+  });
+  probe.addEventListener("error", () => {
+    sharpenThumbnail(image, videoId, rest);
+  });
+  probe.src = `https://i.ytimg.com/vi/${videoId}/${size}.jpg`;
+}

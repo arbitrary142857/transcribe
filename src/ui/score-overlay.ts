@@ -42,3 +42,32 @@ export function measureScore(
 /** Whether the viewer has asked their system for less movement. */
 export const wantsLessMotion = (): boolean =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * Rebuild the score without the page jumping to the top.
+ *
+ * The score is most of the document's height and the page scrolls at document
+ * level, so the moment a rebuild empties `#score` the document collapses and
+ * the browser clamps the scroll offset to what is left. Reading a width off the
+ * empty element a line later settles the layout and makes the clamp stick.
+ * Nothing puts it back afterwards, so checking an answer — or undoing, or
+ * changing the key — threw you to the top of the page.
+ *
+ * `renderMelody` is careful about exactly this, measuring before it clears,
+ * which is why sixty hover repaints a second do not scroll the page. It is
+ * teardown-then-build that defeats it, and this is where that happens.
+ *
+ * Restored rather than prevented because the teardown is real: the old view
+ * genuinely does have to let go of the element before the new one takes it.
+ * Both happen inside one task, so nothing is painted in between and there is
+ * nothing to see.
+ */
+export function keepingScroll<T>(rebuild: () => T): T {
+  const x = window.scrollX;
+  const y = window.scrollY;
+  const result = rebuild();
+  if (window.scrollX !== x || window.scrollY !== y) {
+    window.scrollTo(x, y);
+  }
+  return result;
+}

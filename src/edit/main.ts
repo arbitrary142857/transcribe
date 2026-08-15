@@ -55,6 +55,7 @@ try {
         durations: required("durations"),
         tuplets: required("tuplets"),
         actions: required("actions"),
+        controls: required("controls"),
         pitchActions: required("pitch-actions"),
         status: required("status"),
         keyboard: required("keyboard"),

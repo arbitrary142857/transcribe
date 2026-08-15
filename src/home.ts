@@ -13,6 +13,7 @@ import {
 import type { TranscriptionSummary } from "./shared/transcription.js";
 import { createLevelCard } from "./ui/level-card.js";
 import { openLevelModal } from "./ui/level-modal.js";
+import { openModal } from "./ui/modal.js";
 
 const list = document.getElementById("levels")!;
 const note = document.getElementById("levels-note")!;
@@ -76,13 +77,19 @@ function cardFor(
   progress: PlayProgress | undefined,
 ): HTMLLIElement {
   const solvedAt = progress?.solvedAt;
-  return createLevelCard(level, {
+  // Started means there are pitches saved to come back to — not merely that a
+  // record exists. The play page writes one whenever the tab is hidden, so
+  // opening a level and switching away leaves a record with nothing in it, and
+  // calling that "Resume" would promise work that was never done.
+  const started = (progress?.pitches.length ?? 0) > 0;
+  const card: HTMLLIElement = createLevelCard(level, {
     solved: solvedAt !== undefined,
     onOpen: () =>
       openLevelModal({
         level,
         instructions: level.instructions,
         play: true,
+        started,
         solvedIn:
           solvedAt === undefined || progress === undefined
             ? undefined
@@ -91,7 +98,57 @@ function cardFor(
                 checkCount: progress.checkCount,
               },
       }),
+    onDelete: () => void remove(level, card),
   });
+  return card;
+}
+
+/**
+ * Throw a level away, having asked first.
+ *
+ * A workbench tool for now, so it is as plain as it can be: no undo, no
+ * optimistic removal, and a failure said in the same line the loading trouble
+ * is said in. The one thing it does spend a step on is the asking, because
+ * there is nothing on this page that puts a level back.
+ */
+async function remove(
+  level: TranscriptionSummary,
+  card: HTMLLIElement,
+): Promise<void> {
+  const agreed = await openModal({
+    title: "Delete this level?",
+    body: [
+      `“${level.title}” will be removed from the database.`,
+      "This cannot be undone.",
+    ],
+    confirm: "Delete",
+    cancel: "Keep",
+  });
+  if (!agreed) return;
+
+  try {
+    const response = await fetch(`/api/levels/${encodeURIComponent(level.id)}`, {
+      method: "DELETE",
+      headers: { accept: "application/json" },
+    });
+    if (!response.ok) {
+      const said = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      throw new Error(said.error ?? `The server answered ${response.status}.`);
+    }
+  } catch (error) {
+    note.textContent =
+      error instanceof Error
+        ? `${level.title} could not be deleted. ${error.message}`
+        : `${level.title} could not be deleted.`;
+    console.error(error);
+    return;
+  }
+
+  card.remove();
+  // The list emptying is worth saying, or the page just goes blank.
+  note.textContent = list.childElementCount === 0 ? "No levels yet." : "";
 }
 
 void load();

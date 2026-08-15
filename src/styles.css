@@ -1,5 +1,39 @@
+/* The page's own typeface, carried with the app rather than fetched.
+
+   Self-hosted for the reasons the rest of this app is self-contained: it works
+   with the network down, it cannot break because a font host is unreachable,
+   and it hands nobody's address to a third party for the sake of a typeface.
+   Two files, 26 KB and 30 KB, both variable across the whole 100–900 range, so
+   every weight the page uses comes out of the one file per style.
+
+   Only the latin subset. The UI is English and the few glyphs that are not —
+   `⇧ ⌫ ␣ ⌘` on the shortcut hints — are in no text face anyway and fall to the
+   system, as they did before.
+
+   Jost is SIL OFL 1.1; `src/fonts/OFL.txt` travels with it. */
+@font-face {
+  font-family: "Jost";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/jost-latin-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Jost";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("./fonts/jost-latin-italic.woff2") format("woff2");
+}
+
 :root {
   color-scheme: light;
+  /* Named once, so changing the page's typeface is changing this line.
+     Everything else says `font: inherit` — the one other place a face is
+     spelled out is the tuplet number in `icons.ts`, which is drawn into an svg
+     and cannot inherit, and which quotes this stack verbatim. */
+  --font-ui: "Jost", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --page-bg: #f7f5f1;
   --ink: #1c1a17;
   --rule: #cfc8bd;
@@ -63,7 +97,7 @@ body {
   flex-direction: column;
   background: var(--page-bg);
   color: var(--ink);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-ui);
 }
 
 main {
@@ -590,7 +624,11 @@ main {
 
 /* Alone in the band — which is the play page, where there are no rhythm
    controls beside it — there is nothing to be set apart from. */
-#toolbar-body > #playback:only-child {
+/* Pitch-only mode writes no rhythm, so the controls are taken out of the band
+   entirely and the video is all that is left of it. Nothing then sets it apart
+   from anything, so the clear space that did stops too — left in, it pushed the
+   one remaining thing off centre by its own width. */
+#toolbar-body > #controls[hidden] + #playback {
   margin-left: 0;
 }
 
@@ -640,10 +678,18 @@ main {
   padding: 0.55rem 0.6rem 0.5rem;
 }
 
+/* The panel's own gap, not one of its own.
+
+   The timing panel puts its rows straight into `.playback-panel` and so spaces
+   them by that; this one wraps three of them, and a different gap in the
+   wrapper made the two panels different heights. They hold the same five rows
+   in the same order at the same sizes, so matching the gaps is what makes them
+   exactly as tall as each other — and the band stops moving when the switch is
+   pressed. The wrapper stays because the narrow-screen fold collapses it. */
 .playback-extra {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
 
 .playback-label {
@@ -761,7 +807,7 @@ main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.5rem;
 }
 
 /* Putting one mark back is a small correction, so its button is the narrow
@@ -799,12 +845,17 @@ main {
   height: 100%;
 }
 
-.playback-mark-button:hover:not(:disabled) {
+.playback-mark-button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: #f5efe4;
   border-color: #b3aa9d;
 }
 
-.playback-mark-button:disabled {
+/* Greyed either way. The set-from-the-selected-note pair is marked dead rather
+   than disabled, because a disabled button receives no mouse events and so
+   cannot be pointed at — and nothing on the face of "End at note" says it wants
+   a note selected first. */
+.playback-mark-button:disabled,
+.playback-mark-button[aria-disabled="true"] {
   opacity: 0.3;
   cursor: not-allowed;
 }
@@ -1110,17 +1161,6 @@ main {
   display: none;
 }
 
-.playback-note {
-  margin: 0;
-  font-size: 0.72rem;
-  line-height: 1.25;
-  color: #6c6459;
-}
-
-.playback-note:empty {
-  display: none;
-}
-
 /* ---- The one question the page stops for ---- */
 
 .modal-overlay {
@@ -1135,9 +1175,46 @@ main {
 }
 
 .modal-box {
+  position: relative;
   max-width: 26rem;
   padding: 1.2rem 1.4rem 1.1rem;
   box-shadow: 0 12px 40px rgb(28 26 23 / 30%);
+}
+
+/* The way out, in the corner a dialog's way out is looked for. Only on a box
+   that asks nothing — see `dismissable` in modal.ts. */
+.modal-close {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  font: inherit;
+  /* The only way out of this box, so it is drawn as one rather than as a mark
+     in the corner: there is no Close button beside the way in any more. */
+  font-size: 1.7rem;
+  line-height: 1;
+  color: #8d8378;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.modal-close:hover {
+  color: var(--ink);
+  background: #f0e9dd;
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
 }
 
 .modal-title {
@@ -1228,7 +1305,7 @@ main {
 
 .duration-grid {
   display: grid;
-  grid-template-columns: repeat(5, auto);
+  grid-template-columns: repeat(6, auto);
   gap: 0.35rem;
 }
 
@@ -1271,14 +1348,16 @@ main {
   height: 100%;
 }
 
-.duration-cell:hover:not(:disabled) {
+.duration-cell:hover:not(.is-unavailable) {
   background: #f5efe4;
   border-color: #b3aa9d;
 }
 
-.duration-cell:disabled {
-  /* Still visible, and still explains itself on hover — greyed, not gone, so
-     the grid shows the shape of the room available. */
+/* Greyed, not gone, so the grid shows the shape of the room available — and
+   still live to the pointer, because explaining itself on hover is the reason
+   it is shown at all. A real `disabled` button receives no mouse events, which
+   is why this is a class. */
+.duration-cell.is-unavailable {
   opacity: 0.26;
   cursor: not-allowed;
 }
@@ -1323,8 +1402,14 @@ main {
   cursor: not-allowed;
 }
 
-/* A tuplet control is an action button; only its lit state is its own. */
-.action:disabled {
+/* A tuplet control is an action button; only its lit state is its own.
+
+   Tie, Untie and Clear pitch are marked dead rather than disabled so they can
+   still be pointed at — a disabled button receives no mouse events, and these
+   three have something to say about why they are grey. Drawn identically either
+   way, since the difference is not the reader's business. */
+.action:disabled,
+.action[aria-disabled="true"] {
   opacity: 0.26;
   cursor: not-allowed;
 }
@@ -1366,9 +1451,27 @@ main {
   -webkit-appearance: none;
 }
 
-.action:hover {
+.action:hover:not(:disabled):not([aria-disabled="true"]) {
   background: #f5efe4;
   border-color: #b3aa9d;
+}
+
+/* An action that is a state rather than a deed — the piano sound — lit while it
+   is on, the same way the tuplet the selection is already inside is lit. */
+.action.is-on {
+  color: #fffdf9;
+  background: var(--note-selected);
+  border-color: var(--note-selected);
+}
+
+.action.is-on:hover {
+  background: #9c3925;
+  border-color: #9c3925;
+}
+
+.action.is-on .action-label,
+.action.is-on .action-key {
+  color: inherit;
 }
 
 /* Height-driven, so a wider icon — the rest one is a note, an arrow and a rest
@@ -1401,8 +1504,12 @@ main {
   font-size: 0.66rem;
   line-height: 1;
   padding: 1.5px 4px;
-  color: #8d8378;
-  background: #f0eae0;
+  color: #6c6459;
+  /* A little translucent, because `.cell-key` is drawn over the icon it labels
+     rather than beside it — but only a little: at 62% the hints were harder to
+     read than the thing they were getting out of the way of. A stopgap; the
+     icons and these badges are due a rethink together. */
+  background: rgb(240 234 224 / 92%);
   border: 1px solid var(--rule);
   border-radius: 4px;
 }
@@ -1446,7 +1553,9 @@ main {
 
 .action:disabled .cell-key,
 .action:disabled .action-key,
-.duration-cell:disabled .cell-key,
+.action[aria-disabled="true"] .cell-key,
+.action[aria-disabled="true"] .action-key,
+.duration-cell.is-unavailable .cell-key,
 .chip:disabled .chip-key {
   opacity: 0.55;
 }
@@ -1508,11 +1617,91 @@ main {
 }
 
 /* Clearing a pitch belongs with the piano: it is the inverse of pressing a
-   key, not something done to the rhythm. */
+   key, not something done to the rhythm.
+
+   Stacked, with the setting over the action: the switch says how the keys will
+   behave from here on, and the button below does one thing once. */
 #pitch-actions {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.4rem;
   flex: 0 0 auto;
+}
+
+/* ---- A switch ---- */
+
+/* Something that is on or off and stays that way, which neither of the other
+   two things on this page that look like it actually is: `.mode-switch` is one
+   choice out of several, and `.playback-toggle` is a button that lights up. */
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.34rem 0.45rem 0.34rem 0.55rem;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.switch:hover {
+  background: #f5efe4;
+  border-color: #b3aa9d;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
+.switch-label {
+  white-space: nowrap;
+}
+
+.switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.05rem;
+  background: #ded7ca;
+  border-radius: 999px;
+  transition: background 120ms ease-out;
+}
+
+.switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.05rem - 4px);
+  height: calc(1.05rem - 4px);
+  background: #fffdf9;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgb(28 26 23 / 30%);
+  transition: transform 120ms ease-out;
+}
+
+.switch.is-on .switch-track {
+  background: var(--note-selected);
+}
+
+.switch.is-on .switch-knob {
+  transform: translateX(calc(1.9rem - 1.05rem));
+}
+
+/* The knob slides; with less movement asked for, it simply arrives. */
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-knob {
+    transition: none;
+  }
 }
 
 .keyboard-scroller {
@@ -1677,21 +1866,41 @@ main {
 
 .panel-switch {
   width: 100%;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.3rem;
+  /* Tighter than a mode switch in open country: this is the height of the speed
+     row beside it, near enough, and the two rows read as one family because of
+     it. The last couple of pixels would have to come out of the text. */
+  padding: 1px;
 }
 
 .panel-switch .mode-option {
   flex: 1 1 0;
-  padding: 0.25rem 0.4rem;
-  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.15;
   text-align: center;
 }
 
-/* The bar count is the melody's own length here and cannot be typed over, so
-   the row is left out; the note underneath goes on reporting it. */
-.timing-panel .timing-tempo {
-  margin-top: 0.1rem;
+/* What the section is heard as: under the speed, above the marks. Both are
+   settings for the run about to be made rather than the run itself, and the
+   marks and the transport below them are the run. No margin of its own — the
+   panel's gap spaces every row here, and an extra one would make the two
+   panels different heights. */
+.hearing-switch {
+  margin: 0;
 }
+
+/* Nothing to play until the marks describe a tempo, and a position that cannot
+   be taken says so rather than answering with silence. */
+.hearing-switch .mode-option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The bar count is the melody's own length here and cannot be typed over, so
+   the row is left out; the note underneath goes on reporting it. No margin of
+   its own: this row and the playback panel's transport row are the same height,
+   and anything extra here is the two panels disagreeing again. */
 
 
 /* ---- The details, and the way out ----
@@ -1872,6 +2081,11 @@ main.page {
 .level-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Rows take the height of a card and no more. The list is stretched to fill
+     the page by the column it sits in, and a grid's rows stretch with it by
+     default — so with two rows of levels on a tall screen every card grew to
+     fill the space, which is a lot of empty box under three lines of words. */
+  align-content: start;
   gap: 1.25rem;
   margin: 0;
   padding: 0;
@@ -1896,24 +2110,59 @@ main.page {
   border-radius: 8px;
 }
 
+/* The box the picture goes in, which holds its shape whether or not there is
+   a picture: a video taken down since must not make its card shorter than
+   every other card on the page. It is also what the state badges are pinned
+   to. */
+.level-frame {
+  position: relative;
+  flex: 0 0 auto;
+  aspect-ratio: 16 / 9;
+  background: #1c1a17;
+  border-bottom: 1px solid var(--rule);
+}
+
 /* The video this was written down from.
 
-   `height: auto` is load-bearing. The `height="180"` attribute on the element
-   is a presentational hint, so it beats `aspect-ratio` whenever a width is
-   also set — the box came out as wide as the card by 180px tall, and `cover`
-   cropped the picture to fit it. Letting the height follow keeps the file's
-   own 320×180 shape.
-
-   `contain` rather than `cover` so nothing is ever cut off, whatever shape
-   YouTube returns; for the 16:9 these come in, the two are the same thing. */
+   `cover`, and it is the crop that makes the fallback sizes usable. For the
+   16:9 stills the two fits are the same thing, since the picture already
+   matches the box. For the 4:3 ones — the only sizes a video uploaded below
+   720p has above `mqdefault` — the 16:9 frame sits centred inside black bars,
+   and covering a 16:9 box takes exactly those bars off: sixty rows top and
+   bottom of a 640×480, leaving a true 640×360. See `SHARPER` in youtube.ts. */
 .level-art {
   display: block;
   width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  object-fit: contain;
-  background: #1c1a17;
-  border-bottom: 1px solid var(--rule);
+  height: 100%;
+  object-fit: cover;
+}
+
+/* What has become of this level, said over the picture rather than under the
+   words. A line in the body would either be an empty line on every card that
+   has nothing to say or a taller card for the few that do, and a card is one
+   height. */
+.level-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 1;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  border-radius: 999px;
+  backdrop-filter: blur(2px);
+}
+
+.level-badge-solved {
+  font-size: 0.82rem;
+  padding: 0 0.4rem;
+  color: #eafaf0;
+  background: rgb(38 104 66 / 88%);
+}
+
+.level-badge-unfinished {
+  color: #fdeee9;
+  background: rgb(140 52 33 / 88%);
 }
 
 .level-body {
@@ -1923,14 +2172,23 @@ main.page {
   padding: 0.95rem 1.15rem 1.1rem;
 }
 
+/* Clamped on the thing that actually holds the text.
+
+   `.level-open` is a button, and a button is an inline-block: put on the
+   heading around it, the clamp saw one line box — the button — and capping that
+   at two capped nothing, so a title of a hundred characters ran down the page.
+   The heading keeps a clamp of its own for the levels that have no button,
+   where the text is its own child. */
 .level-title,
+.level-open,
 .level-subtitle {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.level-title {
+.level-title,
+.level-open {
   -webkit-line-clamp: 2;
 }
 
@@ -1984,18 +2242,39 @@ main.page {
   gap: 0.6rem;
 }
 
+/* Two lines' worth, always: capped at two so a long title cannot grow the card,
+   and floored at two so a short one cannot shrink it. Between them that is what
+   makes every card on the page exactly as tall as every other. */
 .level-title {
-  /* Long enough to overflow is normal for a piece of music, so it wraps. */
   margin: 0;
+  min-width: 0;
+  height: calc(1.05rem * 1.35 * 2);
   font-size: 1.05rem;
+  line-height: 1.35;
+  /* Long enough to overflow is normal for a piece of music, so it wraps. */
   overflow-wrap: anywhere;
+}
+
+.level-open {
+  line-height: 1.35;
 }
 
 /* Quiet until reached for: a card is for reading first and editing second.
 
    Raised above the title's stretched hit area, or the card's play link would
    swallow every press meant for the pencil. */
-.level-edit {
+/* The tools sit together at the head's right, and their gap is theirs rather
+   than the head's — which is between the title and the pair of them. */
+.level-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+/* Raised above the title's stretched `::after`, which covers the whole card:
+   without this a press meant for one of these would open the level's box. */
+.level-tool {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
@@ -2004,33 +2283,45 @@ main.page {
   justify-content: center;
   width: 1.9rem;
   height: 1.9rem;
+  padding: 0;
+  font: inherit;
   color: #8d8378;
+  background: none;
   border: 1px solid transparent;
   border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
-.level-edit:hover {
+.level-tool:hover {
   color: var(--ink);
   background: #f3ece0;
   border-color: var(--rule);
 }
 
-.level-edit svg {
+/* Throwing the level away is the one thing on this card that cannot be undone,
+   so it says so on the way to being pressed rather than only in the dialog. */
+.level-delete:hover {
+  color: var(--note-selected);
+  background: #f8e9e4;
+  border-color: #dcb3a7;
+}
+
+.level-tool svg {
   width: 1.15rem;
   height: 1.15rem;
 }
 
-/* Said before the musical facts, because it changes what they are worth. */
-.level-unfinished {
-  margin: 0.5rem 0 0;
-  font-size: 0.75rem;
-  color: var(--note-selected);
-}
-
+/* Exactly one line, whether or not there is a subtitle to put in it. Drawn
+   empty rather than left out, so the words below the picture take the same room
+   on every card. */
 .level-subtitle {
   margin: 0.2rem 0 0;
+  height: calc(0.9rem * 1.45);
   color: #6c6459;
   font-size: 0.9rem;
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
@@ -2170,10 +2461,6 @@ main.page {
   .playback-panel {
     padding: 0.4rem 0.45rem;
     gap: 0.35rem;
-  }
-
-  .playback-note {
-    font-size: 0.68rem;
   }
 
   .playback-toggle {
@@ -2326,6 +2613,14 @@ main.page {
     font-size: 0.66rem;
   }
 
+  /* The switch shrinks with the button under it, or the pair sets the height of
+     a band that is meant to be mostly keyboard. */
+  .switch {
+    font-size: 0.68rem;
+    padding: 0.25rem 0.35rem 0.25rem 0.45rem;
+    gap: 0.35rem;
+  }
+
   /* Held off both edges by the same margin: a rounded corner pressed against
      the side of the screen reads as a mistake rather than as a corner. */
   .key-panel {
@@ -2422,6 +2717,17 @@ main.page {
 
   #pitch-actions .action-label {
     font-size: 0.58rem;
+  }
+
+  /* Down to the switch alone: at this size the words cost more room than they
+     earn, and the track already says on or off. */
+  .switch {
+    justify-content: center;
+    padding: 0.2rem 0.3rem;
+  }
+
+  .switch-label {
+    display: none;
   }
 
   /* The music gets the room the padding around it was using. */
@@ -2673,6 +2979,7 @@ main.page {
    JavaScript checks this too, and skips building the dots at all. */
 @media (prefers-reduced-motion: reduce) {
   .note-burst span,
+  .is-auto-edited,
   .is-shaking {
     animation: none;
   }
@@ -2696,6 +3003,13 @@ main.page {
 
 .keyboard-keys.is-off .key {
   cursor: not-allowed;
+}
+
+/* Live, but with nothing to write to: the piano is on, so a press is heard even
+   though it sets no pitch. Barely marked on purpose — the keys do respond, and
+   fading them the way `is-off` does would say they do not. */
+.keyboard-keys.is-listening {
+  filter: saturate(0.9);
 }
 
 /* ---- Refusals, beside the pointer ---- */
@@ -2735,20 +3049,6 @@ main.page {
   color: #8d8378;
 }
 
-/* The playback panel's line is a standing fact — "2 bars · 120 BPM" — so it
-   keeps its place and simply reserves the room its longest message needs. Two
-   lines' worth, in `em` so it tracks the font size through the narrow-window
-   rules. Its `:empty { display: none }` is overridden, since collapsing to
-   nothing is the jump being fixed. */
-.playback-note {
-  min-height: 2.5em;
-  overflow: hidden;
-}
-
-.playback-note:empty {
-  display: block;
-}
-
 /* Why Submit or Check is grey, shown only when pointed at.
 
    Out of the flow entirely, which is stronger than reserving room for it: it
@@ -2782,23 +3082,22 @@ main.page {
   transition: opacity 120ms ease-out;
 }
 
-.submit-group:hover .submit-note {
+/* Nothing to say, nothing to show — even under the pointer.
+
+   Written as a condition on the reveal rather than as a rule that overrides it.
+   The pair `.submit-group:hover .submit-note` and `.submit-note:empty` are two
+   classes-plus-a-pseudo against one, so the reveal won on specificity however
+   it was ordered, and an empty note kept its padding, its dark fill and its
+   6px corners — a small black rectangle under the button, saying nothing. */
+.submit-group:hover .submit-note:not(:empty) {
   opacity: 1;
 }
 
-/* Nothing to say, nothing to show — even under the pointer. */
 .submit-note:empty {
   display: block;
-  opacity: 0;
 }
 
 /* ---- A level you have finished ---- */
-
-.level-solved {
-  margin-left: 0.45rem;
-  font-size: 0.9em;
-  color: var(--note-correct);
-}
 
 .level-card.is-solved {
   border-color: #a9ceb6;
@@ -2815,20 +3114,45 @@ main.page {
 
 /* ---- A level's own box ---- */
 
+/* Everything in here is set a size up from the confirm dialog's scale, which is
+   what this box was built on and was never right for it: a confirm is one
+   sentence to be read in a glance, and this is a page about a piece of music.
+   The bumps are scoped to `.level-modal` so the confirm keeps its own size.
+
+   `--level-edge` is a firmer version of `--rule`, for the boxes that are
+   nothing but an edge round a number. At the page's own rule weight they read
+   as smudges rather than as boxes, and lifting `--rule` itself would redraw
+   every panel and every stave in the app. */
 .level-modal {
-  width: min(38rem, calc(100vw - 3rem));
+  --level-edge: #b8afa1;
+
+  width: min(42rem, calc(100vw - 3rem));
   max-width: none;
+  padding: 1.5rem 1.7rem 1.4rem;
+}
+
+.level-modal .modal-title {
+  /* Clear of the × in the corner, which is drawn over the padding. */
+  padding-right: 2rem;
+  font-size: 1.3rem;
 }
 
 /* A 128-character title with no spaces in it would otherwise run off the page.
-   `anywhere` rather than `break-word`, which leaves an unbroken run intact. */
+   `anywhere` rather than `break-word`, which leaves an unbroken run intact.
+
+   `.modal-body` is here because the delete confirm names the level in its
+   sentence rather than in its heading, so that is where an unbroken title
+   lands — and an unwrappable line sets a min-content width the box's own
+   `max-width` cannot argue with. */
 .modal-title,
+.modal-body,
 .level-modal-subtitle {
   overflow-wrap: anywhere;
 }
 
 .level-modal-subtitle {
-  margin: -0.35rem 0 0;
+  margin: -0.25rem 0 0;
+  font-size: 0.95rem;
   color: #6c6459;
 }
 
@@ -2853,23 +3177,31 @@ main.page {
 
 /* Shrink to what is in them. Splitting the modal evenly between the two left a
    meter forty units wide adrift in half a dialog, and a box far larger than
-   its contents reads as something failing to load. */
+   its contents reads as something failing to load.
+
+   Centred rather than spread. The two panels are the same height, because they
+   are a pair and should look it, but they do not hold the same number of
+   things: the key signature carries its name underneath and the meter has
+   nothing to carry. Spread apart, that left the meter's heading pinned at the
+   top of its box and the glyph pinned at the bottom with a hole between them,
+   which read as something missing rather than as a box with room to spare. */
 .level-signature {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.6rem 0.9rem 0.7rem;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1.1rem 0.9rem;
+  border-color: var(--level-edge);
 }
 
 .level-signature-heading {
   margin: 0;
-  font-size: 0.68rem;
+  font-size: 0.76rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #8d8378;
+  color: #7d7468;
 }
 
 /* Width comes from the diagram, set inline in `signaturePanel` — the svg draws
@@ -2883,16 +3215,18 @@ main.page {
   height: auto;
 }
 
-/* The key's own name, in the chip the key chooser uses for the same job. A
-   signature of no accidentals is A minor as readily as C major, so the stave
-   alone cannot say which — the meter panel needs no such line and has none. */
+/* The key's own name. A signature of no accidentals is A minor as readily as C
+   major, so the stave alone cannot say which — the meter panel needs no such
+   line and has none.
+
+   Plain text, not the chip the key chooser sets it in. A chip is a control's
+   look, and this is the only thing in the box wearing one; among a dialog of
+   headings and numbers it read as the one piece of furniture from somewhere
+   else. It is a caption, so it is set as one. */
 .level-signature-name {
   margin: 0;
-  padding: 0.18rem 0.55rem;
-  font-size: 0.8rem;
-  color: #6c6459;
-  background: #f3ece0;
-  border-radius: 4px;
+  font-size: 0.95rem;
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -2900,59 +3234,66 @@ main.page {
 
 .level-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
   gap: 0.6rem;
 }
 
 /* Icon, number, unit — in that order and on one line, so the number sits
-   against the thing it counts rather than under a heading to be interpreted. */
+   against the thing it counts rather than under a heading to be interpreted.
+
+   Centred in the box rather than packed to the left. The boxes share their
+   width but not their contents: "4 bars" is half the length of "120 BPM", so
+   left-packed they all carried their ink at the same starting point and a
+   different amount of nothing after it, and the row came out looking ragged
+   down its right-hand side. */
 .level-stat {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.7rem;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.75rem 0.7rem;
   background: #fffdf9;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--level-edge);
   border-radius: 8px;
 }
 
 .level-stat-icon {
   flex: 0 0 auto;
   display: flex;
-  color: #8d8378;
+  color: #6c6459;
 }
 
 .level-stat-icon svg {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.6rem;
+  height: 1.6rem;
 }
 
 .level-stat-value {
   display: flex;
   align-items: baseline;
-  gap: 0.28rem;
+  gap: 0.3rem;
   margin: 0;
   min-width: 0;
 }
 
 .level-stat-number {
-  font-size: 1.35rem;
+  font-size: 1.6rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 
 .level-stat-unit {
-  font-size: 0.72rem;
-  color: #8d8378;
+  font-size: 0.82rem;
+  color: #7d7468;
 }
 
 .level-instructions-heading {
-  margin: 1.1rem 0 0.4rem;
-  font-size: 0.72rem;
+  margin: 1.2rem 0 0.45rem;
+  font-size: 0.76rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #8d8378;
+  color: #7d7468;
 }
 
 /* The edge the instructions scroll inside.
@@ -2965,9 +3306,9 @@ main.page {
 .level-instructions-box {
   max-height: 11rem;
   overflow-y: auto;
-  padding: 0.7rem 0.85rem;
+  padding: 0.8rem 0.95rem;
   background: #fffdf9;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--level-edge);
   border-radius: 8px;
 }
 
@@ -2982,8 +3323,8 @@ main.page {
 .level-instructions {
   margin: 0;
   white-space: pre-wrap;
-  font-size: 0.9rem;
-  line-height: 1.5;
+  font-size: 0.95rem;
+  line-height: 1.55;
   color: #3c3630;
 }
 

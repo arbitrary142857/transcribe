@@ -46,16 +46,29 @@ const stem = (x: number, top: number, bottom: number) =>
   `<line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}" stroke="currentColor" stroke-width="${STROKE}" stroke-linecap="round" />`;
 
 /**
+ * How far apart stacked flags sit.
+ *
+ * A hook descends about seven units from where it springs, so anything much
+ * under this and consecutive flags overlap by more than half their ink: at 2.7,
+ * where this started, a sixteenth and a thirty-second were the same dark smear
+ * and could not be told apart. Spread to roughly the hook's own depth they read
+ * as separate hooks, which is the only way the count is legible at button size.
+ *
+ * A single flag is untouched by this, so an eighth note looks exactly as it did.
+ */
+const FLAG_PITCH = 4;
+
+/**
  * Flags curl off the top of the stem, one per halving below an eighth.
  *
  * Kept high and tight: they have to stay clear of the augmentation dot, which
- * sits out to the right at notehead height, and two of them have to read as two
- * rather than as one thick smear against the stem.
+ * sits out to the right at notehead height, and three of them have to read as
+ * three rather than as one thick smear against the stem.
  */
 function flags(x: number, top: number, count: number): string {
   let drawn = "";
   for (let i = 0; i < count; i++) {
-    const y = top + i * 3;
+    const y = top + i * FLAG_PITCH;
     // A slender hook rather than a wedge: the outward curve and the return run
     // close together, so two of them stack without becoming one dark mass.
     drawn +=
@@ -80,19 +93,27 @@ export function noteIcon(value: number, dots: number): string {
   // from and still finish well above the dot.
   const cy = 18.3;
   const stemX = cx + 3.8;
-  const stemTop = 4;
+  // High enough that a thirty-second's three flags all fit above the dot. The
+  // box cannot grow to make room: the svg is drawn to a square cell, so a wider
+  // view box would letterbox and this one icon would come out smaller than the
+  // others in its row.
+  const stemTop = 3.2;
+  const flagged = value >= 8;
   const filled = value >= 4;
 
   let parts = head(cx, cy, filled);
   if (value > 1) {
     parts += stem(stemX, stemTop, cy - 0.5);
   }
-  if (value >= 8) {
+  if (flagged) {
     parts += flags(stemX, stemTop, Math.log2(value) - 2);
   }
-  // Right of the notehead and level with it, which is where a dot goes — and,
-  // being level with the head, well below where the flags reach.
-  const dotX = value === 1 ? cx + 5.6 : stemX + 4;
+  // Right of the notehead and level with it, which is where a dot goes. A
+  // flagged note pushes it further out, past where the flags reach: level with
+  // the head it already clears them downwards, but a thirty-second's lowest
+  // flag comes down far enough that the two would still overlap side to side,
+  // and a dot touching a flag reads as a fourth flag.
+  const dotX = value === 1 ? cx + 5.6 : stemX + (flagged ? 5.6 : 4);
   for (let i = 0; i < dots; i++) {
     parts += dot(dotX + i * 3.1, cy);
   }
@@ -364,10 +385,18 @@ export function tupletIcon(numNotes: number): string {
 
   // The number sits in the break in the bracket, big enough to read at button
   // size — it is the part that says which tuplet this is.
+  //
+  // The number takes the page's own typeface through the same custom property
+  // the stylesheet uses, so a change of font takes this with it rather than
+  // leaving it behind — it used to name Georgia outright and would have.
+  //
+  // As a `style` rather than a `font-family` attribute: presentation attributes
+  // do not resolve `var()`, and a declaration is the only place a custom
+  // property means anything.
   return svg(
     bracket(2.5, 8) +
       bracket(21.5, 16) +
-      `<text x="12" y="${line + 4.6}" text-anchor="middle" font-family="Georgia, serif" font-size="13" font-style="italic" fill="currentColor">${numNotes}</text>`,
+      `<text x="12" y="${line + 4.6}" text-anchor="middle" style="font-family: var(--font-ui)" font-size="13" font-style="italic" fill="currentColor">${numNotes}</text>`,
   );
 }
 
@@ -381,6 +410,24 @@ export function pencilIcon(): string {
       `stroke="currentColor" stroke-width="${STROKE * 1.4}" stroke-linejoin="round" />` +
       `<path d="M16.4 4.9 A1.9 1.9 0 0 1 19.1 7.6 L17.8 8.9 L15.1 6.2 Z" ` +
       `fill="currentColor" />`,
+  );
+}
+
+/**
+ * A waste basket, for throwing a level away.
+ *
+ * The lid is drawn as its own line with the handle above it, because a bin
+ * outline alone at this size is a cup: the lid is the part that says what it is.
+ */
+export function trashIcon(): string {
+  return svg(
+    `<path d="M9.6 4.6 h4.8" fill="none" stroke="currentColor" stroke-width="${STROKE * 1.3}" stroke-linecap="round" />` +
+      `<path d="M4.8 7.4 h14.4" fill="none" stroke="currentColor" stroke-width="${STROKE * 1.3}" stroke-linecap="round" />` +
+      `<path d="M6.9 7.4 L7.9 19.6 a1 1 0 0 0 1 0.9 h6.2 a1 1 0 0 0 1 -0.9 L17.1 7.4" ` +
+      `fill="none" stroke="currentColor" stroke-width="${STROKE}" stroke-linejoin="round" />` +
+      // Two ribs, so the body reads as a bin rather than as an empty outline.
+      `<path d="M10.4 10.4 V17.4 M13.6 10.4 V17.4" fill="none" stroke="currentColor" ` +
+      `stroke-width="0.95" stroke-linecap="round" opacity="0.65" />`,
   );
 }
 

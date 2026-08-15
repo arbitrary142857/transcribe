@@ -34,6 +34,15 @@ export type PlayProgress = {
   solvedAt: number | undefined;
   /** The pitches written down, keyed by event index as the melody indexes. */
   pitches: { index: number; midi: number }[];
+  /**
+   * Every pitch a check has judged, and what it said.
+   *
+   * Not merely the last verdict per note: a note told twice that it is wrong
+   * has been told about two different pitches, and both remain true. Without
+   * this the colouring is lost on a reload, and so is the fact that a found
+   * note is settled — `locked` is exactly what came back correct.
+   */
+  judged: { index: number; midi: number; correct: boolean }[];
 };
 
 export type ProgressStore = {
@@ -89,12 +98,34 @@ function readProgress(value: unknown, levelId: string): PlayProgress | undefined
     pitches.push({ index: entry.index, midi: entry.midi });
   }
 
+  // Absent is allowed, because records written before this existed have none
+  // and are otherwise perfectly good progress. Present and broken is not: the
+  // rest of the record cannot be trusted either.
+  const judged: PlayProgress["judged"] = [];
+  if (value.judged !== undefined) {
+    if (!Array.isArray(value.judged)) return undefined;
+    for (const entry of value.judged as unknown[]) {
+      if (!isObject(entry)) return undefined;
+      if (!isWhole(entry.index) || entry.index < 0) return undefined;
+      if (!isWhole(entry.midi) || entry.midi < 0 || entry.midi > 127) {
+        return undefined;
+      }
+      if (typeof entry.correct !== "boolean") return undefined;
+      judged.push({
+        index: entry.index,
+        midi: entry.midi,
+        correct: entry.correct,
+      });
+    }
+  }
+
   return {
     levelId,
     elapsedMs: value.elapsedMs,
     checkCount: value.checkCount,
     solvedAt: value.solvedAt,
     pitches,
+    judged,
   };
 }
 

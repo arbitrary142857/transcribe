@@ -209,3 +209,131 @@ describe("the transport mirror", () => {
     assert.equal(state.playing, true);
   });
 });
+
+describe("resuming a pause taken near the end", () => {
+  /** Paused a breath before the end, the detector's memory left where it stopped. */
+  const pausedNearEnd = (): SectionState => {
+    const playing = playingAt(19.9);
+    return stepSection(playing, {
+      kind: "state",
+      state: "paused",
+      now: 19.9,
+      wall: 2000,
+    }).state;
+  };
+
+  it("still stops when the player reports playing only after the end has gone by", () => {
+    // The video resumes before YouTube says so, which is ordinary: the state
+    // event lands a moment later. Ticks in that window used to walk the
+    // detector's memory past the end mark while the transport still believed
+    // itself paused — and a crossing that has already been stepped over cannot
+    // be crossed again, so the section ran on for the rest of the video.
+    let state = pausedNearEnd();
+    state = stepSection(state, { kind: "tick", now: 19.95, wall: 2100 }).state;
+    state = stepSection(state, { kind: "tick", now: 20.04, wall: 2200 }).state;
+
+    state = stepSection(state, {
+      kind: "state",
+      state: "playing",
+      now: 20.06,
+      wall: 2300,
+    }).state;
+
+    const step = stepSection(state, { kind: "tick", now: 20.1, wall: 2400 });
+    assert.deepEqual(commandsOf(step), ["pause"]);
+  });
+
+  it("arms the boundary the moment play is pressed, without waiting on the player", () => {
+    // The app's own play button. `playing` is what the transport means to do,
+    // so pressing play means it — otherwise the same window opens here too.
+    const step = pressPlay(pausedNearEnd(), 19.9);
+    assert.deepEqual(commandsOf(step), ["play"]);
+    assert.equal(step.state.playing, true);
+
+    const over = stepSection(step.state, { kind: "tick", now: 20.02, wall: 2400 });
+    assert.deepEqual(commandsOf(over), ["pause"]);
+  });
+
+  it("leaves a genuinely paused video's memory alone", () => {
+    // Nothing is moving, so there is nothing to remember differently — and a
+    // tick while paused must still not fire.
+    const state = pausedNearEnd();
+    const step = stepSection(state, { kind: "tick", now: 19.9, wall: 2100 });
+    assert.deepEqual(step.commands, []);
+    assert.equal(step.state.prev, 19.9);
+  });
+});
+
+describe("moving the end mark behind the playhead", () => {
+  it("loops back when the section is redrawn behind a playing video", () => {
+    // Retyping the end while the video runs past it. Nothing has flowed over
+    // the new mark — it was crossed when it was not yet the end — so the edge
+    // detector has nothing to catch, and the video would otherwise play to the
+    // end of the video and never come round.
+    const state = { ...playingAt(30, true), range: { start: 10, end: 40 } };
+    const step = stepSection(state, {
+      kind: "range",
+      range: { start: 10, end: 25 },
+      now: 30,
+    });
+    assert.deepEqual(step.commands, [{ kind: "seek", to: 10 }]);
+  });
+
+  it("pauses instead when it is not looping", () => {
+    const state = { ...playingAt(30), range: { start: 10, end: 40 } };
+    const step = stepSection(state, {
+      kind: "range",
+      range: { start: 10, end: 25 },
+      now: 30,
+    });
+    assert.deepEqual(commandsOf(step), ["pause"]);
+  });
+
+  it("says nothing when the playhead is still inside the new section", () => {
+    const state = { ...playingAt(30, true), range: { start: 10, end: 40 } };
+    const step = stepSection(state, {
+      kind: "range",
+      range: { start: 10, end: 35 },
+      now: 30,
+    });
+    assert.deepEqual(step.commands, []);
+    assert.deepEqual(step.state.range, { start: 10, end: 35 });
+  });
+
+  it("says nothing when the new end mark is no end at all", () => {
+    // An end at or before the start never fires, however it got there — which
+    // is what a half-typed value looks like on its way past.
+    const state = { ...playingAt(30, true), range: { start: 10, end: 40 } };
+    const step = stepSection(state, {
+      kind: "range",
+      range: { start: 10, end: 5 },
+      now: 30,
+    });
+    assert.deepEqual(step.commands, []);
+  });
+
+  it("leaves a paused video where it is", () => {
+    // Editing the marks with the video stopped is the ordinary way to do it,
+    // and it should not start moving things about.
+    const state = { ...playingAt(30, true), playing: false, range: { start: 10, end: 40 } };
+    const step = stepSection(state, {
+      kind: "range",
+      range: { start: 10, end: 25 },
+      now: 30,
+    });
+    assert.deepEqual(step.commands, []);
+  });
+
+  it("re-bases the detector, so the next lap crosses as usual", () => {
+    const state = { ...playingAt(12, true), range: { start: 10, end: 40 } };
+    const moved = stepSection(state, {
+      kind: "range",
+      range: { start: 10, end: 20 },
+      now: 12,
+    });
+    assert.deepEqual(moved.commands, []);
+    assert.equal(moved.state.prev, 12);
+    const step = stepSection(moved.state, { kind: "tick", now: 20.01, wall: 3100 });
+    assert.deepEqual(step.commands, [{ kind: "seek", to: 10 }]);
+  });
+});

@@ -43,4 +43,39 @@ describe("vexFlowKeyFor()", () => {
       `${vexFlowKeyFor(new Rest(QUARTER), "treble")}/x`,
     );
   });
+
+  it("spells an unpitched note with the alteration already in force there", () => {
+    // The X has no pitch, so the letter it borrows from the middle line must not
+    // assert one. VexFlow reads the letter, finds no accidental on it, and takes
+    // that as a claim that the note is natural — so in a key that flattens the
+    // middle line it prints a ♮ in front of the X, and worse, records the letter
+    // as natural for the rest of the bar, which makes the next real B♭ print a
+    // flat it does not need. Spelling the placeholder to agree with what is
+    // already in force says nothing new, and so prints nothing.
+    assert.equal(
+      vexFlowKeyFor(new UnpitchedNote(QUARTER), "treble", -1),
+      "bb/4/x",
+    );
+    assert.equal(
+      vexFlowKeyFor(new UnpitchedNote(QUARTER), "treble", 1),
+      "b#/4/x",
+    );
+    assert.equal(
+      vexFlowKeyFor(new UnpitchedNote(QUARTER), "bass", -1),
+      "db/3/x",
+    );
+  });
+
+  it("leaves the placeholder bare when nothing is in force", () => {
+    // A natural is the absence of a mark, not a mark of its own: writing `bn`
+    // here would be VexFlow's own way of asking for a printed ♮.
+    assert.equal(vexFlowKeyFor(new UnpitchedNote(QUARTER), "treble", 0), "b/4/x");
+    assert.equal(vexFlowKeyFor(new UnpitchedNote(QUARTER), "treble"), "b/4/x");
+  });
+
+  it("does not put an alteration on a rest, which has no letter to alter", () => {
+    // A rest is skipped by VexFlow's accidental pass outright, so it never
+    // claims anything about the bar and needs no help not to.
+    assert.equal(vexFlowKeyFor(new Rest(QUARTER), "treble", -1), "b/4");
+  });
 });

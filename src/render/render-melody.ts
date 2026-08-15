@@ -15,7 +15,13 @@ import {
 import { splitIntoMeasures } from "../music/measure.js";
 import type { Melody } from "../music/melody.js";
 import { Rest, UnpitchedNote, type NoteEvent } from "../music/note-event.js";
-import { vexFlowKeyFor } from "./vex-key.js";
+import { alterationInEffect, spellingContext } from "../music/spelling.js";
+// `Accidental` here is VexFlow's modifier class, so the music module's own
+// notion — how many semitones a letter is bent by — comes in under its other
+// name.
+import type { Accidental as Alteration } from "../music/types.js";
+import { planBeams } from "./beaming.js";
+import { middleLinePitchOf, vexFlowKeyFor } from "./vex-key.js";
 
 /** Room to the right of the last bar so a hanging tie is not clipped. */
 const TAIL_SLACK = 24;
@@ -153,7 +159,10 @@ export type MelodyRenderResult = {
   svg: SVGSVGElement;
   /** Indexed by melody event index; rests included, so indices line up. */
   notes: readonly StaveNote[];
-  /** Notes only — rests have no region and so are inert to clicks. */
+  /**
+   * Where each event can be clicked, rests included — a rest is the room the
+   * next note is written into, and so the thing aimed at most often.
+   */
   regions: readonly NoteHitRegion[];
   /** Indexed by melody event index, like `notes`. */
   anchors: readonly EventAnchor[];
@@ -171,10 +180,11 @@ function eventToStaveNote(
   factory: Factory,
   event: NoteEvent,
   clef: string,
+  alteration: Alteration,
 ): StaveNote {
   const code = event.duration.vexFlowToken();
   const dots = event.duration.dots;
-  const keys = [vexFlowKeyFor(event, clef)];
+  const keys = [vexFlowKeyFor(event, clef, alteration)];
 
   // A note awaiting a pitch is stemmed and beamed like any other note — only
   // its notehead differs — so it reads as rhythm rather than as silence.
@@ -255,7 +265,6 @@ export function renderMelody(
 
   const keySpec = melody.keySignature.toString();
   const timeSpec = `${melody.timeSignature.beats}/${melody.timeSignature.beatUnit}`;
-  const beamGroups = Beam.getDefaultBeamGroups(timeSpec);
   const beams: Beam[] = [];
 
   /** Indexed by melody event index, so ties never need local/global mapping. */
@@ -275,8 +284,28 @@ export function renderMelody(
   // quintuplet sixteenths needs far more room than a bar of two half notes, and
   // a bar given less than its minimum spills past its own barline.
   const built = measures.map((measure) => {
-    const measureNotes = measure.events.map((event) =>
-      eventToStaveNote(factory, event, clef),
+    // A note awaiting a pitch has to be spelled with whatever the key and the
+    // bar so far already do to the middle line, or VexFlow reads its bare letter
+    // as a claim that the note is natural. The bar's own accidentals are what
+    // `spellingContext` collects, and accidentals do not cross a barline, so the
+    // context is built afresh from each measure's earlier events.
+    const middleLine = middleLinePitchOf(clef);
+    const measureNotes = measure.events.map((event, index) =>
+      eventToStaveNote(
+        factory,
+        event,
+        clef,
+        event instanceof UnpitchedNote
+          ? alterationInEffect(
+              spellingContext(
+                melody.keySignature,
+                measure.events.slice(0, index),
+              ),
+              middleLine.letter,
+              middleLine.octave,
+            )
+          : 0,
+      ),
     );
 
     // Tuplets before beaming and before the Voice is built: the Tuplet
@@ -296,14 +325,32 @@ export function renderMelody(
       };
     });
 
-    // Auto-beam by beat groups for this time signature (Wiki Automatic Beaming).
-    beams.push(...Beam.generateBeams(measureNotes, { groups: beamGroups }));
+    // Grouped by `planBeams` rather than by `Beam.generateBeams`, which loses
+    // its place in the bar the moment a note straddles a beat — see the note at
+    // the top of `beaming.ts`. `autoStem` is what `generateBeams` did for a
+    // group of its own: one direction, taken from where the group sits on the
+    // staff, applied to every note in it.
+    for (const plan of planBeams(measure, melody.timeSignature)) {
+      const beam = new Beam(
+        plan.notes.map((index) => measureNotes[index]!),
+        true,
+      );
+      if (plan.secondaryBreaks.length > 0) {
+        beam.breakSecondaryAt(plan.secondaryBreaks);
+      }
+      beams.push(beam);
+    }
 
     // VexFlow chooses `bracketed` when the Tuplet is constructed, but no note is
     // beamed yet at that point. Re-apply its rule — bracket unless every note in
-    // the group is beamed — now that the beams exist.
+    // the group is beamed — now that the beams exist. The bracket also has to be
+    // put on the side the stems went, which `generateBeams` used to do and which
+    // now belongs here with everything else beaming decides.
     for (const { bracket, notes: groupNotes } of brackets) {
       bracket.setBracketed(groupNotes.some((note) => !note.hasBeam()));
+      bracket.setTupletLocation(
+        groupNotes[0]!.getStemDirection() === Stem.DOWN ? -1 : 1,
+      );
     }
 
     const voice = factory.Voice({ time: timeSpec }).addTickables(measureNotes);
@@ -548,8 +595,9 @@ export function renderMelody(
 
   factory.draw();
 
-  // Beams from generateBeams are not in Factory's render queue; draw after
-  // layout. Drawn plainly, so they never take a selected note's colour.
+  // Built with `new Beam` rather than through the factory, so they are not in
+  // its render queue; drawn here, after layout. Drawn plainly, so they never
+  // take a selected note's colour.
   const context = factory.getContext();
   for (const beam of beams) {
     beam.setContext(context).draw();
@@ -660,40 +708,43 @@ function drawHalos(
 /**
  * The union of an event's glyph and stem, padded, in svg user space.
  *
- * Built from the note's own geometry accessors rather than `getBoundingBox()`:
- * `Stem` declares that method but its implementation throws, and StaveNote's
- * own bounding box would swallow modifiers and ledger lines we do not want in
- * the click target.
+ * A note is built from its own geometry accessors rather than from
+ * `getBoundingBox()`: that one swallows accidentals and ledger lines, which are
+ * not things anybody aims at. A rest is the other way round — see below.
  */
 function hitRegion(
   note: StaveNote,
 ): { x: number; y: number; w: number; h: number } | undefined {
-  // A rest is asked for its drawn box instead of being measured.
+  // A rest is asked for its own bounding box, which for a rest alone is exact.
   //
-  // Everything below works from `getNoteHeadBounds`, which for a rest reports
-  // the one staff position the glyph hangs at — so padding it by a notehead's
-  // radius described a box about a fifth of a quarter rest's real height. That
-  // made rests hard to click long before it made their halo look short.
+  // `getNoteHeadBounds` reports the one staff position a rest hangs at, so
+  // padding that by a notehead's radius described a box about a fifth of a
+  // quarter rest's height — too small to click. Measuring the drawn svg group
+  // instead was worse in the other direction: the group carries the rest's
+  // hidden stem, and `getBBox` on an svg `<text>` returns the font's em box
+  // rather than its ink, which for a SMuFL face is most of a staff whatever
+  // glyph is set in it.
   //
-  // This runs after `factory.draw()`, so the glyph is on the page and can be
-  // asked how big it is. Only rests: a note's box would then swallow its
-  // accidentals, dots and ledger lines, which is exactly what the geometry
-  // below is written to leave out of a click target.
+  // VexFlow's own box has neither problem. It measures glyphs through
+  // `actualBoundingBoxAscent`/`Descent` — real ink — and it already leaves out
+  // both of the things that would spoil this: `getBoundingBox` skips the stem
+  // when `isRest()`, and `hasFlag()` is false for a rest. What is left is the
+  // glyph and its augmentation dots, which is the thing on the page.
+  //
+  // Only rests. A note's box would swallow its accidentals and ledger lines,
+  // which is exactly what the geometry below is written to leave out.
   if (note.isRest()) {
-    const group = note.getSVGElement();
-    // Narrowed rather than cast: `getSVGElement` is declared to return the
-    // base SVGElement, and only the graphics subtype can be measured.
-    const drawn =
-      group instanceof SVGGraphicsElement ? group.getBBox() : undefined;
-    if (drawn && drawn.width > 0 && drawn.height > 0) {
+    const box = note.getBoundingBox();
+    if (box.getW() > 0 && box.getH() > 0) {
       return {
-        x: drawn.x - HIT_PADDING,
-        y: drawn.y - HIT_PADDING,
-        w: drawn.width + 2 * HIT_PADDING,
-        h: drawn.height + 2 * HIT_PADDING,
+        x: box.getX() - HIT_PADDING,
+        y: box.getY() - HIT_PADDING,
+        w: box.getW() + 2 * HIT_PADDING,
+        h: box.getH() + 2 * HIT_PADDING,
       };
     }
-    // A score that is not on the page yet measures as nothing; fall through.
+    // Nothing measurable yet — no canvas to measure text on — so fall through
+    // to the staff-position box, which is small but never absent.
   }
 
   // These are the centres of the outermost noteheads, not their edges.

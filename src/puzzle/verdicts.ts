@@ -1,8 +1,8 @@
 /**
- * What a check said, and what the stave should therefore show.
+ * What every check has said, and what the stave should therefore show.
  *
  * The idea holding this file together: **a verdict is a claim about a pitch,
- * not about a notehead.** It is recorded together with the MIDI value that was
+ * not about a notehead.** It is recorded against the MIDI value that was
  * submitted, and it is shown only while the note still holds that value.
  *
  * That one rule answers every awkward case without a case for any of them.
@@ -10,17 +10,31 @@
  * about the guess that is gone. Undo back to it and the amber returns, because
  * it is the same guess again — and nothing here has to know that an undo
  * happened, or that undo exists.
+ *
+ * Every guess is remembered, not only the last. Told a note is not C♯ and then
+ * that it is not C♮, both remain true: neither check is undone by the other, so
+ * typing C♯ again shows amber without having to ask a third time. Only wrong
+ * guesses can pile up — a note judged right is locked and can have no second
+ * verdict — so the memory is bounded by how many wrong answers somebody cared
+ * to try.
  */
 
 import type { Melody } from "../music/melody.js";
 import { Note, Rest } from "../music/note-event.js";
 import { countUnpitchedNotes } from "../shared/transcription.js";
 
-/** One judged guess: what was sent, and what came back about it. */
-export type Verdict = { readonly midi: number; readonly correct: boolean };
+/** What every judged pitch of one note came back as, keyed by MIDI value. */
+export type NoteVerdicts = ReadonlyMap<number, boolean>;
 
 /** Judged guesses, keyed by the head of each tied run, as the route keys them. */
-export type Verdicts = ReadonlyMap<number, Verdict>;
+export type Verdicts = ReadonlyMap<number, NoteVerdicts>;
+
+/** One judged guess, flattened — the shape a saved attempt stores. */
+export type Judged = {
+  readonly index: number;
+  readonly midi: number;
+  readonly correct: boolean;
+};
 
 /** How the stave should draw each event. Indices, not heads: see `marksOf`. */
 export type Marks = {
@@ -100,18 +114,62 @@ export function attemptsLabel(
   return checkCount === 1 ? "1 attempt" : `${checkCount} attempts`;
 }
 
-/** What a check answered, held against what was asked. */
+/** What one check answered, held against what was asked. */
 export function verdictsOf(
   attempt: ReadonlyMap<number, number>,
   answered: readonly { index: number; correct: boolean }[],
 ): Verdicts {
-  const verdicts = new Map<number, Verdict>();
+  const verdicts = new Map<number, Map<number, boolean>>();
   for (const { index, correct } of answered) {
     const midi = attempt.get(index);
     // A verdict about a note nobody asked about judges nothing, and there is
     // no pitch to hold it against.
     if (midi === undefined) continue;
-    verdicts.set(index, { midi, correct });
+    verdicts.set(index, new Map([[midi, correct]]));
+  }
+  return verdicts;
+}
+
+/**
+ * Everything known before, plus what the latest check said.
+ *
+ * A guess judged twice takes the newer answer — the server cannot actually
+ * change its mind, since the answer does not move, but the last word winning is
+ * the only rule that does not need that to be true.
+ */
+export function rememberVerdicts(known: Verdicts, latest: Verdicts): Verdicts {
+  const merged = new Map<number, Map<number, boolean>>();
+  for (const [head, judged] of known) {
+    merged.set(head, new Map(judged));
+  }
+  for (const [head, judged] of latest) {
+    const note = merged.get(head) ?? new Map<number, boolean>();
+    for (const [midi, correct] of judged) {
+      note.set(midi, correct);
+    }
+    merged.set(head, note);
+  }
+  return merged;
+}
+
+/** Flattened for storage, one row per judged guess. */
+export function judgedOf(verdicts: Verdicts): Judged[] {
+  const rows: Judged[] = [];
+  for (const [index, judged] of verdicts) {
+    for (const [midi, correct] of judged) {
+      rows.push({ index, midi, correct });
+    }
+  }
+  return rows;
+}
+
+/** The same, read back — what a reload starts its colouring from. */
+export function verdictsFrom(judged: readonly Judged[]): Verdicts {
+  const verdicts = new Map<number, Map<number, boolean>>();
+  for (const { index, midi, correct } of judged) {
+    const note = verdicts.get(index) ?? new Map<number, boolean>();
+    note.set(midi, correct);
+    verdicts.set(index, note);
   }
   return verdicts;
 }
@@ -135,16 +193,17 @@ export function marksOf(
   const correct = new Set<number>(given);
   const wrong = new Set<number>();
 
-  for (const [head, verdict] of verdicts) {
+  for (const [head, judged] of verdicts) {
     if (given.has(head)) continue;
     const event = melody.getEvent(head);
-    // The claim was about a pitch. If the note no longer holds it -- rewritten,
-    // cleared, or undone past -- there is nothing here that was judged.
-    if (!(event instanceof Note) || event.pitch.toMidi() !== verdict.midi) {
-      continue;
-    }
+    if (!(event instanceof Note)) continue;
+    // Every claim was about a pitch, so the note's own pitch is the question
+    // asked of them. Nothing has judged what it holds now — rewritten, cleared,
+    // or a guess nobody has tried — and there is no mark for it.
+    const verdict = judged.get(event.pitch.toMidi());
+    if (verdict === undefined) continue;
     for (const index of melody.getTiedGroup(head)) {
-      (verdict.correct ? correct : wrong).add(index);
+      (verdict ? correct : wrong).add(index);
     }
   }
 

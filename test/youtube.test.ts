@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { embedUrl, readYouTubeLink } from "../dist/ui/youtube.js";
+import {
+  embedUrl,
+  readYouTubeLink,
+  worthSwapping,
+  THUMBNAIL_SIZE,
+} from "../dist/ui/youtube.js";
 
 const ID = "dQw4w9WgXcQ";
 
@@ -127,5 +132,24 @@ describe("embedUrl()", () => {
 
   it("leaves the origin out rather than inventing one", () => {
     assert.equal(new URL(embedUrl(ID)).searchParams.get("origin"), null);
+  });
+});
+
+describe("worthSwapping()", () => {
+  it("takes a still bigger than the one already on the card", () => {
+    // 1280 for the two 16:9 sizes, then the 4:3 pair cropped back to shape.
+    assert.equal(worthSwapping(1280), true);
+    assert.equal(worthSwapping(640), true);
+    assert.equal(worthSwapping(480), true);
+  });
+
+  it("refuses the grey square YouTube answers a missing size with", () => {
+    // 120×90, and served with a 200 rather than a 404, so nothing else tells
+    // it apart from a picture.
+    assert.equal(worthSwapping(120), false);
+  });
+
+  it("refuses one no bigger than what is showing", () => {
+    assert.equal(worthSwapping(THUMBNAIL_SIZE.width), false);
   });
 });

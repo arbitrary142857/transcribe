@@ -17,6 +17,7 @@ import {
   type TranscriptionRecord,
 } from "../shared/transcription.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
+import { keepingScroll } from "./score-overlay.js";
 import { createPlayback, type Playback } from "./playback.js";
 import { createSetupPage, type Setup } from "./setup-panel.js";
 import { createSignatureBar, type SignatureBar } from "./signature-bar.js";
@@ -88,6 +89,16 @@ export function createEditorPage(
   let melody: Melody | undefined;
   let clef: Clef = "treble";
   let pitchOnly = false;
+  /**
+   * Whether the piano sounds as pitches are set.
+   *
+   * Off at the start of every transcription, and deliberately not remembered
+   * across them: it is a way of working on one piece rather than a preference,
+   * and a page that started making noise because of something done last week
+   * would be a surprise. Held here rather than in the editor because `mount`
+   * rebuilds that from nothing on every undo, mode switch and key change.
+   */
+  let sound = false;
   let editor: Editor | undefined;
   let history: History | undefined;
   let playback: Playback | undefined;
@@ -221,7 +232,18 @@ export function createEditorPage(
       beatsPerBarOf(source.meter),
     );
     if (timing !== undefined) return timing;
-    return detailsProblem(details);
+    const wrong = detailsProblem(details);
+    if (wrong !== undefined) return wrong;
+
+    // Last, so a transcription that is unsendable for a real reason says the
+    // real reason rather than this one.
+    //
+    // Compared rather than counted: `isDirty` puts the melody, the words and
+    // the marks against what was last saved, so writing a note and writing it
+    // back leaves nothing to send and the button goes grey again. That works
+    // because the encoding is canonical — ties come out in index order and
+    // brackets are sorted — which the undo stack already relies on.
+    return isDirty() ? undefined : "Nothing has changed yet.";
   }
 
   function showSignatures(): void {
@@ -296,6 +318,13 @@ export function createEditorPage(
       showSetup();
       return;
     }
+    // The same collapse the play page guards against: undo, redo, a key change
+    // and the mode switch all rebuild the score from nothing.
+    keepingScroll(rebuild);
+  }
+
+  function rebuild(): void {
+    if (!melody) return;
     elements.setup.hidden = true;
     elements.setup.replaceChildren();
     elements.workspace.hidden = false;
@@ -332,6 +361,10 @@ export function createEditorPage(
     editor = createEditor(melody, elements, {
       clef,
       pitchOnly,
+      sound,
+      onSound: (next) => {
+        sound = next;
+      },
       initialSelection: selected,
       onEdit: () => {
         if (!melody) return;

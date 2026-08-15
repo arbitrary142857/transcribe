@@ -28,7 +28,6 @@ export function chip(
   const button = document.createElement("button");
   button.type = "button";
   button.className = "chip";
-  button.title = `${label} (${shortcut})`;
   // Both halves are constants from the caller, never anything out of the
   // database — the one rule that lets this be innerHTML at all.
   button.innerHTML = `${label}<kbd class="chip-key">${shortcut}</kbd>`;

@@ -6,9 +6,11 @@ import { noteIcon } from "./icons.js";
 /**
  * The note values the grid offers, longest first.
  *
- * Five values and one dot cover what melodies are actually written in.
- * Thirty-seconds and double dots are left out rather than hidden behind a
- * disclosure: a control nobody opens is worse than one that is not there.
+ * Every value the music model can write, down to the thirty-second, each with
+ * and without a dot. Double dots are the one thing left out, and left out rather
+ * than hidden behind a disclosure: a control nobody opens is worse than one that
+ * is not there, and a double dot is rare enough in a melody to be written as a
+ * tie instead.
  */
 const VALUES = [
   { value: NoteValue.Whole, name: "whole" },
@@ -16,6 +18,7 @@ const VALUES = [
   { value: NoteValue.Quarter, name: "quarter" },
   { value: NoteValue.Eighth, name: "eighth" },
   { value: NoteValue.Sixteenth, name: "sixteenth" },
+  { value: NoteValue.ThirtySecond, name: "thirty-second" },
 ] as const;
 
 const DOT_ROWS = [0, 1];
@@ -29,7 +32,7 @@ const DOT_NAMES = ["", "dotted "];
  * key, not the typed character — Shift+1 types "!" on most layouts, and the
  * shortcut must not care.
  */
-const KEYS = ["1", "2", "3", "4", "5"] as const;
+const KEYS = ["1", "2", "3", "4", "5", "6"] as const;
 
 const nameOf = (value: number, dots: number) =>
   `${DOT_NAMES[dots] ?? ""}${VALUES.find((v) => v.value === value)?.name ?? ""} note`;
@@ -59,14 +62,20 @@ export type DurationGrid = {
   update(room: Room | undefined, ratio?: Tuplet): void;
 };
 
+/**
+ * What is in the way, which is the whole of what a greyed cell has to say.
+ *
+ * The length is not named: the cell under the pointer is a picture of it, and
+ * repeating "a dotted sixteenth note" ran the answer onto a second line for
+ * something already in view.
+ */
 const BOUNDARY: Record<Room["limitedBy"], string> = {
-  "next-note": "before the next note",
-  barline: "before the barline",
-  bracket: "inside the tuplet",
+  "next-note": "No room before the next note",
+  barline: "No room before the barline",
+  bracket: "No room inside the tuplet",
 };
 
-const reasonFor = (room: Room, value: number, dots: number): string =>
-  `A ${nameOf(value, dots)} will not fit ${BOUNDARY[room.limitedBy]}`;
+const reasonFor = (room: Room): string => BOUNDARY[room.limitedBy];
 
 /**
  * Build the duration controls.
@@ -94,6 +103,8 @@ export function createDurationGrid(
     value: number;
     dots: number;
     key?: string;
+    /** Whether this length will not fit where the selection is. */
+    unavailable: boolean;
   }[] = [];
   let ratio: Tuplet = Tuplet.None;
   const durationOf = (value: number, dots: number) =>
@@ -110,11 +121,22 @@ export function createDurationGrid(
       button.dataset.dots = String(dots);
       button.innerHTML =
         `<kbd class="cell-key">${printed}</kbd>` + noteIcon(value, dots);
-      button.title = `${nameOf(value, dots)} (${printed})`;
       button.setAttribute("aria-label", nameOf(value, dots));
-      button.addEventListener("click", () => onPick(durationOf(value, dots)));
 
-      cells.push({ button, value, dots, key });
+      const cell = { button, value, dots, key, unavailable: true };
+      button.addEventListener("click", () => {
+        // Refused here rather than by the button being `disabled`. A disabled
+        // button is inert to the pointer as well as to the press, and being
+        // pointed at is how a greyed cell says why it is grey — see the hover
+        // listener below.
+        if (cell.unavailable) {
+          onExplain(explain());
+          return;
+        }
+        onPick(durationOf(value, dots));
+      });
+
+      cells.push(cell);
       grid.append(button);
     });
   }
@@ -124,17 +146,21 @@ export function createDurationGrid(
 
   let currentRoom: Room | undefined;
 
-  // Hover is read on the grid rather than each button: a disabled button emits
-  // no pointer events of its own, and the reason is exactly what a user needs
-  // when the thing they aimed at will not respond.
+  const explain = () => (currentRoom ? reasonFor(currentRoom) : undefined);
+
+  // Hover is read on the grid, and the cells stay live to the pointer for it to
+  // work at all.
+  //
+  // The reason a greyed cell will not take a press is exactly what somebody
+  // aiming at it needs, and there is nowhere else to put it. A `disabled`
+  // button, though, fires no mouse events *and they do not bubble*, so over one
+  // of those this listener never ran: the explanation this grid was built to
+  // give has never once appeared. Hence `aria-disabled` and a class rather than
+  // the real attribute, with the press refused in the handler above.
   grid.addEventListener("mousemove", (event) => {
     const target = (event.target as HTMLElement).closest(".duration-cell");
     const cell = cells.find(({ button }) => button === target);
-    if (!cell || !currentRoom || !cell.button.disabled) {
-      onExplain(undefined);
-      return;
-    }
-    onExplain(reasonFor(currentRoom, cell.value, cell.dots));
+    onExplain(cell?.unavailable ? explain() : undefined);
   });
   grid.addEventListener("mouseleave", () => onExplain(undefined));
 
@@ -144,7 +170,7 @@ export function createDurationGrid(
         (candidate) =>
           candidate.key === key && candidate.dots === (dotted ? 1 : 0),
       );
-      if (!cell || cell.button.disabled) {
+      if (!cell || cell.unavailable) {
         return false;
       }
       onPick(durationOf(cell.value, cell.dots));
@@ -154,12 +180,18 @@ export function createDurationGrid(
     update(room, inBracket = Tuplet.None) {
       currentRoom = room;
       ratio = inBracket;
-      for (const { button, value, dots } of cells) {
-        button.disabled =
+      for (const cell of cells) {
+        cell.unavailable =
           !room ||
-          durationOf(value, dots)
+          durationOf(cell.value, cell.dots)
             .asWholeNoteFraction()
             .compare(room.available) > 0;
+        cell.button.classList.toggle("is-unavailable", cell.unavailable);
+        // Said as well as drawn. `aria-disabled` rather than `disabled`, so the
+        // cell is still announced and still reachable — it has something to say
+        // for itself, which is the whole point of it being greyed rather than
+        // gone.
+        cell.button.setAttribute("aria-disabled", String(cell.unavailable));
       }
     },
   };

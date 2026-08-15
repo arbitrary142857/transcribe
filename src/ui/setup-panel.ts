@@ -1,6 +1,7 @@
 import type { TimeSignature } from "../music/types.js";
 import {
   bpmOf,
+  markedField,
   stepTiming,
   timingProblem,
   type TimingAction,
@@ -295,11 +296,13 @@ export function createSetupPage(
     );
     timing = step.state;
     if (step.rejected) {
-      // The note line carries the reason; the state did not move.
-      panel.update(panelState(step.rejected));
+      // Refused, and the state did not move. Nothing is said about it: the
+      // panel has no line to say it in, and the box simply shows what it still
+      // holds. The Start button below goes on saying what is missing.
+      panel.update(panelState());
       return;
     }
-    panel.flash(step.autoEdited);
+    panel.flash([...step.autoEdited, ...markedField(action)]);
     // The metronome clicks the marked tempo, so it follows every change —
     // and falls silent the moment the marks stop describing one.
     if (metronomeOn) {
@@ -441,19 +444,10 @@ export function createSetupPage(
 
   // ---- state to screen ---------------------------------------------------
 
-  function panelState(noteOverride?: string) {
+  function panelState() {
     const beats = beatsPerBar(meter);
     const bpm = bpmOf(timing, beats);
     const problem = timingProblem(timing, beats);
-    const note =
-      noteOverride ??
-      trouble ??
-      (meter === undefined
-        ? "Choose a meter, so the tempo has a beat to count."
-        : (problem ??
-          `${Math.round(bpm! * 10) / 10} BPM across ${
-            timing.measures === 1 ? "1 bar" : `${timing.measures} bars`
-          }`));
     return {
       ready: rigReady,
       rates: rig?.rates() ?? [1],
@@ -463,7 +457,6 @@ export function createSetupPage(
         bpm === undefined ? undefined : String(Math.round(bpm * 10) / 10),
       metronomeOn,
       timed: meter !== undefined && problem === undefined,
-      note,
     };
   }
 

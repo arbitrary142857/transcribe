@@ -9,7 +9,10 @@ import {
   attemptOf,
   attemptsLabel,
   checkProblem,
+  judgedOf,
   marksOf,
+  rememberVerdicts,
+  verdictsFrom,
   verdictsOf,
 } from "../dist/puzzle/verdicts.js";
 
@@ -209,5 +212,100 @@ describe("attemptsLabel()", () => {
 
   it("reports the count for a puzzle that took more than one", () => {
     assert.equal(attemptsLabel(4, true), "4 attempts");
+  });
+});
+
+describe("remembering every verdict a note has had", () => {
+  const CS4 = new Pitch("C", 1, 4);
+
+  const oneNote = (pitch: Pitch) => melodyOf([new Note(pitch, QUARTER)]);
+
+  /** One check of a one-note melody, answered as `correct`. */
+  const checkOf = (melody: Melody, correct: boolean) =>
+    verdictsOf(attemptOf(melody), [{ index: 0, correct }]);
+
+  it("keeps a verdict about a pitch the note no longer holds", () => {
+    // Told "not C♯", then told "not C♮". Both are still true of the pitches
+    // they were about, and a check is not undone by being followed.
+    const melody = oneNote(CS4);
+    let known = checkOf(melody, false);
+
+    melody.setPitch(0, C4);
+    known = rememberVerdicts(known, checkOf(melody, false));
+
+    // Back to the first guess, without a third check.
+    melody.setPitch(0, CS4);
+    assert.deepEqual([...marksOf(melody, known, NONE).wrong], [0]);
+  });
+
+  it("still marks the second guess, which is the one just judged", () => {
+    const melody = oneNote(CS4);
+    let known = checkOf(melody, false);
+    melody.setPitch(0, C4);
+    known = rememberVerdicts(known, checkOf(melody, false));
+
+    assert.deepEqual([...marksOf(melody, known, NONE).wrong], [0]);
+  });
+
+  it("says nothing about a pitch nobody has judged", () => {
+    const melody = oneNote(CS4);
+    const known = checkOf(melody, false);
+
+    melody.setPitch(0, E4);
+    const marks = marksOf(melody, known, NONE);
+    assert.equal(marks.wrong.size, 0);
+    assert.equal(marks.correct.size, 0);
+  });
+
+  it("lets a later check overrule an earlier one about the same pitch", () => {
+    // Not a case the server can produce — an answer does not move — but the
+    // last word should win rather than the first, whatever produced it.
+    const melody = oneNote(C4);
+    let known = checkOf(melody, false);
+    known = rememberVerdicts(known, checkOf(melody, true));
+
+    assert.deepEqual([...marksOf(melody, known, NONE).correct], [0]);
+    assert.equal(marksOf(melody, known, NONE).wrong.size, 0);
+  });
+});
+
+describe("carrying verdicts across a reload", () => {
+  const CS4 = new Pitch("C", 1, 4);
+
+  it("writes out every judged pitch, and reads them all back", () => {
+    const melody = melodyOf([new Note(CS4, QUARTER), new Note(E4, QUARTER)]);
+    let known = verdictsOf(attemptOf(melody), [
+      { index: 0, correct: false },
+      { index: 1, correct: true },
+    ]);
+    melody.setPitch(0, C4);
+    known = rememberVerdicts(
+      known,
+      verdictsOf(attemptOf(melody), [{ index: 0, correct: false }]),
+    );
+
+    const stored = judgedOf(known);
+    assert.deepEqual(
+      [...stored].sort((a, b) => a.index - b.index || a.midi - b.midi),
+      [
+        { index: 0, midi: C4.toMidi(), correct: false },
+        { index: 0, midi: CS4.toMidi(), correct: false },
+        { index: 1, midi: E4.toMidi(), correct: true },
+      ],
+    );
+
+    // What comes back has to paint the same stave, including the guess that
+    // was judged two checks ago.
+    const reloaded = verdictsFrom(stored);
+    melody.setPitch(0, CS4);
+    const marks = marksOf(melody, reloaded, NONE);
+    assert.deepEqual([...marks.wrong], [0]);
+    assert.deepEqual([...marks.correct], [1]);
+    assert.deepEqual([...marks.locked], [1]);
+  });
+
+  it("reads back nothing from nothing", () => {
+    assert.equal(judgedOf(new Map()).length, 0);
+    assert.equal(verdictsFrom([]).size, 0);
   });
 });

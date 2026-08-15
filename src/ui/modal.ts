@@ -21,6 +21,15 @@ type ShellOptions = {
   fill: (close: (answer: boolean) => void) => readonly Node[];
   /** Extra classes for the box, for anything that needs to be wider. */
   className?: string;
+  /**
+   * Put an × in the corner.
+   *
+   * Only for a box that asks nothing. Where there is a question to answer, an ×
+   * has to stand for one of the answers and there is no saying which — a
+   * confirm dialog with a corner × asks the reader to guess whether it means
+   * cancel or just "go away", and the two are the same only by luck.
+   */
+  dismissable?: boolean;
   /** Called once, with whatever `close` was called with. */
   onClose: (answer: boolean) => void;
 };
@@ -72,6 +81,22 @@ function openShell(options: ShellOptions): void {
     const step = event.shiftKey ? -1 : 1;
     // Wraps at both ends, so focus never walks out of the box.
     stops[(at + step + stops.length) % stops.length]!.focus();
+  }
+
+  // First in the box, so it is also first in the tab order and takes the
+  // opening focus: the way out is a safe place for focus to land, and a corner
+  // × that could only be reached by tabbing through everything else would be a
+  // way out for the mouse alone.
+  if (options.dismissable) {
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "modal-close";
+    dismiss.setAttribute("aria-label", "Close");
+    // The glyph is a multiplication sign rather than a letter x, which at this
+    // size leans and reads as a letter.
+    dismiss.textContent = "×";
+    dismiss.addEventListener("click", () => close(false));
+    box.append(dismiss);
   }
 
   box.append(...options.fill(close));
@@ -147,6 +172,8 @@ export function openInfoModal(options: {
 }): void {
   openShell({
     className: options.className,
+    // Nothing is decided here, so an × in the corner can only mean one thing.
+    dismissable: true,
     // There is no answer to give, so the caller is handed a plain `close` and
     // the shell's yes/no is filled in here rather than at every call site.
     fill: (close) => options.fill(() => close(false)),

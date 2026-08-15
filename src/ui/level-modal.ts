@@ -52,9 +52,11 @@ const METER_HEADROOM = { above: 7, below: 7 };
  *
  * Both diagrams are sized from this, so the key signature and the meter are
  * drawn at one scale and read as two views of the same stave rather than two
- * pictures that happen to sit together.
+ * pictures that happen to sit together. Fewer units to the rem draws both
+ * larger: at seventeen the two signatures were the smallest thing in a dialog
+ * that exists to show them.
  */
-const UNITS_PER_REM = 17;
+const UNITS_PER_REM = 14;
 
 export type LevelModalOptions = {
   /** Everything the box is about. */
@@ -65,14 +67,30 @@ export type LevelModalOptions = {
   play?: boolean;
   /** How long it took, when it has been finished. */
   solvedIn?: { elapsedMs: number; checkCount: number };
+  /**
+   * Whether there is an attempt here to go back to.
+   *
+   * Separate from `solvedIn`, which is both the finished time and the fact of
+   * being finished — a level can be neither started nor solved, started and not
+   * solved, or solved, and the way in should say which.
+   */
+  started?: boolean;
 };
+
+/** What the way in offers, given how far this level has got. */
+function wayIn(options: LevelModalOptions): string {
+  if (options.solvedIn) return "Play again";
+  return options.started ? "Resume" : "Play";
+}
 
 export function openLevelModal(options: LevelModalOptions): void {
   const { level } = options;
 
   openInfoModal({
     className: "level-modal",
-    fill(close: () => void) {
+    // Nothing in here closes the box any more; the shell's × does, along with
+    // Escape and the backdrop.
+    fill() {
       const parts: Node[] = [];
 
       const heading = document.createElement("h2");
@@ -184,25 +202,23 @@ export function openLevelModal(options: LevelModalOptions): void {
 
       // ---- the way in ---------------------------------------------------
 
-      const buttons = document.createElement("div");
-      buttons.className = "modal-buttons";
-
-      const dismiss = document.createElement("button");
-      dismiss.type = "button";
-      dismiss.className = "modal-cancel";
-      dismiss.textContent = "Close";
-      dismiss.addEventListener("click", close);
-      buttons.append(dismiss);
-
+      // No Close button beside it. The × in the corner is the way out, and two
+      // of those in one box asks which is which for no gain — the more so here,
+      // where the other button is the thing you came to press. Opened from
+      // inside the puzzle there is no way in either, so the row goes entirely
+      // rather than standing empty.
       if (options.play) {
+        const buttons = document.createElement("div");
+        buttons.className = "modal-buttons";
+
         const play = document.createElement("a");
         play.className = "modal-confirm level-modal-play";
         play.href = `/play?level=${encodeURIComponent(level.id)}`;
-        play.textContent = options.solvedIn ? "Play again" : "Play";
+        play.textContent = wayIn(options);
         buttons.append(play);
+        parts.push(buttons);
       }
 
-      parts.push(buttons);
       return parts;
     },
   });
@@ -261,7 +277,6 @@ const STAT_ICON: Record<LevelStatKind, () => string> = {
 function statBox(stat: LevelStat): HTMLElement {
   const box = document.createElement("div");
   box.className = "level-stat";
-  box.title = stat.label;
 
   const icon = document.createElement("span");
   icon.className = "level-stat-icon";

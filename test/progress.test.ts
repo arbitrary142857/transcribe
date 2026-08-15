@@ -33,6 +33,11 @@ const PROGRESS: PlayProgress = {
     { index: 0, midi: 60 },
     { index: 1, midi: 64 },
   ],
+  judged: [
+    { index: 0, midi: 60, correct: true },
+    { index: 1, midi: 62, correct: false },
+    { index: 1, midi: 64, correct: false },
+  ],
 };
 
 describe("createLocalProgressStore()", () => {
@@ -131,5 +136,40 @@ describe("createLocalProgressStore()", () => {
     });
 
     await assert.doesNotReject(() => store.write(PROGRESS));
+  });
+});
+
+describe("the judged pitches", () => {
+  const stored = (over: Record<string, unknown>) =>
+    JSON.stringify({ ...PROGRESS, ...over });
+
+  it("comes back empty from a record written before it existed", () => {
+    // Progress saved by an older build is still progress; it simply has no
+    // verdicts to colour with, which is where it was before this was stored.
+    const { judged, ...older } = PROGRESS;
+    const { storage } = stubStorage({
+      "daily-transcribe:progress:k3m9x2p7qw4t": JSON.stringify(older),
+    });
+
+    return createLocalProgressStore(storage)
+      .read("k3m9x2p7qw4t")
+      .then((read) => assert.deepEqual(read, { ...older, judged: [] }));
+  });
+
+  it("forgets the whole record when a verdict cannot be read", async () => {
+    // The rest of a record carrying a broken one is not to be trusted either.
+    for (const broken of [
+      stored({ judged: "none" }),
+      stored({ judged: [{ index: 0, midi: 60 }] }),
+      stored({ judged: [{ index: 0, midi: 60, correct: "yes" }] }),
+      stored({ judged: [{ index: -1, midi: 60, correct: true }] }),
+      stored({ judged: [{ index: 0, midi: 900, correct: true }] }),
+    ]) {
+      const { storage } = stubStorage({
+        "daily-transcribe:progress:k3m9x2p7qw4t": broken,
+      });
+      const read = await createLocalProgressStore(storage).read("k3m9x2p7qw4t");
+      assert.equal(read, undefined, broken);
+    }
   });
 });
