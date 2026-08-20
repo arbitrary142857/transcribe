@@ -63,6 +63,20 @@ export type VoiceTiming = {
  * keeps the note under a section's start mark from being lost to the seek that
  * gets there.
  *
+ * It is joined however late it is, and never struck afresh. Striking it would
+ * put the attack back, which is tempting: a seek settles a few milliseconds past
+ * its mark, a loop wrap lands two hundred past it, and what comes out either way
+ * is a headless stump. But an attack is a *rhythmic event*, and one sounded late
+ * is an onset the music does not have. The note would read as beginning where it
+ * did not, and the note after it — lined up correctly, with a horizon's worth of
+ * warning — would then arrive too soon behind it, so the error spreads into a
+ * phrase that was otherwise right. Coming in honestly on the tail leaves every
+ * onset where the score put it. The lag belongs to the video, and it is better
+ * admitted than papered over.
+ *
+ * Either way the note is let go at its **written end**, so what is heard is what
+ * is left of it rather than a fresh copy of all of it.
+ *
  * `undefined` for a note that is over, and for one with no length to it.
  */
 export function voiceTiming(
@@ -72,6 +86,10 @@ export function voiceTiming(
   audioNow: number,
 ): VoiceTiming | undefined {
   if (note.end <= note.start) return undefined;
+  // Hoisted above the two paths below because it disqualifies a note whichever
+  // it would have taken. It can only ever be true of one already begun: a note
+  // still to come ends after it starts, which is at or after `videoNow`.
+  if (note.end <= videoNow) return undefined;
 
   const ahead = note.start - videoNow;
   if (ahead >= 0) {
@@ -79,7 +97,6 @@ export function voiceTiming(
     return { at, offset: 0, until: at + (note.end - note.start) / rate };
   }
 
-  if (note.end <= videoNow) return undefined;
   return {
     at: audioNow,
     offset: -ahead / rate,
@@ -109,18 +126,59 @@ export type Piano = {
    * through rather than dropped — see `voiceTiming`.
    */
   schedule(notes: readonly PianoNote[], videoNow: number, rate: number): void;
+  /**
+   * The video has moved; take the notes out with it.
+   *
+   * Every voice the new reading has left behind is dropped. A voice the reading
+   * is still *inside* is the same note it was a moment ago, so it keeps
+   * ringing, with its damping asked again from where the video now stands.
+   *
+   * That distinction is the whole point. A seek arrives as two or three
+   * separate discontinuities, and the player's clock also slips backwards by a
+   * few tens of milliseconds of its own accord shortly after any resume — which
+   * is indistinguishable from a small seek. Dropping everything on each of those
+   * silenced a note that was sounding perfectly well, and took it up again a
+   * moment later two hundred milliseconds down its own tone. Nothing about the
+   * note had changed, so now nothing happens to it.
+   *
+   * Returns whether a note survived, which is what tells the caller the note
+   * under the new reading is already sounding and is owed nothing.
+   */
+  relocate(videoNow: number, rate: number): boolean;
+  /**
+   * Have a tone ready for every pitch these notes use.
+   *
+   * Writing one is tens of milliseconds of arithmetic, and `schedule` cannot
+   * afford it: the note that most needs to be on time — the one under a
+   * section's start mark, taken up the moment a loop wraps — is the one with the
+   * least warning, and a tone written on that path is time the note is late by.
+   *
+   * Rendered a pitch at a time with a yield between, because this is called on
+   * every edit and a keystroke must not stop for the better part of a second
+   * while a melody's worth of tones are written. Nothing depends on it having
+   * finished: `schedule` still writes what it needs, this only means it
+   * usually does not have to.
+   */
+  prepare(notes: readonly PianoNote[]): void;
   /** Drop everything sounding or lined up, at once. */
   silence(): void;
   close(): void;
 };
 
 /**
- * How many rendered notes to keep.
+ * How many rendered notes to keep for the keyboard.
  *
  * A note is a couple of seconds of mono float samples — a few hundred kilobytes
  * — so the whole clef's range held at once would be tens of megabytes for a
  * convenience. Two octaves' worth covers the going back and forth of pitching a
  * phrase, and anything past that is quick enough to render again.
+ *
+ * This is a policy for a range being *roamed over*, and it is why the melody's
+ * pitches are held apart from it rather than in it. They are a fixed, known,
+ * finite set, and eviction is the last thing wanted of them — worse, the rule
+ * below is insertion-order, so a melody wider than this would evict the pitches
+ * it rendered first, which are exactly the ones at the head of the section that
+ * a loop returns to.
  */
 const KEPT = 24;
 
@@ -138,6 +196,14 @@ type Voice = {
   gain: GainNode;
   /** When it starts on the audio clock — a scheduled note has not yet. */
   startedAt: number;
+  /**
+   * The written note this is, when it is one.
+   *
+   * Absent for a key pressed on the keyboard, which stands at no point in any
+   * melody. Present for a scheduled note, so that when the video moves the
+   * piano can tell which of the notes it has out are still the right notes.
+   */
+  note?: PianoNote;
 };
 
 export function createPiano(): Piano {
@@ -147,13 +213,17 @@ export function createPiano(): Piano {
   // follows, except that this one cannot be made when its owner is built —
   // building the editor is not a gesture.
   let context: AudioContext | undefined;
+  /** The keyboard's cache: a range being roamed over, so capped and evicted. */
   const rendered = new Map<number, AudioBuffer>();
+  /** The melody's: a known set, pinned, and replaced whole when it changes. */
+  const prepared = new Map<number, AudioBuffer>();
+  /** Pitches `prepare` still owes, and the timer working through them. */
+  let owed: number[] = [];
+  let writing: ReturnType<typeof setTimeout> | undefined;
   let sounding: Voice[] = [];
 
-  function bufferFor(midi: number, ctx: AudioContext): AudioBuffer {
-    const kept = rendered.get(midi);
-    if (kept) return kept;
-
+  /** Write the tone itself. Tens of milliseconds; the reason for the caches. */
+  function renderTone(midi: number, ctx: AudioContext): AudioBuffer {
     const frequency = frequencyOfMidi(midi);
     const seconds = pianoToneSeconds(frequency);
     const buffer = ctx.createBuffer(
@@ -164,6 +234,18 @@ export function createPiano(): Piano {
     const samples = new Float32Array(buffer.length);
     writePianoTone(samples, 0, frequency, seconds, ctx.sampleRate);
     buffer.copyToChannel(samples, 0);
+    return buffer;
+  }
+
+  function bufferFor(midi: number, ctx: AudioContext): AudioBuffer {
+    // The melody's own pitches first: they are pinned, and looking here first
+    // is what keeps the keyboard's eviction rule from reaching them.
+    const pinned = prepared.get(midi);
+    if (pinned) return pinned;
+    const kept = rendered.get(midi);
+    if (kept) return kept;
+
+    const buffer = renderTone(midi, ctx);
 
     // Oldest out first, which for this is also least recently asked for: a
     // note played again is served from the map without being re-inserted, and
@@ -174,6 +256,18 @@ export function createPiano(): Piano {
     }
     rendered.set(midi, buffer);
     return buffer;
+  }
+
+  /** One owed pitch, then hand the thread back. */
+  function writeOwed(): void {
+    writing = undefined;
+    const midi = owed.shift();
+    if (midi === undefined) return;
+    if (!prepared.has(midi)) {
+      const ctx = waking();
+      prepared.set(midi, rendered.get(midi) ?? renderTone(midi, ctx));
+    }
+    if (owed.length > 0) writing = setTimeout(writeOwed, 0);
   }
 
   /**
@@ -188,6 +282,7 @@ export function createPiano(): Piano {
     ctx: AudioContext,
     when: number,
     offset = 0,
+    note?: PianoNote,
   ): Voice {
     const source = ctx.createBufferSource();
     source.buffer = bufferFor(midi, ctx);
@@ -196,7 +291,7 @@ export function createPiano(): Piano {
     source.connect(gain);
     gain.connect(ctx.destination);
 
-    const started: Voice = { source, gain, startedAt: when };
+    const started: Voice = { source, gain, startedAt: when, note };
     source.addEventListener("ended", () => {
       sounding = sounding.filter((other) => other !== started);
       gain.disconnect();
@@ -218,6 +313,24 @@ export function createPiano(): Piano {
       void context.resume();
     }
     return context;
+  }
+
+  /** Drop a voice at once, whether or not it has begun. */
+  function drop(other: Voice, now: number): void {
+    // Anything lined up for a future that is no longer coming is stopped
+    // outright rather than faded: there is nothing to fade from until it
+    // starts, and a ramp scheduled before its own source would let it sound at
+    // full volume when its moment arrived.
+    if (other.startedAt > now) {
+      try {
+        other.source.stop(now);
+      } catch {
+        // Never started and never will; nothing to take back.
+      }
+      other.gain.disconnect();
+      return;
+    }
+    release(other, now);
   }
 
   /** Fade a voice out and stop it, the way a damper falls on a string. */
@@ -252,15 +365,29 @@ export function createPiano(): Piano {
     schedule(notes, videoNow, rate) {
       if (notes.length === 0) return;
       const ctx = waking();
+
+      // Written first, and the clock read after. A tone is tens of milliseconds
+      // of arithmetic, so a clock read before it has gone stale by the time
+      // anything is started — and a note started against a stale clock is
+      // damped at the end it *would* have had, which takes the difference out
+      // of the note rather than off the front of it. Short enough and the
+      // damping is already in the past, the gain is at zero before the note
+      // begins, and nothing is heard at all.
+      const before = ctx.currentTime;
+      for (const note of notes) bufferFor(note.midi, ctx);
       const audioNow = ctx.currentTime;
+      // Whatever that cost, the video spent it moving. Advancing the reading by
+      // the same amount is what keeps the pair honest: the clock alone would
+      // make every note in the batch late by the writing time instead.
+      const movedOn = videoNow + (audioNow - before) * rate;
 
       for (const note of notes) {
-        const timing = voiceTiming(note, videoNow, rate, audioNow);
+        const timing = voiceTiming(note, movedOn, rate, audioNow);
         // Nothing left of it: over before this window opened, or written with
         // no length at all.
         if (!timing) continue;
 
-        const started = voice(note.midi, ctx, timing.at, timing.offset);
+        const started = voice(note.midi, ctx, timing.at, timing.offset, note);
         sounding.push(started);
         // Damped at its own written end, so the melody's own rhythm decides how
         // long each note rings rather than the buffer's full decay.
@@ -268,24 +395,60 @@ export function createPiano(): Piano {
       }
     },
 
+    prepare(notes) {
+      // Replaced whole rather than added to, so the pitches of a melody that
+      // has been edited away are let go of rather than held for the session.
+      const wanted = new Set(notes.map((note) => note.midi));
+      for (const midi of [...prepared.keys()]) {
+        if (!wanted.has(midi)) prepared.delete(midi);
+      }
+      owed = [...wanted].filter((midi) => !prepared.has(midi));
+      // Already at work, and the queue it is working through has just been
+      // replaced — which is the point, since the melody it was writing for is
+      // no longer the melody.
+      if (owed.length > 0 && writing === undefined) {
+        writing = setTimeout(writeOwed, 0);
+      }
+    },
+
+    relocate(videoNow, rate) {
+      if (!context) return false;
+      const now = context.currentTime;
+      const keeping: Voice[] = [];
+
+      for (const other of sounding) {
+        const note = other.note;
+        const inside =
+          note !== undefined &&
+          other.startedAt <= now &&
+          note.start < videoNow &&
+          videoNow < note.end;
+        if (!inside) {
+          drop(other, now);
+          continue;
+        }
+        // Still the right note, so it is left ringing — but its damping was
+        // worked out against the reading the video has just left, so it is
+        // asked again from the reading it has arrived at.
+        // Cancelled from *now*, not from the new damping time: the ramp that
+        // is being replaced starts earlier than that, and `release` only
+        // cancels from the moment it is given.
+        other.gain.gain.cancelScheduledValues(now);
+        // `release` re-arms `source.stop` as well as the fade, and the last
+        // call to `stop` is the one that counts, so it carries the extension.
+        release(other, now + (note.end - videoNow) / rate);
+        keeping.push(other);
+      }
+
+      sounding = keeping;
+      return keeping.length > 0;
+    },
+
     silence() {
       if (!context) return;
       const now = context.currentTime;
       for (const other of sounding) {
-        // Anything already lined up for a future that is no longer coming is
-        // stopped outright rather than faded: there is nothing to fade from
-        // until it starts, and a ramp scheduled before its own source would
-        // let it sound at full volume when its moment arrived.
-        if (other.startedAt > now) {
-          try {
-            other.source.stop(now);
-          } catch {
-            // Never started and never will; nothing to take back.
-          }
-          other.gain.disconnect();
-          continue;
-        }
-        release(other, now);
+        drop(other, now);
       }
       sounding = [];
     },
@@ -293,6 +456,10 @@ export function createPiano(): Piano {
     close() {
       sounding = [];
       rendered.clear();
+      prepared.clear();
+      owed = [];
+      if (writing !== undefined) clearTimeout(writing);
+      writing = undefined;
       void context?.close();
       context = undefined;
     },

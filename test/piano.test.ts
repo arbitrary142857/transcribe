@@ -37,8 +37,6 @@ describe("voiceTiming()", () => {
   });
 
   it("joins a note already under way part-way into its tone", () => {
-    // What is heard when the piano is switched on mid-note, and what stops the
-    // note under the section's start mark from being lost to the seek.
     const timing = voiceTiming(NOTE, 10.4, 1, AUDIO_NOW);
     near(timing?.at, AUDIO_NOW, "at");
     near(timing?.offset, 0.4, "offset");
@@ -53,10 +51,28 @@ describe("voiceTiming()", () => {
     near(timing?.until, AUDIO_NOW + 0.3, "until");
   });
 
+  it("never strikes a note whose onset has gone, however narrowly", () => {
+    // Even a hair late is joined rather than struck. An attack is a rhythmic
+    // event, and putting one where the music has none is the worse error: the
+    // note reads as beginning late, and the note after it — lined up correctly
+    // — then arrives too soon behind it. Better to be honest about the lag and
+    // come in on the tail.
+    for (const late of [0.001, 0.02, 0.04, 0.2]) {
+      const timing = voiceTiming(NOTE, 10 + late, 1, AUDIO_NOW);
+      near(timing?.offset, late, `offset ${late} in`);
+    }
+  });
+
   it("takes a note exactly at its start as one still to come", () => {
     const timing = voiceTiming(NOTE, 10, 1, AUDIO_NOW);
     near(timing?.at, AUDIO_NOW, "at");
     assert.equal(timing?.offset, 0);
+  });
+
+  it("lets a joined note go at its written end, so nothing drifts", () => {
+    // What is left of it, not a fresh copy of all of it: the note stops where
+    // the score says whichever moment the line was picked up in.
+    near(voiceTiming(NOTE, 10.9, 1, AUDIO_NOW)?.until, AUDIO_NOW + 0.1, "until");
   });
 
   it("drops a note that has already finished", () => {

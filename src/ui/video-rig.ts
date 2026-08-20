@@ -106,6 +106,24 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
   const now = (): number =>
     clock ? readClock(clock, performance.now()) : 0;
 
+  /**
+   * Take up the note the line was picked up in the middle of, if there is one.
+   *
+   * Spent from the scheduler rather than from `pump`, deliberately. A single
+   * seek arrives as two or three separate discontinuities — the reading moving,
+   * then the player saying it stopped, then that it started — and each of them
+   * re-arms this. Spending it inside `pump` therefore took the note up once per
+   * discontinuity, and since `silence()` fades an already-sounding voice over
+   * `RELEASE_SECONDS` rather than cutting it, what came out was the note, an
+   * audible damped tail, and the note again a flam later.
+   */
+  function catchUpAt(at: number, rate: number): void {
+    if (!catchUp || !piano || !playalong) return;
+    catchUp = false;
+    const held = heldAt(playalong, at);
+    if (held) piano.schedule([held], at, rate);
+  }
+
   /** One sampling pass: advance the clock, report what changed. */
   function pump(): void {
     if (!handle || !clock) return;
@@ -119,11 +137,17 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
       // coming — a seek, a pause, a change of speed all break the line.
       metronome?.silence();
       scheduledThrough = at;
-      piano?.silence();
+      // Only what the new reading has actually left behind. A note the reading
+      // is still inside is the same note it was, and survives — which is what
+      // keeps the player's own backward slip, a few tens of milliseconds after
+      // any resume and indistinguishable here from a small seek, from silencing
+      // a note that is sounding perfectly well.
+      const holding = piano?.relocate(at, clock.rate) ?? false;
       playedThrough = at;
       // Landing mid-note is the ordinary case for a seek, a loop wrap and a
-      // resume, and the note being landed in is owed rather than lost.
-      catchUp = true;
+      // resume, and the note being landed in is owed rather than lost — unless
+      // it is the one still ringing, which is owed nothing.
+      if (!holding) catchUp = true;
     }
     if (stepped.moved) {
       for (const listener of listeners) listener.onJump?.(at, sample.wall);
@@ -159,15 +183,10 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
     // and one of them starting must not skip the other past a window.
     if (piano && playalong) {
       const from = Math.max(playedThrough, at);
-      // The note the line was picked up in the middle of, joined part-way
-      // through. Asked about `at` rather than `from`, and answered strictly, so
-      // a note beginning exactly on the seam belongs to the window below and is
-      // never struck by both.
-      if (catchUp) {
-        catchUp = false;
-        const held = heldAt(playalong, at);
-        if (held) piano.schedule([held], at, clock.rate);
-      }
+      // The note the line was picked up in the middle of. Asked about `at`
+      // rather than `from`, and answered strictly, so a note beginning exactly
+      // on the seam belongs to the window below and is never sounded by both.
+      catchUpAt(at, clock.rate);
       if (until > from) {
         piano.schedule(notesBetween(playalong, from, until), at, clock.rate);
         playedThrough = until;
@@ -224,6 +243,11 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
       piano?.silence();
       if (notes) {
         piano ??= createPiano();
+        // Written ahead of being wanted. The note with the least warning — the
+        // one under a section's start mark, taken up the instant a loop wraps —
+        // is the one that cannot afford to have its tone written for it, and
+        // this is the one place that knows the whole melody.
+        piano.prepare(notes);
         playedThrough = now();
         // Whatever is written where the video already stands is owed: switching
         // the piano on mid-phrase picks that note up part-way through rather
