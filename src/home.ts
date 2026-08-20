@@ -12,11 +12,14 @@ import {
 } from "./puzzle/progress.js";
 import type { TranscriptionSummary } from "./shared/transcription.js";
 import { createLevelCard } from "./ui/level-card.js";
+import { readCompact, writeCompact } from "./ui/level-density.js";
 import { openLevelModal } from "./ui/level-modal.js";
 import { openModal } from "./ui/modal.js";
+import { createSwitch } from "./ui/switch.js";
 
 const list = document.getElementById("levels")!;
 const note = document.getElementById("levels-note")!;
+const controls = document.getElementById("levels-controls")!;
 
 /**
  * What has been solved, on this machine.
@@ -26,6 +29,36 @@ const note = document.getElementById("levels-note")!;
  * is asking, so it cannot say which of these are finished.
  */
 const store = createLocalProgressStore(window.localStorage);
+
+/**
+ * The levels and what is known of them, kept so the list can be drawn again.
+ *
+ * Turning the pictures off is a change of drawing, not a change of facts, so it
+ * rebuilds the cards from these rather than asking the server a second question
+ * it has already answered.
+ */
+let showing: { level: TranscriptionSummary; progress?: PlayProgress }[] = [];
+let compact = readCompact(window.localStorage);
+
+function render(): void {
+  list.classList.toggle("is-compact", compact);
+  list.replaceChildren(
+    ...showing.map((each) => cardFor(each.level, each.progress)),
+  );
+}
+
+controls.append(
+  createSwitch({
+    label: "Compact",
+    title: "Hide the pictures and fit more levels on the screen",
+    checked: compact,
+    onChange(on) {
+      compact = on;
+      writeCompact(window.localStorage, on);
+      render();
+    },
+  }).element,
+);
 
 async function load(): Promise<void> {
   try {
@@ -49,9 +82,8 @@ async function load(): Promise<void> {
       levels.map((level) => store.read(level.id)),
     );
 
-    list.replaceChildren(
-      ...levels.map((level, at) => cardFor(level, progress[at])),
-    );
+    showing = levels.map((level, at) => ({ level, progress: progress[at] }));
+    render();
     note.textContent = "";
   } catch (error) {
     // Said plainly and left on the page: there is nothing to fall back to,
@@ -83,6 +115,7 @@ function cardFor(
   // calling that "Resume" would promise work that was never done.
   const started = (progress?.pitches.length ?? 0) > 0;
   const card: HTMLLIElement = createLevelCard(level, {
+    compact,
     solved: solvedAt !== undefined,
     onOpen: () =>
       openLevelModal({
@@ -146,9 +179,12 @@ async function remove(
     return;
   }
 
+  // Out of the list the cards are drawn from as well as off the screen, or
+  // turning the pictures on and off would bring it back.
+  showing = showing.filter((each) => each.level.id !== level.id);
   card.remove();
   // The list emptying is worth saying, or the page just goes blank.
-  note.textContent = list.childElementCount === 0 ? "No levels yet." : "";
+  note.textContent = showing.length === 0 ? "No levels yet." : "";
 }
 
 void load();

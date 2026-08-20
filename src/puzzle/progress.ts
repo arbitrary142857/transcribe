@@ -50,8 +50,13 @@ export type ProgressStore = {
   write(progress: PlayProgress): Promise<void>;
 };
 
-/** Only what this file needs, so a test can hand it a Map and no DOM. */
-type Storage = {
+/**
+ * Only what this file needs, so a test can hand it a Map and no DOM.
+ *
+ * Exported because `level-density.ts` keeps a preference the same way and wants
+ * the same stub in its own tests.
+ */
+export type Storage = {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;

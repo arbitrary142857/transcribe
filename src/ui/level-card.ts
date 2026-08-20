@@ -155,61 +155,71 @@ export function createLevelCard(
      * button at all.
      */
     onDelete?: () => void;
+    /**
+     * Draw the card without its picture.
+     *
+     * A whole screen of stills is a lot of screen for what a card actually
+     * says, and somebody working through the list wants to see more of it at
+     * once. The picture is left out rather than hidden, so the sharper sizes are
+     * never even asked for — see `sharpenThumbnail`, which probes up to four.
+     */
+    compact?: boolean;
   },
 ): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "level-card";
+  if (options.compact) item.classList.add("is-compact");
+  if (options.solved) item.classList.add("is-solved");
 
-  // The video this was written down from, as a picture, in a box of its own.
-  //
-  // The box is what keeps the card's height honest. Sized in the markup as well
-  // as the stylesheet so it is reserved before the picture lands, and left
-  // standing when the picture never comes: a video taken down since would
-  // otherwise take the whole 16:9 block out with it and leave that card shorter
-  // than every other card on the page. The image is hidden and its dark backing
-  // shows through, which reads as a video that is gone rather than as a site
-  // that is broken.
-  const frame = document.createElement("div");
-  frame.className = "level-frame";
+  // What has become of this level. Over the picture where there is one, and on
+  // the subtitle's line where there is not — never on the title's, which is held
+  // to two lines and is the one thing on the card long enough to want them.
+  const badges: HTMLElement[] = [];
+  const badge = (kind: string, text: string, why: string): void => {
+    const span = document.createElement("span");
+    span.className = `level-badge level-badge-${kind}`;
+    if (options.compact) span.classList.add("level-badge-inline");
+    span.textContent = text;
+    span.title = why;
+    badges.push(span);
+  };
 
-  const art = document.createElement("img");
-  art.className = "level-art";
-  art.src = thumbnailUrl(level.videoId);
-  art.width = THUMBNAIL_SIZE.width;
-  art.height = THUMBNAIL_SIZE.height;
-  art.loading = "lazy";
-  art.decoding = "async";
-  art.alt = "";
-  art.referrerPolicy = "no-referrer";
-  art.addEventListener("error", () => {
-    art.hidden = true;
-  });
-  sharpenThumbnail(art, level.videoId);
-  frame.append(art);
-
-  // Both states go over the picture rather than under the words. A card is one
-  // fixed height, and a line that only some levels carry would either make
-  // those taller or leave an empty line on every other card for the sake of a
-  // few. The ✓ has to leave the title anyway — see `.level-open` below.
-  if (options.solved) {
-    const mark = document.createElement("span");
-    mark.className = "level-badge level-badge-solved";
-    mark.textContent = "✓";
-    mark.title = "Solved";
-    frame.append(mark);
-    item.classList.add("is-solved");
+  // The ✓ has to leave the title anyway — see `.level-open` below.
+  if (options.solved) badge("solved", "✓", "Solved");
+  if (levelState(level) !== undefined) {
+    badge("unfinished", "Unfinished", countLeft(level));
   }
 
-  const state = levelState(level);
-  if (state !== undefined) {
-    const unfinished = document.createElement("span");
-    unfinished.className = "level-badge level-badge-unfinished";
-    unfinished.textContent = "Unfinished";
-    unfinished.title = countLeft(level);
-    frame.append(unfinished);
-  }
+  if (!options.compact) {
+    // The video this was written down from, as a picture, in a box of its own.
+    //
+    // The box is what keeps the card's height honest. Sized in the markup as
+    // well as the stylesheet so it is reserved before the picture lands, and
+    // left standing when the picture never comes: a video taken down since would
+    // otherwise take the whole 16:9 block out with it and leave that card
+    // shorter than every other card on the page. The image is hidden and its
+    // dark backing shows through, which reads as a video that is gone rather
+    // than as a site that is broken.
+    const frame = document.createElement("div");
+    frame.className = "level-frame";
 
-  item.append(frame);
+    const art = document.createElement("img");
+    art.className = "level-art";
+    art.src = thumbnailUrl(level.videoId);
+    art.width = THUMBNAIL_SIZE.width;
+    art.height = THUMBNAIL_SIZE.height;
+    art.loading = "lazy";
+    art.decoding = "async";
+    art.alt = "";
+    art.referrerPolicy = "no-referrer";
+    art.addEventListener("error", () => {
+      art.hidden = true;
+    });
+    sharpenThumbnail(art, level.videoId);
+    frame.append(art, ...badges);
+
+    item.append(frame);
+  }
 
   const head = document.createElement("div");
   head.className = "level-head";
@@ -278,7 +288,21 @@ export function createLevelCard(
   const subtitle = document.createElement("p");
   subtitle.className = "level-subtitle";
   subtitle.textContent = level.subtitle ?? "";
-  body.append(subtitle);
+
+  if (options.compact) {
+    // The badges share this line rather than the title's. The title is two
+    // lines, fixed, and it is the field somebody can put a hundred characters
+    // in; a pill beside it would be squeezed out by exactly the level that
+    // most needs to say it is unfinished. This line is its own row, so the
+    // title cannot reach it, and the subtitle gives way to the badge rather
+    // than the other way round.
+    const note = document.createElement("div");
+    note.className = "level-note";
+    note.append(subtitle, ...badges);
+    body.append(note);
+  } else {
+    body.append(subtitle);
+  }
 
   item.append(body);
   return item;

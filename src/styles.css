@@ -2083,14 +2083,25 @@ main.page {
    melody is not among them, so nothing here has to remember to leave the
    pitches out. */
 
-/* Three across.
+/* The switch that hides the pictures, on its own line above the list. */
+.level-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0.75rem 0 1rem;
+}
 
-   Two made a handsome card and a soft picture: the thumbnail YouTube always
-   has is 320px wide, and half of this page is nearer six hundred, so it was
-   being blown up past half again its size. Three keeps the upscale slight. */
+/* Four across.
+
+   The picture used to be what decided this. Two columns blew the 320px still
+   YouTube always has up past half again its size, and three was where the
+   upscale stopped showing. Four is narrower than the still rather than wider —
+   about 263px at full width — so the picture no longer has an opinion, and what
+   sets the floor now is the words: the title is held to two lines, and below
+   roughly 250px two lines stop holding a useful number of them. That is where
+   the first breakpoint is, not at any width the thumbnail cares about. */
 .level-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   /* Rows take the height of a card and no more. The list is stretched to fill
      the page by the column it sits in, and a grid's rows stretch with it by
      default — so with two rows of levels on a tall screen every card grew to
@@ -2352,6 +2363,49 @@ main.page {
   font-size: 0.8rem;
   /* Bar counts and tempos line up down the column rather than wandering. */
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- Compact: the same cards without their pictures ----
+
+   The picture is not hidden, it is never built — so the four sharper sizes are
+   never probed for either. Nothing here changes how many cards are on a row:
+   these are single-class selectors and the column count is set by media queries
+   of the same weight, so a rule here would win by source order alone and freeze
+   the count on a narrow screen. Compact is a change of card, not of grid. */
+
+/* The subtitle's line, shared with whatever the card has to say about itself.
+   The badges cannot go on the title's line: that is two lines and fixed, and it
+   is the field somebody can put a hundred characters in, so a pill up there
+   would be squeezed out by exactly the card that most needs to carry one. */
+.level-note {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+/* The words give way, the badge does not. */
+.level-note .level-subtitle {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Off the picture and into the flow. Still positioned and still raised, because
+   the title's `::after` is stretched over the whole card and would otherwise
+   swallow the pointer before the badge could explain itself. */
+.level-badge-inline {
+  position: relative;
+  top: auto;
+  right: auto;
+  z-index: 1;
+  flex: 0 0 auto;
+  /* Nothing behind it to blur now that it is on the card's own paper. */
+  backdrop-filter: none;
+}
+
+/* The words are the whole card now, so they sit in it rather than under
+   something. */
+.level-card.is-compact .level-body {
+  padding: 0.8rem 1rem 0.85rem;
 }
 
 
@@ -3354,6 +3408,14 @@ main.page {
   display: inline-block;
   text-decoration: none;
   text-align: center;
+}
+
+/* Three once a fourth column would put the card under about 250px, which is
+   where the two-line title stops holding a useful number of words. */
+@media (max-width: 70rem) {
+  .level-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 62rem) {
