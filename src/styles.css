@@ -817,6 +817,16 @@ main {
   padding: 0.3rem;
 }
 
+/* One mark: the button that sets it, the box it lands in, and — on the section
+   rows only — the way back to where it started.
+
+   Both panels use this row, which is why neither button family is sized against
+   the space going spare. The section rows once carried a second button, for
+   taking the mark off the clock rather than off the selected note, and dropping
+   it left two and a half rem for the box to grow into. That is the right place
+   for it: the timecode is the thing being read, and it brings the section rows
+   to within one button of the timing rows, so the box stops jumping when the
+   mode switch is pressed. */
 .playback-mark {
   display: flex;
   align-items: center;

@@ -77,9 +77,10 @@ type Mode = "playback" | "timing";
  * The melody page's side of the video.
  *
  * Two jobs share one column, and only one is on screen at a time. *Playback*
- * is a stretch of the video played on its own, looped if asked, marked off the
- * clock or off the selected note. *Timing* is where the first bar starts and
- * the last one ends — the two moments everything else is measured from.
+ * is a stretch of the video played on its own, looped if asked, its ends taken
+ * from the selected note. *Timing* is where the first bar starts and the last
+ * one ends — the two moments everything else is measured from, taken from the
+ * clock, since there are no onsets yet to take them from.
  *
  * They are swapped rather than shown together because they look identical and
  * mean different things: both are a pair of marks with the same icons on the
@@ -310,11 +311,6 @@ export function createPlayback(
     if (announced) panel.flash(field);
   }
 
-  const markNow = (field: "start" | "end") => {
-    if (!rigReady) return;
-    setMark(field, rig.now());
-  };
-
   function fromNote(field: "start" | "end"): void {
     const index = selection();
     if (index === undefined) return;
@@ -430,18 +426,20 @@ export function createPlayback(
     if (!rigReady) return false;
     if (letter === "i" || letter === "o") {
       const field = letter === "i" ? "start" : "end";
+      // Unshifted in both panels, and meaning the only thing each pair of marks
+      // can be taken from. Timing marks come off the clock, because a note's
+      // onset is worked out *from* them and taking one from a note would be
+      // circular. Section marks come off the score, because by then the onsets
+      // exist and are exact, which the clock is not.
+      if (shift) return false;
       if (mode === "timing") {
-        // No shifted variant here: a note's onset is worked out *from* these
-        // marks, so setting a mark from a note would be circular.
-        if (shift) return false;
         act({
           kind: field === "start" ? "mark-start" : "mark-end",
           seconds: rig.now(),
         });
         return true;
       }
-      if (shift) fromNote(field);
-      else markNow(field);
+      fromNote(field);
       return true;
     }
     if (letter === "r" && !shift) {
@@ -527,8 +525,6 @@ export function createPlayback(
       if (!map) return;
       setMark(field, field === "start" ? map.start : map.end);
     },
-
-    onMark: markNow,
 
     onType(field, seconds) {
       if (seconds === undefined) {

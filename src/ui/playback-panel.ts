@@ -1,8 +1,6 @@
 import {
   jumpBackIcon,
   loopIcon,
-  markEndIcon,
-  markStartIcon,
   metronomeIcon,
   noteEndIcon,
   noteStartIcon,
@@ -56,7 +54,6 @@ export type PlaybackPanelHandlers = {
   onPlayPause(): void;
   onLoop(on: boolean): void;
   onJumpBack(): void;
-  onMark(field: "start" | "end"): void;
   onType(field: "start" | "end", seconds: number | undefined): void;
   onNudge(field: "start" | "end", seconds: number): void;
   onFromNote(field: "start" | "end"): void;
@@ -74,8 +71,8 @@ export type PlaybackPanel = {
   /**
    * Say that a mark was moved by something other than typing into it.
    *
-   * A press of `I`, or a mark button, or the reset — anything that writes a
-   * timestamp the user was not looking at the caret in. The same warm pulse
+   * A press of `I`, or the button beside the box, or the reset — anything that
+   * writes a timestamp the user was not looking at the caret in. The same pulse
    * the setup page uses when the tempo moves a mark on its own, so the two
    * mean the same thing wherever they appear.
    */
@@ -170,7 +167,6 @@ export function createPlaybackPanel(
   function sectionRow(field: "start" | "end"): {
     row: HTMLElement;
     timeField: TimeField;
-    mark: HTMLButtonElement;
     fromNote: HTMLButtonElement;
     reset: HTMLButtonElement;
   } {
@@ -183,15 +179,11 @@ export function createPlaybackPanel(
       onNudge: (seconds) => handlers.onNudge(field, seconds),
       onLetter: handlers.onLetter,
     });
-    const mark = iconButton(
-      "playback-mark-button",
-      isStart ? markStartIcon() : markEndIcon(),
-      isStart
-        ? "Start now"
-        : "End now",
-      () => handlers.onMark(field),
-      isStart ? "I" : "O",
-    );
+    // The section is marked off the *score*, not off the clock. Taking a mark
+    // from where the video happens to be standing was a second way to do the
+    // same thing, worse at it — the loop you want is almost always a phrase you
+    // can see, and its ends are the onsets the tempo already knows to the
+    // millisecond, not wherever a scrubbed playhead came to rest.
     const fromNote = iconButton(
       "playback-mark-button",
       isStart ? noteStartIcon() : noteEndIcon(),
@@ -199,7 +191,7 @@ export function createPlaybackPanel(
         ? "Start at note"
         : "End at note",
       () => handlers.onFromNote(field),
-      isStart ? "⇧I" : "⇧O",
+      isStart ? "I" : "O",
     );
     const reset = iconButton(
       "playback-mark-button playback-mark-reset",
@@ -211,8 +203,11 @@ export function createPlaybackPanel(
     );
     const row = document.createElement("div");
     row.className = "playback-mark";
-    row.append(mark, timeField.element, fromNote, reset);
-    return { row, timeField, mark, fromNote, reset };
+    // Button, then the box it writes into, then the way back — the shape the
+    // setup page's timing rows already have, so the two panels read the same
+    // and the key stays printed on the corner of the same leading button.
+    row.append(fromNote, timeField.element, reset);
+    return { row, timeField, fromNote, reset };
   }
 
   const start = sectionRow("start");
@@ -292,10 +287,11 @@ export function createPlaybackPanel(
       ] as const) {
         row.timeField.show(seconds, true);
         row.timeField.setDisabled(!state.ready);
-        row.mark.disabled = !state.ready;
         // Greyed rather than disabled, so it can be asked what it is waiting
-        // for. Waiting on the video is the panel's whole state and says itself;
-        // waiting on a selection is a fact about the score across the page.
+        // for — and it is the only way to set the mark now, so being unable to
+        // say why would leave the row with nothing working and nothing said.
+        // Waiting on a selection is a fact about the score across the page,
+        // which the button's own face has no way of carrying.
         grey(
           row.fromNote,
           !state.ready
