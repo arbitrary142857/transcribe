@@ -22,8 +22,9 @@ export default {
     if (pathname === "/api" || pathname.startsWith("/api/")) {
       // The real D1 binding, fitted to the shape routes.ts describes. This
       // line is the check that the shape is honest: if D1 ever stops matching
-      // it, the Worker stops compiling rather than the tests going on passing
-      // against a stand-in that no longer resembles anything.
+      // it -- `prepare`, `bind`, the three ways to run, and `batch` -- the
+      // Worker stops compiling rather than the tests going on passing against
+      // a stand-in that no longer resembles anything.
       const database: Database = env.DB;
 
       // The real fetch, fitted to the shape auth.ts describes, for the same

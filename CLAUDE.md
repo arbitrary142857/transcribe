@@ -36,8 +36,9 @@ Consult previously-existing tests for reference on how to name tests.
 
 `docs/roadmap.md` holds the phases of the accounts and ownership work, what
 has been decided and why, and which phase is next. Read it before touching
-auth, levels or migrations, and update its status table when a phase lands.
-`docs/authentication.md` is the reference for how sign-in and ownership work.
+auth, levels, progress or migrations, and update its status table when a
+phase lands. `docs/authentication.md` is the reference for how sign-in and
+ownership work; `docs/progress.md` for how progress is kept and merged.
 
 ## Never edit an applied migration
 

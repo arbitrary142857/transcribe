@@ -921,6 +921,12 @@ describe("DELETE /api/levels/:id", () => {
     assert.deepEqual(statement.values, ["k3m9x2p7qw4t"]);
   });
 
+  it("deletes the level alone, leaving its progress to the cascade", async () => {
+    const { asked } = await remove("/api/levels/k3m9x2p7qw4t", [asOwner(), one(ROW)], SIGNED_IN);
+
+    assert.equal(asked.some((each) => /progress/i.test(each.sql)), false);
+  });
+
   it("turns away an id that could not be one, without asking the database", async () => {
     for (const id of ["nope", "AAAAAAAAAAAA", "..%2F..%2Fetc"]) {
       const { response, asked } = await remove(`/api/levels/${id}`);
@@ -1077,7 +1083,51 @@ describe("POST /api/levels/:id/unpublish", () => {
     assert.equal((await unpublish([asStranger(), one(ROW)], SIGNED_IN)).response.status, 403);
     assert.equal((await unpublish([one(ROW)])).response.status, 401);
   });
+
+  it("forgets every player's progress before moving the id, in one batch with the delete first", async () => {
+    const { response, asked, batches } = await unpublishBatched([asOwner(), one(ROW)], SIGNED_IN);
+
+    assert.equal(response.status, 200);
+    assert.equal(batches.length, 1);
+    const [forget, update] = batches[0]!;
+    assert.match(forget!.sql, /DELETE FROM progress/i);
+    assert.match(update!.sql, /UPDATE transcriptions/i);
+    // Nothing outside the batch touches either table.
+    assert.equal(asked.filter((each) => /progress|UPDATE/i.test(each.sql)).length, 2);
+  });
+
+  it("binds the old id to the delete and splices nothing", async () => {
+    const { batches } = await unpublishBatched([asOwner(), one(ROW)], SIGNED_IN);
+
+    const forget = batches[0]![0]!;
+    assert.equal(forget.sql.includes("k3m9x2p7qw4t"), false);
+    assert.deepEqual(forget.values, ["k3m9x2p7qw4t"]);
+  });
+
+  it("batches nothing when it refuses", async () => {
+    const { response, batches } = await unpublishBatched(
+      [asOwner(), one({ ...ROW, status: "draft", published_at: null })],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(batches, []);
+  });
 });
+
+/** Unpublish, with the batches the stand-in saw. */
+async function unpublishBatched(
+  answers: readonly Answer[],
+  headers: Record<string, string> = {},
+) {
+  const { asked, batches, env } = stubDatabase(answers);
+  const response = await api.request(
+    "/api/levels/k3m9x2p7qw4t/unpublish",
+    { method: "POST", headers },
+    env,
+  );
+  return { response, asked, batches };
+}
 
 describe("the api's edges", () => {
   it("answers an unknown api path with JSON, never a page", async () => {

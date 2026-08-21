@@ -12,8 +12,8 @@ update the status table when a phase lands.
 | --- | --- | --- |
 | 1 | Sign in with Google; sessions; `/api/me` | Shipped 2026-08-20 (`dc0528e`) |
 | 2 | Levels have owners; drafts and publishing; `/mine`; sign-in-to-save | Shipped 2026-08-21 (`4b81daf` server, `c1b9c1c` client) |
-| 3 | Progress kept on the server, per account | Next |
-| 4 | Profile page: username, account deletion, privacy page | — |
+| 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Server shipped 2026-08-21; client next |
+| 4 | Profile page: username, account deletion, privacy page; a button to merge this browser's progress; a per-account "keep my progress on this machine" opt-out | — |
 | 5 | Admin tools beyond ownership bypass | Mostly folded into 2; a moderation view remains |
 | 6 | Difficulty, thumbs-up, error reports | — |
 
@@ -68,18 +68,32 @@ republish (the new id implies yes); account deletion keeps published levels
 anonymized (decided) but the exact cascade for progress and ratings is phase
 4's to write down; dark mode is a per-machine preference, not an account one.
 
-## Phase 3, as planned so far
+## Phase 3, as built
 
-A `progress` table mirroring `PlayProgress`: `(user_id, level_id, elapsed_ms,
-check_count, solved_at, pitches JSON, judged JSON, updated_at, PRIMARY KEY
-(user_id, level_id))`, referencing both tables (unpublishing must then carry
-progress across or delete it — it deletes, by design). A network-backed
-`ProgressStore` for signed-in visitors (the interface is already async for
-this). Merging a machine's local progress into the account at sign-in:
-solved wins, else the record with more pitches; the larger elapsed time; the
-union of verdicts. `check_count` counted on the server, which makes it honest
-in a way the client's clock is not; no cross-player time comparisons until
-the clock moves server-side. The solved/in-progress filters on `/`.
+`progress.md` is the reference. The `progress` table (migration 0004) is
+`PlayProgress` as a row, keyed `(user_id, level_id)`, cascading on delete from
+both tables and deliberately not following an unpublished level's new id —
+unpublish deletes the level's progress first, in one batch with the move.
+**The server owns `check_count` and `solved_at`** (`/check` counts and
+stamps, for whoever carries a cookie; a visitor without one still costs one
+statement) and the page owns the clock, the pitches and the verdicts
+(`PUT /api/progress/:id`). A solved row is finished: a later check writes
+nothing. Three decisions moved from the sketch above this once said:
+
+- **Merging is opt-in**, never silent — two people may share a browser. The
+  page asks once per account per machine (`transcribe:viewer` marker), and
+  the catalog's note line offers the same afterwards.
+- **The merge rule is "winner takes the score whole"**, not "larger elapsed":
+  solved beats partial; solved vs solved → fewer checks, then less time;
+  partial vs partial → more correct pitches, then more written; ties go to
+  the account; the loser gives only its verdicts. A browser's record is
+  re-graded against the answer before any of it is believed. Idempotent.
+- **The elapsed clock stays the page's**, as planned; no time comparisons
+  until it moves server-side.
+
+Still to build on the client (session B): the account store with local
+fallback, the hand-off modal and standing line, `readMany` for the catalog,
+and the All · Unplayed · In progress · Solved filter on `/`.
 
 ## How the work is done
 

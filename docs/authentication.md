@@ -168,9 +168,12 @@ on the sign-in path (every callback deletes rows already past their
 scheduled.
 
 **Reading the session** is `sessionUserOf(c)`: cookie → SHA-256 → one query
-joining `sessions` to `users`. `/api/me` calls it; so does every route that
-writes a level or reads its answer, before anything else; and the two play
-routes call it only once a row has turned out to be a draft (see below).
+joining `sessions` to `users`, and no query at all when there is no cookie.
+`/api/me` calls it; so does every route that writes a level, reads its
+answer or touches progress, before anything else; and the two play routes
+call it only once a row has turned out to be a draft — `/check` once more at
+the end, for whoever carries a cookie, so the check can be counted (see
+below).
 
 ## The tables
 
@@ -193,10 +196,15 @@ transcriptions  (the level table, rebuilt by 0003 to carry these)
           published_at  epoch ms, or NULL — CHECKed to agree with status
           updated_at    epoch ms; moved by every write, publishing included
           CHECK         a published level has every note pitched
+
+progress  (user_id, level_id)  PRIMARY KEY; -> users ON DELETE CASCADE,
+                               -> transcriptions ON DELETE CASCADE, no ON UPDATE
+          elapsed_ms, check_count, solved_at, pitches, judged, updated_at
+                               see progress.md
 ```
 
 Users have their own ids rather than using `google_sub` directly so that
-every future table (level ownership, progress, ratings) points at a user
+every table (level ownership, progress, one day ratings) points at a user
 without caring how that user signs in. The day a second sign-in method
 exists, only `users` changes.
 
@@ -284,7 +292,11 @@ Who may do what, by route:
 | `POST /api/levels/:id/publish` | required | 401 | 403 | 404 |
 | `POST /api/levels/:id/unpublish` | required | 401 | 403 | 404 |
 | `GET /api/levels/:id/puzzle` | only for drafts | 200 / 404 | 200 | 404 |
-| `POST /api/levels/:id/check` | only for drafts | 200 / 404 | 200 | 404 |
+| `POST /api/levels/:id/check` | for drafts; else if a cookie is sent | 200 / 404 | 200 | 404 |
+| `GET /api/progress` | required | 401 | — | — |
+| `GET /api/progress/:id` | required | 401 | 200 / 204 | 404 |
+| `PUT /api/progress/:id` | required | 401 | 204 | 404 |
+| `POST /api/progress/merge` | required | 401 | — | — |
 
 Three things the table encodes. A signed-out request to a gated route is
 401 before the body is read and before any row is looked up, so it learns
@@ -294,8 +306,15 @@ existence is public; about a *draft* it is told exactly what a missing level
 would tell it (404, same sentence), because a draft's existence is the
 author's. And the play routes look the session up *lazily* — only after the
 row has said it is a draft — so a published level's `/check`, the hottest
-path on the site, never costs a sessions query. An admin (`is_admin = 1`)
-passes every ownership check; nothing in a request can make someone one.
+path on the site, never costs a visitor without a cookie a sessions query.
+Somebody signed in is asked once more at the very end of `/check`, after the
+attempt is graded, so that the check can be counted against their account
+(`progress.md`); a draft's author is not asked twice. An admin (`is_admin =
+1`) passes every ownership check; nothing in a request can make someone one.
+
+The four progress routes are the account's own: each is 401 before anything
+is looked up, and about a level the viewer may not see they say what `/puzzle`
+would say. How progress is kept and merged is `progress.md`'s subject.
 
 ## The trust boundary, in one sentence
 

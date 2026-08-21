@@ -7,7 +7,14 @@ import { Melody } from "../dist/music/melody.js";
 import { Note, type NoteEvent, Rest, UnpitchedNote } from "../dist/music/note-event.js";
 import { Pitch } from "../dist/music/pitch.js";
 import { api } from "../dist-worker/worker/routes.js";
-import { SIGNED_IN, asAdmin, asOwner, asStranger } from "./helpers/signed-in.js";
+import {
+  OWNER_ID,
+  SIGNED_IN,
+  STRANGER_ID,
+  asAdmin,
+  asOwner,
+  asStranger,
+} from "./helpers/signed-in.js";
 import {
   errorOf,
   stubDatabase,
@@ -441,17 +448,110 @@ describe("POST /api/levels/:id/check", () => {
     assert.equal(asked.length, 0);
   });
 
-  it("marks a published level's attempt for anybody, with no session lookup", async () => {
+  it("marks a published level's attempt for anybody signed out, with no session lookup", async () => {
     const { response, asked } = await post(
       `/api/levels/${ID}/check`,
       { pitches: rightAnswer },
       rowOf(),
       [asOwner()],
-      SIGNED_IN,
     );
 
     assert.equal(response.status, 200);
     assert.equal(asked.length, 1);
+  });
+
+  describe("when somebody is signed in", () => {
+    const wrongAnswer = [
+      { index: 0, midi: C4.toMidi() },
+      { index: 1, midi: E4.toMidi() },
+      { index: 2, midi: E4.toMidi() },
+      { index: 3, midi: E4.toMidi() },
+    ];
+
+    const check = (
+      pitches: unknown,
+      row: Row = rowOf(),
+      who: readonly Answer[] = [asOwner()],
+    ) => post(`/api/levels/${ID}/check`, { pitches }, row, who, SIGNED_IN);
+
+    it("records the check against the account, asking who is asking only after the attempt is graded", async () => {
+      const { response, asked } = await check(wrongAnswer);
+
+      assert.equal(response.status, 200);
+      assert.equal(asked.length, 3);
+      assert.match(asked[0]!.sql, /from transcriptions/i);
+      assert.match(asked[1]!.sql, /from sessions/i);
+      assert.match(asked[2]!.sql, /into progress/i);
+    });
+
+    it("counts the check and files the graded pitches, and leaves the clock at zero for the page to move", async () => {
+      const { asked } = await check(wrongAnswer);
+
+      const upsert = asked.at(-1)!;
+      assert.match(upsert.sql, /check_count = check_count \+ 1/i);
+      assert.match(upsert.sql, /values \(\?, \?, 0, 1,/i);
+      const [userId, levelId, solvedAt, pitches, judged, updatedAt] = upsert.values;
+      assert.equal(userId, OWNER_ID);
+      assert.equal(levelId, ID);
+      assert.equal(solvedAt, null);
+      assert.deepEqual(JSON.parse(pitches as string), wrongAnswer);
+      assert.deepEqual(JSON.parse(judged as string), [
+        { index: 0, midi: C4.toMidi(), correct: true },
+        { index: 1, midi: E4.toMidi(), correct: true },
+        { index: 2, midi: E4.toMidi(), correct: false },
+        { index: 3, midi: E4.toMidi(), correct: true },
+      ]);
+      assert.equal(typeof updatedAt, "number");
+    });
+
+    it("stamps solved_at from its own clock on a solve, and writes over nothing once a row is solved", async () => {
+      const { asked } = await check(rightAnswer);
+
+      const upsert = asked.at(-1)!;
+      const [, , solvedAt, , , updatedAt] = upsert.values;
+      assert.equal(typeof solvedAt, "number");
+      assert.equal(solvedAt, updatedAt);
+      // The page stops checking once solved; this is the server agreeing, for
+      // a tab that did not hear.
+      assert.match(upsert.sql, /where solved_at is null/i);
+    });
+
+    it("answers the same shape signed in as signed out, with nothing about the answer in it", async () => {
+      const { response } = await check(wrongAnswer);
+
+      const body = (await response.json()) as Record<string, unknown>;
+      assert.deepEqual(Object.keys(body).sort(), ["correct", "solved", "total", "verdicts"]);
+      assert.equal(body.correct, 3);
+      assert.equal(body.solved, false);
+    });
+
+    it("writes nothing for an attempt it refused, and never asks who sent it", async () => {
+      const { response, asked } = await check([{ index: 0, midi: C4.toMidi() }]);
+
+      assert.equal(response.status, 400);
+      assert.equal(asked.some((each) => /sessions|progress/i.test(each.sql)), false);
+    });
+
+    it("asks who is asking once for a draft, not twice", async () => {
+      const draft = rowOf({ status: "draft", published_at: null });
+
+      const { response, asked } = await check(wrongAnswer, draft);
+
+      assert.equal(response.status, 200);
+      assert.equal(asked.filter((each) => /from sessions/i.test(each.sql)).length, 1);
+      assert.equal(asked.length, 3);
+    });
+
+    it("records the author's checks on their own draft, and an admin's", async () => {
+      const draft = rowOf({ status: "draft", published_at: null });
+
+      const author = await check(wrongAnswer, draft, [asOwner()]);
+      assert.equal(author.asked.at(-1)!.values[0], OWNER_ID);
+
+      const admin = await check(wrongAnswer, draft, [asAdmin()]);
+      assert.match(admin.asked.at(-1)!.sql, /into progress/i);
+      assert.equal(admin.asked.at(-1)!.values[0], STRANGER_ID);
+    });
   });
 
   it("lets the author try their own finished draft, and nobody else", async () => {

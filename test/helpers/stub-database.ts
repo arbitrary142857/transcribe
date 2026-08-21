@@ -11,6 +11,12 @@
  * a level", and a stand-in that answered both with one row would hand the
  * level to the session lookup.
  *
+ * `batch` runs its statements one after another, exactly as `run` would, and
+ * records which statements went together in `batches`. There is no
+ * transaction to be in, so nothing here can prove that a batch is atomic; what
+ * a test can prove is that a route chose to batch, and what it put in the
+ * batch and in what order — which is the decision the route makes.
+ *
  * Patterns are tested with `RegExp.test`, so they must not carry the `g` flag,
  * whose `lastIndex` would make the second test of the same pattern lie.
  */
@@ -37,18 +43,26 @@ export const anyFirst = (first: Row): Answer => ({ when: /./u, first });
 
 export const anyRows = (rows: readonly Row[]): Answer => ({ when: /./u, rows });
 
+type Statement = ReturnType<Database["prepare"]>;
+
+/** A prepared statement that remembers which `Asked` it is, for `batch`. */
+type StubStatement = Statement & { record: Asked };
+
 export function stubDatabase(answers: readonly Answer[] = []): {
   asked: Asked[];
+  batches: Asked[][];
   db: Database;
   env: { DB: Database };
 } {
   const asked: Asked[] = [];
+  const batches: Asked[][] = [];
   const db: Database = {
     prepare(sql: string) {
       const record: Asked = { sql, values: [] };
       asked.push(record);
       const answer = answers.find((each) => each.when.test(sql));
-      const statement = {
+      const statement: StubStatement = {
+        record,
         bind(...values: unknown[]) {
           record.values = values;
           return statement;
@@ -59,8 +73,16 @@ export function stubDatabase(answers: readonly Answer[] = []): {
       };
       return statement;
     },
+    async batch(statements) {
+      batches.push(statements.map((each) => (each as StubStatement).record));
+      const results = [];
+      for (const each of statements) {
+        results.push(await each.run());
+      }
+      return results;
+    },
   };
-  return { asked, db, env: { DB: db } };
+  return { asked, batches, db, env: { DB: db } };
 }
 
 /**

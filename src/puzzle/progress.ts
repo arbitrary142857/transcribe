@@ -84,8 +84,14 @@ const isWhole = (value: unknown): value is number =>
  *
  * A copy built field by field, so that nothing stored alongside survives being
  * read back.
+ *
+ * Exported for the Worker, which holds what a page sends it to exactly this
+ * standard, so the page and the server cannot disagree about what progress
+ * is. One thing it does not settle, because local storage never cared: the
+ * numbers may be fractional -- `elapsedMs` comes off `performance.now()` --
+ * and a column that is INTEGER wants them floored, which the server does.
  */
-function readProgress(value: unknown, levelId: string): PlayProgress | undefined {
+export function readProgress(value: unknown, levelId: string): PlayProgress | undefined {
   if (!isObject(value)) return undefined;
   // Filed under one level and claiming to be another is not progress at either.
   if (value.levelId !== levelId) return undefined;

@@ -19,6 +19,8 @@ import type { Melody } from "../src/music/melody.js";
 import type { Mode, TimeSignature } from "../src/music/types.js";
 import { beatsPerBarOf } from "../src/playback/tempo-map.js";
 import { MEASURES_MAX, timingProblem } from "../src/playback/timing-fields.js";
+import { mergeProgress, regradeProgress } from "../src/puzzle/merge.js";
+import { readProgress, type PlayProgress } from "../src/puzzle/progress.js";
 import type { UserSummary } from "../src/shared/session.js";
 import {
   cleanDetails,
@@ -47,7 +49,7 @@ import {
 // `bind` returning `Statement` is what lets the three calls chain, and is why
 // the type refers to itself.
 //
-// The three methods, in the order they are used below:
+// The methods, in the order they are used below:
 //
 //   prepare(sql)  hands SQLite the statement *text*, with `?` standing where
 //                 values will go. Nothing has run yet; this is a plan.
@@ -57,6 +59,9 @@ import {
 //                 against -- there is no path by which a value becomes syntax.
 //   all()         runs it and gathers every row. (`first()` would take one row
 //                 and `run()` none, for writes.)
+//   batch(...)    runs several prepared statements in one round trip and one
+//                 transaction: all of them take effect, or none does. For the
+//                 two places a write is only right beside another write.
 
 type Statement = {
   bind(...values: unknown[]): Statement;
@@ -67,6 +72,7 @@ type Statement = {
 
 export type Database = {
   prepare(sql: string): Statement;
+  batch(statements: Statement[]): Promise<unknown>;
 };
 
 /**
@@ -852,15 +858,21 @@ api.post("/api/levels/:id/publish", async (c) => {
  * Take a level back: a draft again, under a new id.
  *
  * The new id is the point. Players keep their progress against a level's id --
- * in a browser today, in a table one day -- and an author who unpublishes is
+ * in a browser, or in the progress table -- and an author who unpublishes is
  * about to change the music that progress was keyed to, note by note. Rather
  * than let old progress meet new music, the old id simply stops naming
  * anything: the draft is reached by the id this answers with, and whoever
  * bookmarked the old one finds a level that is not there, which is the truth.
  *
+ * The progress table references this id, and deliberately does not follow it
+ * (no ON UPDATE CASCADE), for the reason above. So every player's progress on
+ * the level is deleted first -- in the same batch as the move, so neither
+ * happens without the other -- and the database would refuse the move
+ * otherwise, which is the backstop for this route forgetting. A browser's
+ * copy, for anybody signed out, is out of reach and meets nothing instead.
+ *
  * `published_at = NULL` is statement text, not a bound null, which is the
- * shape the codebase prefers. Nothing references this table's id yet; the day
- * something does, this is the route that has to carry the change across.
+ * shape the codebase prefers.
  */
 api.post("/api/levels/:id/unpublish", async (c) => {
   const id = c.req.param("id");
@@ -873,19 +885,20 @@ api.post("/api/levels/:id/unpublish", async (c) => {
   }
 
   const fresh = newTranscriptionId();
-  await c.env.DB.prepare(
-    `UPDATE transcriptions
-        SET id = ?, status = ?, published_at = NULL, updated_at = ?
-      WHERE id = ? AND status = ?`,
-  )
-    .bind(
+  await c.env.DB.batch([
+    c.env.DB.prepare(PROGRESS_SQL.forget).bind(id),
+    c.env.DB.prepare(
+      `UPDATE transcriptions
+          SET id = ?, status = ?, published_at = NULL, updated_at = ?
+        WHERE id = ? AND status = ?`,
+    ).bind(
       fresh,
       "draft" satisfies LevelStatus,
       Date.now(),
       id,
       "published" satisfies LevelStatus,
-    )
-    .run();
+    ),
+  ]);
 
   return c.json({ id: fresh });
 });
@@ -900,10 +913,13 @@ api.post("/api/levels/:id/unpublish", async (c) => {
 // what comes back has had every pitch but one taken out of it. A page that
 // wanted the answer would have to ask `/source`, which is the author's alone.
 //
-// A published level is played by anybody, and asking who they are would cost
-// every check a sessions query for nothing. A draft is played only by its
-// author, so the question is asked when -- and only when -- the row has said
-// it is one.
+// A published level is played by anybody, and asking who they are before the
+// row is read would cost every check a sessions query for nothing. A draft is
+// played only by its author, so the question is asked when -- and only when
+// -- the row has said it is one. `/check` asks once more, last of all, for
+// whoever carries a session cookie: their checks are counted against the
+// account (see the progress section below), and a visitor without a cookie
+// is never asked.
 
 /**
  * Said by both routes about a level still missing pitches, so the two cannot
@@ -953,12 +969,20 @@ function readAnswer(stored: string): Melody | undefined {
  * A draft answers 404 to everyone but its author and an admin -- never 401 or
  * 403, because a draft's existence is the author's to disclose, and a stranger
  * is told exactly what a missing level would tell them.
+ *
+ * Who was asking comes back with the row, when it was found out: a caller
+ * that needs the answer too should not ask the sessions table twice. A caller
+ * that already knows passes `viewer`, and the question is never asked at all.
  */
 async function readAnswerRow<T extends Record<string, unknown>>(
   c: Context<{ Bindings: ApiEnv }>,
   id: string,
   columns: string,
-): Promise<{ row: T; answer: Melody } | { status: 404 | 409; problem: string }> {
+  viewer?: UserSummary,
+): Promise<
+  | { row: T; answer: Melody; user: UserSummary | undefined }
+  | { status: 404 | 409; problem: string }
+> {
   const row = (await c.env.DB.prepare(
     `SELECT ${columns}, owner_id, status FROM transcriptions WHERE id = ?`,
   )
@@ -970,9 +994,10 @@ async function readAnswerRow<T extends Record<string, unknown>>(
   if (row === null) {
     return { status: 404, problem: NO_LEVEL };
   }
+  let user = viewer;
   if (row.status === "draft") {
-    const user = await sessionUserOf(c);
-    if (user === undefined || !ownerOrAdmin(user, row)) {
+    user ??= await sessionUserOf(c);
+    if (!canSee(user, row)) {
       return { status: 404, problem: NO_LEVEL };
     }
   }
@@ -986,8 +1011,12 @@ async function readAnswerRow<T extends Record<string, unknown>>(
   if (answer === undefined) {
     throw new Error(`The melody stored for level ${id} could not be read.`);
   }
-  return { row, answer };
+  return { row, answer, user };
 }
+
+/** Whether this viewer may see this row: anybody a published one, owner or admin a draft. */
+const canSee = (user: UserSummary | undefined, row: Owned): boolean =>
+  row.status === "published" || (user !== undefined && ownerOrAdmin(user, row));
 
 /**
  * A level as something to play: everything a card shows, and the rhythm.
@@ -1025,9 +1054,13 @@ api.get("/api/levels/:id/puzzle", async (c) => {
  *
  * This is an oracle, and knowingly so. Roughly forty of these requests can pin
  * one note without anybody listening to anything. Nothing here prevents that;
- * what answers it is that the page counts checks and shows the count beside
- * the time, so a solve arrived at that way reads as one. When times start
- * being compared, this is the route to revisit.
+ * what answers it is that the checks are counted -- here, against the
+ * account, for anybody signed in, and by the page for anybody else -- and
+ * shown beside the time, so a solve arrived at that way reads as one. When
+ * times start being compared, this is the route to revisit.
+ *
+ * The count is written last, after the attempt has been graded, and only for
+ * somebody signed in: see the end of the route.
  */
 api.post("/api/levels/:id/check", async (c) => {
   const id = c.req.param("id");
@@ -1081,6 +1114,45 @@ api.post("/api/levels/:id/check", async (c) => {
     );
   }
 
+  const solved = graded.correct === graded.total;
+
+  // Who is asking, asked last: after the attempt has been refused or graded,
+  // so a malformed one costs no session query -- and not at all for a
+  // published level when there is no cookie, since `sessionUserOf` asks
+  // nothing then, which is what keeps anonymous play at one statement. A
+  // draft already cost the question on the way in; its answer is reused.
+  //
+  // The row is the account's record of this level: one more check, the
+  // pitches as they stand, and the solve if this was it. The verdicts go in
+  // only when the row is begun here; afterwards they are the page's, which
+  // saves the whole of them the moment this answer lands. A solved row is
+  // finished -- the statement's WHERE makes this a no-op on one -- so a tab
+  // that did not hear about the solve cannot turn "Flawless!" into two.
+  const user = read.user ?? (await sessionUserOf(c));
+  if (user !== undefined) {
+    const now = Date.now();
+    await c.env.DB.prepare(PROGRESS_SQL.check)
+      .bind(
+        user.id,
+        id,
+        solved ? now : null,
+        JSON.stringify(
+          [...attempt]
+            .map(([index, midi]) => ({ index, midi }))
+            .sort((a, b) => a.index - b.index),
+        ),
+        JSON.stringify(
+          [...graded.verdicts].map(([index, correct]) => ({
+            index,
+            midi: attempt.get(index)!,
+            correct,
+          })),
+        ),
+        now,
+      )
+      .run();
+  }
+
   return c.json({
     verdicts: [...graded.verdicts].map(([index, correct]) => ({
       index,
@@ -1088,7 +1160,7 @@ api.post("/api/levels/:id/check", async (c) => {
     })),
     correct: graded.correct,
     total: graded.total,
-    solved: graded.correct === graded.total,
+    solved,
   });
 });
 
@@ -1120,6 +1192,378 @@ function readAttempt(
   }
   return attempt;
 }
+
+// ---- progress -----------------------------------------------------------
+//
+// Where each signed-in player got to on each level: one row per (account,
+// level), the shape `PlayProgress` has always had. Two of its columns are the
+// server's -- check_count and solved_at, written only by `/check` above,
+// which is the one thing that knows a check happened -- and the rest are the
+// page's, saved as it goes. Nothing about anybody signed out reaches this
+// table: their record stays in their browser, and arrives here only through
+// the merge route, when they sign in and say yes. docs/progress.md is the
+// reference.
+//
+// Every route here asks who is calling first, and answers 401 before any row
+// is looked up or any body read; there is no progress for nobody.
+
+const SIGN_IN_TO_PLAY = "Sign in to keep your progress.";
+
+/** Room for a record at a melody's limit, as an attempt has. */
+const MAX_PROGRESS_BYTES = 64 * 1024;
+
+/** Room for a browser's worth of records. */
+const MAX_MERGE_BYTES = 1024 * 1024;
+
+/** More levels than one browser will have been played on before it is asked. */
+const MERGE_MAX = 100;
+
+/**
+ * How many rows one listing hands back: more levels than one player will have
+ * touched before paging is worth building, in the `LEVELS_PAGE` spirit.
+ */
+const PROGRESS_PAGE = 1000;
+
+/**
+ * Every statement that reads or writes progress, in one place and exported.
+ *
+ * Exported for one reader: test/migrations.test.ts, which runs these against
+ * the real schema in real SQLite. The stand-in database the route tests use
+ * never parses a statement, so an upsert whose ON CONFLICT clause was wrong
+ * would pass every one of them and fail on the first deploy. These are the
+ * statements with the most syntax in them, so they are the ones proved.
+ *
+ * Three upserts, one per writer, and what each may touch is the whole of the
+ * ownership rule. `check` counts and stamps; it moves the pitches, and writes
+ * verdicts only when it begins the row. `save` is the page's: clock, pitches
+ * and verdicts, and it names neither the count nor the solve (the `0, NULL`
+ * in its VALUES is for a row begun by a save). `merge` writes a row whole,
+ * which only the merge route may do, having settled the row itself.
+ *
+ * A solved row is finished. `check` writes nothing to one (the WHERE on its
+ * DO UPDATE), so a tab that never heard about the solve cannot add to the
+ * count or overwrite the pitches the page now treats as confirmed; and `save`
+ * keeps a solved row's pitches for the same reason, while still taking the
+ * clock and the verdicts, because the save that follows the solving check is
+ * what carries the stopped clock and the final colouring.
+ */
+export const PROGRESS_SQL = {
+  // bind: user_id, level_id, solved_at | null, pitches, judged, updated_at
+  check: `INSERT INTO progress
+            (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, updated_at)
+          VALUES (?, ?, 0, 1, ?, ?, ?, ?)
+          ON CONFLICT (user_id, level_id) DO UPDATE SET
+            check_count = check_count + 1,
+            solved_at   = excluded.solved_at,
+            pitches     = excluded.pitches,
+            updated_at  = excluded.updated_at
+          WHERE solved_at IS NULL`,
+
+  // bind: user_id, level_id, elapsed_ms, pitches, judged, updated_at
+  save: `INSERT INTO progress
+           (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, updated_at)
+         VALUES (?, ?, ?, 0, NULL, ?, ?, ?)
+         ON CONFLICT (user_id, level_id) DO UPDATE SET
+           elapsed_ms = excluded.elapsed_ms,
+           pitches    = CASE WHEN solved_at IS NULL THEN excluded.pitches ELSE pitches END,
+           judged     = excluded.judged,
+           updated_at = excluded.updated_at`,
+
+  // bind: user_id, level_id, elapsed_ms, check_count, solved_at | null,
+  //       pitches, judged, updated_at
+  merge: `INSERT INTO progress
+            (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT (user_id, level_id) DO UPDATE SET
+            elapsed_ms  = excluded.elapsed_ms,
+            check_count = excluded.check_count,
+            solved_at   = excluded.solved_at,
+            pitches     = excluded.pitches,
+            judged      = excluded.judged,
+            updated_at  = excluded.updated_at`,
+
+  // bind: user_id, level_id
+  read: `SELECT level_id, elapsed_ms, check_count, solved_at, pitches, judged
+           FROM progress WHERE user_id = ? AND level_id = ?`,
+
+  // bind: user_id, limit
+  readAll: `SELECT level_id, elapsed_ms, check_count, solved_at, pitches, judged
+              FROM progress WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?`,
+
+  // bind: level_id
+  forget: `DELETE FROM progress WHERE level_id = ?`,
+} as const;
+
+/** A row of the progress table, as `PROGRESS_SQL.read` reads one. */
+type ProgressRow = {
+  level_id: string;
+  elapsed_ms: number;
+  check_count: number;
+  solved_at: number | null;
+  pitches: string;
+  judged: string;
+};
+
+/**
+ * A row as the page wants it, held to `readProgress` like anything else.
+ *
+ * A row this code did not write -- a hand-run UPDATE, a restored backup -- is
+ * a throw rather than a guess, answered as 500: nothing the player did caused
+ * it and nothing they can do fixes it, which is the same answer an unreadable
+ * melody gets.
+ */
+function progressOf(row: ProgressRow): PlayProgress {
+  let progress: PlayProgress | undefined;
+  try {
+    progress = readProgress(
+      {
+        levelId: row.level_id,
+        elapsedMs: row.elapsed_ms,
+        checkCount: row.check_count,
+        solvedAt: row.solved_at ?? undefined,
+        pitches: JSON.parse(row.pitches),
+        judged: JSON.parse(row.judged),
+      },
+      row.level_id,
+    );
+  } catch {
+    progress = undefined;
+  }
+  if (progress === undefined) {
+    throw new Error(`The progress stored for level ${row.level_id} could not be read.`);
+  }
+  return progress;
+}
+
+/**
+ * The level a player's progress is filed under, if the viewer may see it.
+ *
+ * Owner and status alone, never the melody: nothing here grades anything. No
+ * 409 for a draft still missing pitches either -- nothing can be checked
+ * against one, so a row for it is harmless, and it goes with the level.
+ */
+async function readVisibleLevel(
+  c: Context<{ Bindings: ApiEnv }>,
+  user: UserSummary,
+  id: string,
+): Promise<Owned | undefined> {
+  const row = (await c.env.DB.prepare(
+    `SELECT owner_id, status FROM transcriptions WHERE id = ?`,
+  )
+    .bind(id)
+    .first()) as Owned | null;
+  return row !== null && canSee(user, row) ? row : undefined;
+}
+
+const toProgressRow = (progress: PlayProgress, now: number) => ({
+  pitches: JSON.stringify(progress.pitches),
+  judged: JSON.stringify(progress.judged),
+  solvedAt: progress.solvedAt ?? null,
+  now,
+});
+
+// Everything the account holds, most recently touched first: what the level
+// list asks, once, for every card it draws.
+api.get("/api/progress", async (c) => {
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_PLAY }, 401);
+  }
+
+  const { results } = await c.env.DB.prepare(PROGRESS_SQL.readAll)
+    .bind(user.id, PROGRESS_PAGE)
+    .all();
+
+  return c.json((results as ProgressRow[]).map(progressOf));
+});
+
+// One level's record, for the play page opening it. 204 is "nothing yet",
+// which is not an error; 404 is the level, in the words `/puzzle` would use.
+api.get("/api/progress/:levelId", async (c) => {
+  const id = c.req.param("levelId");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_PLAY }, 401);
+  }
+
+  if ((await readVisibleLevel(c, user, id)) === undefined) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const row = (await c.env.DB.prepare(PROGRESS_SQL.read)
+    .bind(user.id, id)
+    .first()) as ProgressRow | null;
+  if (row === null) {
+    return c.body(null, 204);
+  }
+  return c.json(progressOf(row));
+});
+
+/**
+ * The page's save: the clock, the pitches and the verdicts.
+ *
+ * What the body says about the check count or the solve is not read, let
+ * alone written: those are `/check`'s. The body is held to `readProgress`
+ * with those two filled in blank, which also refuses a record filed under
+ * another level, however it got there.
+ */
+api.put("/api/progress/:levelId", async (c) => {
+  const id = c.req.param("levelId");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_PLAY }, 401);
+  }
+
+  const text = await c.req.raw.text();
+  if (text.length > MAX_PROGRESS_BYTES) {
+    return c.json({ error: "That progress is too large to keep." }, 413);
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return c.json({ error: "The request was not JSON." }, 400);
+  }
+
+  const progress = isObject(body)
+    ? readProgress(
+        {
+          levelId: body.levelId ?? id,
+          elapsedMs: body.elapsedMs,
+          checkCount: 0,
+          solvedAt: undefined,
+          pitches: body.pitches,
+          judged: body.judged,
+        },
+        id,
+      )
+    : undefined;
+  if (progress === undefined) {
+    return c.json({ error: "That is not progress at this level." }, 400);
+  }
+
+  if ((await readVisibleLevel(c, user, id)) === undefined) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const row = toProgressRow(progress, Date.now());
+  await c.env.DB.prepare(PROGRESS_SQL.save)
+    .bind(user.id, id, Math.floor(progress.elapsedMs), row.pitches, row.judged, row.now)
+    .run();
+
+  return c.body(null, 204);
+});
+
+/**
+ * A browser's records, offered to the account.
+ *
+ * Every record is read before any level is looked up, so nothing is done
+ * with a body until the whole of it is believed. Then, per record: the level
+ * and its answer (a missing level, somebody else's draft and an unfinished
+ * one are all passed over in the same silence, so the answer says nothing
+ * about any draft's existence); the account's own row; and the merge rule in
+ * src/puzzle/merge.ts, which regrades the browser's record against the answer
+ * before it believes a word of it. The writes go as one batch at the end, so
+ * `taken` is exactly what landed, and a failure leaves the browser its copies
+ * for another try, which the rule makes harmless.
+ *
+ * A record that leaves the account's row as it was is taken all the same:
+ * the browser may drop its copy either way.
+ */
+api.post("/api/progress/merge", async (c) => {
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_PLAY }, 401);
+  }
+
+  const TOO_MUCH = "That is too much progress to merge at once.";
+  const text = await c.req.raw.text();
+  if (text.length > MAX_MERGE_BYTES) {
+    return c.json({ error: TOO_MUCH }, 413);
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return c.json({ error: "The request was not JSON." }, 400);
+  }
+  if (!isObject(body) || !Array.isArray(body.records)) {
+    return c.json({ error: "That is not a list of progress." }, 400);
+  }
+  if (body.records.length > MERGE_MAX) {
+    return c.json({ error: TOO_MUCH }, 413);
+  }
+
+  const offered: PlayProgress[] = [];
+  for (const entry of body.records as unknown[]) {
+    const record =
+      isObject(entry) && isTranscriptionId(entry.levelId)
+        ? readProgress(entry, entry.levelId)
+        : undefined;
+    // A list saying the same level twice is not one the page wrote.
+    if (record === undefined || offered.some((each) => each.levelId === record.levelId)) {
+      return c.json({ error: "That is not progress." }, 400);
+    }
+    offered.push(record);
+  }
+
+  const now = Date.now();
+  const taken: string[] = [];
+  const writes = [];
+  for (const browser of offered) {
+    const read = await readAnswerRow<{ melody: string }>(
+      c,
+      browser.levelId,
+      "unpitched_count, melody",
+      user,
+    );
+    if ("status" in read) continue;
+
+    const held = (await c.env.DB.prepare(PROGRESS_SQL.read)
+      .bind(user.id, browser.levelId)
+      .first()) as ProgressRow | null;
+    const account = held === null ? undefined : progressOf(held);
+
+    const merged = mergeProgress(read.answer, account, browser);
+    taken.push(browser.levelId);
+
+    if (
+      account !== undefined &&
+      JSON.stringify(merged) ===
+        JSON.stringify(regradeProgress(read.answer, account).progress)
+    ) {
+      continue;
+    }
+
+    const row = toProgressRow(merged, now);
+    writes.push(
+      c.env.DB.prepare(PROGRESS_SQL.merge).bind(
+        user.id,
+        browser.levelId,
+        merged.elapsedMs,
+        merged.checkCount,
+        row.solvedAt,
+        row.pitches,
+        row.judged,
+        row.now,
+      ),
+    );
+  }
+
+  if (writes.length > 0) {
+    await c.env.DB.batch(writes);
+  }
+
+  return c.json({ taken });
+});
 
 // A path under /api naming nothing is answered as data, never as a page:
 // whatever asked for it wanted JSON, and should be told in JSON that there is
