@@ -112,6 +112,21 @@ describe("GET /api/auth/google", () => {
     assert.equal(sent.searchParams.has("client_secret"), false);
   });
 
+  it("asks Google to offer the choice of account every time", async () => {
+    // Signing out of this site does not sign anybody out of Google. Without
+    // this, Google sees one account signed in and one consent already given,
+    // and sends the visitor straight back in as whoever they were.
+    const { db } = stubDatabase();
+    const response = await api.request(
+      "/api/auth/google",
+      undefined,
+      envOf(db, stubGoogle().fetch),
+    );
+
+    const sent = new URL(response.headers.get("location")!);
+    assert.equal(sent.searchParams.get("prompt"), "select_account");
+  });
+
   it("keeps the state and verifier in a cookie no script can read", async () => {
     const { db } = stubDatabase();
     const response = await api.request(

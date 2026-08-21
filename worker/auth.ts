@@ -200,6 +200,11 @@ auth.get("/api/auth/google", async (c) => {
   ask.searchParams.set("state", state);
   ask.searchParams.set("code_challenge", challenge);
   ask.searchParams.set("code_challenge_method", "S256");
+  // Signing out here does not sign anybody out of Google, so without this a
+  // visitor who signed out would be sent straight back in as whoever they
+  // were: one Google account, one consent already given, no question asked.
+  // This asks the question every time, which costs a click and is honest.
+  ask.searchParams.set("prompt", "select_account");
   return c.redirect(ask.toString());
 });
 

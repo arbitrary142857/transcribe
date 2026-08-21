@@ -42,19 +42,20 @@ export default defineConfig({
   environments: {
     client: {
       build: {
-        // Each entry becomes a page: `/`, `/edit`, `/play`, and the 404 the
-        // asset host reaches for when a path names no file. Vite finds only
-        // `index.html` by itself, so the rest are named.
+        // Each entry becomes a page: `/`, `/edit`, `/play`, `/mine`, and the
+        // 404 the asset host reaches for when a path names no file. Vite finds
+        // only `index.html` by itself, so the rest are named.
         //
         // Named under `client` rather than at the top level, and that is not
         // tidiness: the Cloudflare plugin builds the Worker as a second
         // environment, and a top-level `input` is handed to that one as well,
-        // where three HTML files are not something a Worker can be made of.
+        // where four HTML files are not something a Worker can be made of.
         rollupOptions: {
           input: {
             home: from("./src/index.html"),
             edit: from("./src/edit/index.html"),
             play: from("./src/play/index.html"),
+            mine: from("./src/mine/index.html"),
             notFound: from("./src/404.html"),
           },
         },

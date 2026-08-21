@@ -434,26 +434,24 @@ function derive(melody: Melody): Derived | { problem: string } {
   };
 }
 
+type Refused = { status: 400 | 413; problem: string };
+
+type Body = {
+  details: ReturnType<typeof cleanDetails>;
+  /** The whole body, since a request can only be read once. */
+  body: Record<string, unknown>;
+};
+
+type Music = { melody: Melody; json: MelodyJson };
+
 /**
- * A body, if it is one: within size, JSON, an object, with sound details and a
- * melody that both parses and decodes.
+ * A body, if it is one: within size, JSON, an object, with sound details.
  *
- * `decode` is inside the try because a shape-check cannot cover everything a
- * `Melody` insists on -- a tie needs matching pitches, a bracket needs a
- * writable length -- and those arrive as throws.
+ * The words alone, because that is all a published level will take; the
+ * music is read separately by `readMelody`, and `readSubmission` below puts
+ * the two together for the routes that want both.
  */
-async function readSubmission(
-  request: Request,
-): Promise<
-  | {
-      melody: Melody;
-      json: MelodyJson;
-      details: ReturnType<typeof cleanDetails>;
-      /** The whole body, since a request can only be read once. */
-      body: Record<string, unknown>;
-    }
-  | { status: 400 | 413; problem: string }
-> {
+async function readBody(request: Request): Promise<Body | Refused> {
   const text = await request.text();
   if (text.length > MAX_BODY_BYTES) {
     return { status: 413, problem: "That transcription is too large to store." };
@@ -476,21 +474,43 @@ async function readSubmission(
     return { status: 400, problem };
   }
 
+  return { details: cleanDetails(body.details as never), body };
+}
+
+const NOT_A_MELODY = "That melody is not a melody.";
+
+/**
+ * The melody a body carries, if it both parses and decodes.
+ *
+ * `decode` is inside the try because a shape-check cannot cover everything a
+ * `Melody` insists on -- a tie needs matching pitches, a bracket needs a
+ * writable length -- and those arrive as throws.
+ */
+function readMelody(body: Record<string, unknown>): Music | Refused {
   const json = parseMelodyJson(body.melody);
   if (json === undefined) {
-    return { status: 400, problem: "That melody is not a melody." };
+    return { status: 400, problem: NOT_A_MELODY };
   }
-
   try {
-    return {
-      melody: decode(json),
-      json,
-      details: cleanDetails(body.details as never),
-      body,
-    };
+    return { melody: decode(json), json };
   } catch {
-    return { status: 400, problem: "That melody is not a melody." };
+    return { status: 400, problem: NOT_A_MELODY };
   }
+}
+
+/** Both at once: what a new transcription, or an edit to a draft, has to send. */
+async function readSubmission(
+  request: Request,
+): Promise<(Body & Music) | Refused> {
+  const read = await readBody(request);
+  if ("problem" in read) {
+    return read;
+  }
+  const music = readMelody(read.body);
+  if ("problem" in music) {
+    return music;
+  }
+  return { ...read, ...music };
 }
 
 api.post("/api/levels", async (c) => {
@@ -621,7 +641,10 @@ const PUBLISHED_LOCKED =
  * frozen with it, because moving them changes what a player hears and so how
  * hard the puzzle is. Judged by *difference* rather than by mention -- the
  * editor always sends the melody, and a level merely retitled should save --
- * which is the rule the bar count and the meter were already held to.
+ * which is the rule the bar count and the meter were already held to. And a
+ * body that sends no melody at all is taken to mean the music is unchanged,
+ * which is how the details box edits a published level without ever having
+ * opened the editor. A draft is held to sending its melody, as a submission is.
  */
 api.put("/api/levels/:id", async (c) => {
   const owned = await readOwnedRow<
@@ -640,26 +663,31 @@ api.put("/api/levels/:id", async (c) => {
   const { row } = owned;
   const id = c.req.param("id");
 
-  const read = await readSubmission(c.req.raw);
-  if ("status" in read) {
-    return c.json({ error: read.problem }, read.status);
+  const words = await readBody(c.req.raw);
+  if ("problem" in words) {
+    return c.json({ error: words.problem }, words.status);
   }
 
   if (row.status === "published") {
-    const stored = readAnswer(row.melody);
-    if (stored === undefined) {
-      throw new Error(`The melody stored for level ${id} could not be read.`);
-    }
-    const marks = readMarks(read.body, { start: row.mark_start, end: row.mark_end });
+    const marks = readMarks(words.body, { start: row.mark_start, end: row.mark_end });
     if ("problem" in marks) {
       return c.json({ error: marks.problem }, 400);
     }
-    if (
-      !sameMusic(read.melody, stored) ||
-      marks.start !== row.mark_start ||
-      marks.end !== row.mark_end
-    ) {
+    if (marks.start !== row.mark_start || marks.end !== row.mark_end) {
       return c.json({ error: PUBLISHED_LOCKED }, 409);
+    }
+    if (words.body.melody !== undefined) {
+      const sent = readMelody(words.body);
+      if ("problem" in sent) {
+        return c.json({ error: sent.problem }, sent.status);
+      }
+      const stored = readAnswer(row.melody);
+      if (stored === undefined) {
+        throw new Error(`The melody stored for level ${id} could not be read.`);
+      }
+      if (!sameMusic(sent.melody, stored)) {
+        return c.json({ error: PUBLISHED_LOCKED }, 409);
+      }
     }
 
     await c.env.DB.prepare(
@@ -668,9 +696,9 @@ api.put("/api/levels/:id", async (c) => {
         WHERE id = ?`,
     )
       .bind(
-        read.details.title,
-        read.details.subtitle ?? null,
-        read.details.instructions ?? null,
+        words.details.title,
+        words.details.subtitle ?? null,
+        words.details.instructions ?? null,
         Date.now(),
         id,
       )
@@ -678,6 +706,12 @@ api.put("/api/levels/:id", async (c) => {
 
     return c.json({ id });
   }
+
+  const music = readMelody(words.body);
+  if ("problem" in music) {
+    return c.json({ error: music.problem }, music.status);
+  }
+  const read = { ...words, ...music };
 
   const derived = derive(read.melody);
   if ("problem" in derived) {

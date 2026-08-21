@@ -731,6 +731,19 @@ describe("PUT /api/levels/:id", () => {
     assert.equal(response.status, 400);
   });
 
+  it("holds a draft to sending its melody, as a submission is", async () => {
+    const { response, asked } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      { details: { title: "Clair de lune" } },
+      [asOwner(), one(stored)], SIGNED_IN,
+    );
+
+    assert.equal(response.status, 400);
+    assert.match(await errorOf(response), /melody/i);
+    assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+  });
+
   it("stamps updated_at on a draft edit", async () => {
     const { asked } = await send(
       "/api/levels/k3m9x2p7qw4t",
@@ -813,6 +826,24 @@ describe("PUT /api/levels/:id", () => {
         assert.equal(update.sql.includes(column), false, `update touched ${column}`);
       }
       assert.equal(update.values.includes("Debussy"), true);
+    });
+
+    it("takes the words alone, with no melody sent, and writes nothing but them", async () => {
+      // The details box edits a published level without ever opening the
+      // editor, so it has no melody to send back; not sending one means the
+      // music is unchanged.
+      const { response, asked } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Renamed", subtitle: "Debussy" } },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 200);
+      const update = asked.at(-1)!;
+      assert.match(update.sql, /update transcriptions/i);
+      assert.equal(update.sql.includes("melody"), false);
+      assert.equal(update.values.includes("Renamed"), true);
     });
 
     it("does not mind the melody being sent back unchanged, however its JSON is ordered", async () => {

@@ -313,6 +313,16 @@ export function createPlayPage(
           pitches: [...attempt].map(([index, midi]) => ({ index, midi })),
         }),
       });
+      if (response.status === 404) {
+        // The level was here when the page opened and is not now: deleted, or
+        // unpublished and given a new address. A fact about the level rather
+        // than about the attempt, so it is said plainly, without "could not
+        // be checked" in front of it.
+        checking = false;
+        report = "This level has been taken down.";
+        showBar();
+        return;
+      }
       if (!response.ok) {
         const said = (await response.json().catch(() => ({}))) as {
           error?: string;

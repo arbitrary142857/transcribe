@@ -3,7 +3,8 @@
 How signing in works, why each piece is shaped the way it is, and how to
 operate it. The code lives in `worker/auth.ts` (routes and session lookup),
 `src/shared/session.ts` (the shapes both sides agree on),
-`src/ui/session-nav.ts` (the corner of the nav), and
+`src/ui/site-nav.ts` (the nav bar and its corner), `src/ui/google-button.ts`
+(the way in, drawn as Google asks), and
 `migrations/0002_create_users_and_sessions.sql` (the tables), and
 `migrations/0003_own_and_publish_transcriptions.sql` (levels gaining owners).
 Tests:
@@ -210,6 +211,50 @@ boundary below.
 
 Each page asks `/api/me` fresh on load (these are separate pages, not one
 app). Until the answer arrives, the nav corner is empty rather than wrong.
+The corner hands the answer back to the page, which has its own uses for it:
+whether Save will work, and whose cards carry tools (`cardPlan` in
+`level-card.ts` — drawing, never permission). The whole bar is built by
+`site-nav.ts` from one list — Levels, New transcription, and My
+transcriptions once signed in — with the current page marked, so every page
+offers the same places.
+
+**The button is Google's.** Google's branding rules for a sign-in button
+that uses its name are required reading and are followed: the words are
+"Sign in with Google", the four-colour G is never resized against them or
+recoloured, and it sits on white (`google-button.ts`; the G is an inline SVG
+constant in `icons.ts`, so no asset is loaded from anywhere). The nav corner
+uses the icon-only shape the same rules allow. The one liberty taken is the
+font — the site's own rather than Google Sans — which every site that does
+not load Google's script takes.
+
+**Signing in keeps you where you are; signing out goes home.** Every sign-in
+link carries the page's own address as `next`. The editor goes further: the
+nav's sign-in is given a hook that stashes the melody first (see below), so
+signing in from the corner mid-transcription loses nothing. Sign-out always
+lands on `/`, because the page you were on — a draft, say — may be one you
+can no longer open. And the Google URL carries `prompt=select_account`:
+signing out of this site does not sign anybody out of Google, and without it
+a visitor who signed out would be sent straight back in as whoever they
+were, Google seeing one account and one consent already given.
+
+**Signing in to save.** Transcriptions are saved to an account, and the
+editor can be used without one. So when Save is pressed with nobody signed in
+— or the server answers 401, because a session ran out under the page — the
+editor asks, and if the answer is yes it writes the whole of the work to
+`localStorage` under `transcribe:draft` (`draft-stash.ts`: the melody, the
+words, everything the setup page settled, the draft's id if it had one, and
+what the sign-in was *for* — `intent: "save"` from the Save button, `"keep"`
+from the nav's corner),
+disarms the browser's leave-page question, and navigates to
+`/api/auth/google?next=/edit` (or `next=/edit?level=…`). The `next` is the
+`returnPathOf` mechanism above. The editor that loads on the way back finds
+the stash, **clears it at once** — it is a hand-off across a sign-in, not a
+place work lives — rebuilds itself without the setup page, and — when the intent was
+"save" — saves the moment the corner confirms somebody is signed in; a
+"keep" stash is only put back, with the button reading Save. A stash belongs to one
+address and is taken up only there; one older than a day is ignored. If the
+visitor changed their mind at Google, they land back with their work restored
+and unsaved, and the leave-page question is armed again.
 
 ## What a session is for: ownership and publishing
 

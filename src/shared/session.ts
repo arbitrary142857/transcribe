@@ -48,3 +48,18 @@ export function readMe(value: unknown): UserSummary | undefined {
 
   return { id, email, username, isAdmin };
 }
+
+/**
+ * Where a page sends somebody to sign in, and — if given — where they come
+ * back to afterwards.
+ *
+ * The page's half of `returnPathOf` in the Worker: this only encodes, because
+ * the server judges the path for itself on the way in and again on the way
+ * out. A page passes its own address (path and query) so that signing in from
+ * the middle of something lands back in the middle of it.
+ */
+export function signInPath(next?: string): string {
+  return next === undefined
+    ? "/api/auth/google"
+    : `/api/auth/google?next=${encodeURIComponent(next)}`;
+}

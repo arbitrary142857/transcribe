@@ -11,16 +11,21 @@ import { timingProblem } from "../playback/timing-fields.js";
 import {
   countSoundingNotes,
   detailsProblem,
+  isTranscriptionId,
   LIMITS,
   type Clef,
   type TranscriptionDetails,
   type TranscriptionRecord,
 } from "../shared/transcription.js";
+import { writeDraft, type Draft } from "./draft-stash.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
+import { googleButton } from "./google-button.js";
+import { openChoiceModal } from "./modal.js";
 import { keepingScroll } from "./score-overlay.js";
 import { createPlayback, type Playback } from "./playback.js";
 import { createSetupPage, type Setup } from "./setup-panel.js";
 import { createSignatureBar, type SignatureBar } from "./signature-bar.js";
+import type { SiteNav } from "./site-nav.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { mountVideoPanel } from "./video-panel.js";
 
@@ -39,7 +44,9 @@ export type EditorPageElements = EditorElements & {
  * How the page was arrived at.
  *
  * A fresh transcription starts at the setup page; one opened from the level
- * list starts already written, with nothing left to settle.
+ * list starts already written, with nothing left to settle; and one restored
+ * from the stash — work somebody was in the middle of when they went to sign
+ * in — starts written too, but unsaved, and saves itself the moment it can.
  *
  * There was a `mode` here once, waiting for the day playing a level and
  * editing one became two different doors. They now are — `/play` is its own
@@ -48,7 +55,8 @@ export type EditorPageElements = EditorElements & {
  */
 export type Entry =
   | { kind: "new" }
-  | { kind: "edit"; id: string; record: TranscriptionRecord };
+  | { kind: "edit"; id: string; record: TranscriptionRecord }
+  | { kind: "restore"; draft: Draft };
 
 /** What the melody was written down from, kept because saving needs it. */
 type Source = {
@@ -80,12 +88,27 @@ const EMPTY_DETAILS: TranscriptionDetails = {
  *
  * Opening a saved transcription skips the first life entirely. Everything the
  * setup page would have settled is already settled, so `mount()` finds a melody
- * waiting and the setup page is never built at all.
+ * waiting and the setup page is never built at all. So does restoring one
+ * from the stash.
+ *
+ * Saving stays on the page. The first save of a new transcription gives it an
+ * address, which the page takes on without leaving, so that a reload resumes
+ * the same draft; every save after is an edit of it. Publishing is done from
+ * the author's own list, not from here.
+ *
+ * `nav` knows who is signed in, and Save asks it first, because a
+ * transcription is saved to an account: with nobody signed in, the work is
+ * stashed on this machine and the page goes to sign in, to come back here and
+ * save. The nav's own sign-in is given the same stash to write on its way
+ * out, so signing in from the corner loses nothing either — though that one
+ * only puts the work back, and leaves saving to the visitor.
  */
 export function createEditorPage(
   elements: EditorPageElements,
-  entry: Entry = { kind: "new" },
+  entry: Entry,
+  nav: SiteNav,
 ): void {
+  const { viewer } = nav;
   let melody: Melody | undefined;
   let clef: Clef = "treble";
   let pitchOnly = false;
@@ -109,6 +132,25 @@ export function createEditorPage(
   let saving = false;
 
   /**
+   * The address this transcription has in the database, once it has one. A
+   * new transcription gets it from its first save; an opened or restored one
+   * arrives with it. Absent, Save creates; present, Save edits.
+   */
+  let levelId: string | undefined =
+    entry.kind === "edit"
+      ? entry.id
+      : entry.kind === "restore"
+        ? entry.draft.levelId
+        : undefined;
+
+  /**
+   * The page is about to be left on purpose — for the sign-in — with the work
+   * stashed. The browser's question about unsaved work is not asked then; it
+   * would be asked about work that is safe.
+   */
+  let leaving = false;
+
+  /**
    * The melody and the details as they last stood in the database, or as they
    * started for something never saved.
    *
@@ -124,16 +166,36 @@ export function createEditorPage(
   const melodyNow = () => (melody ? JSON.stringify(encode(melody)) : "");
   const marksNow = () => (source ? JSON.stringify(source.marks) : "");
 
+  type Snapshot = { melody: string; details: string; marks: string };
+  const snapshot = (): Snapshot => ({
+    melody: melodyNow(),
+    details: detailsNow(),
+    marks: marksNow(),
+  });
+
   const isDirty = () =>
     melodyNow() !== savedMelody ||
     detailsNow() !== savedDetails ||
     marksNow() !== savedMarks;
 
-  /** Everything just went into the database; nothing is owed on the way out. */
-  function markSaved(): void {
-    savedMelody = melodyNow();
-    savedDetails = detailsNow();
-    savedMarks = marksNow();
+  /**
+   * Nothing is owed: what is on the page is what is in the database. Only
+   * once there is a database row to be the same as — a fresh, empty page is
+   * clean, but it is not saved.
+   */
+  const isSaved = () => levelId !== undefined && !isDirty();
+
+  /**
+   * What went into the database, or what the page opened as.
+   *
+   * Given a snapshot when it is the former: the one taken before the request
+   * left, so a note written while the request was out is still owed rather
+   * than quietly counted as saved.
+   */
+  function markSaved(sent: Snapshot = snapshot()): void {
+    savedMelody = sent.melody;
+    savedDetails = sent.details;
+    savedMarks = sent.marks;
   }
 
   function showSetup(): void {
@@ -214,11 +276,57 @@ export function createEditorPage(
     mount();
   }
 
-  /** Why the transcription cannot be sent, or nothing if it can. */
-  function submitProblem(): string | undefined {
-    if (!melody || !source) return "There is nothing to send yet.";
+  /**
+   * Take up work that was stashed on the way to signing in.
+   *
+   * Like `open`, everything the setup page would settle is settled; unlike
+   * it, nothing has been saved — the baselines are left where a fresh page
+   * starts them, so the button reads Save rather than Saved. And the moment
+   * the nav corner says somebody is signed in, it is pressed: the visitor
+   * left to sign in so that this could be saved, and it should not be waited
+   * for twice.
+   */
+  function restore(draft: Draft): void {
+    clef = draft.setup.clef;
+    source = {
+      videoId: draft.setup.videoId,
+      marks: draft.setup.marks,
+      measures: draft.setup.measures,
+      meter: draft.setup.meter,
+    };
+    openVideo(source);
+    try {
+      melody = decode(draft.melody);
+    } catch (error) {
+      // The stash passed every shape check and still is not a melody. Nothing
+      // to do but say so and start over; the setup page is what "over" is.
+      console.error(error);
+      elements.status.textContent =
+        "The work kept on this device could not be read.";
+      mount();
+      return;
+    }
+    history = createHistory(melody);
+    details = {
+      title: draft.details.title,
+      subtitle: draft.details.subtitle ?? "",
+      instructions: draft.details.instructions ?? "",
+    };
+    mount();
+    // Only when Save is what the visitor pressed: a sign-in from the corner
+    // put the work aside, and puts it back, and asks nothing more of it.
+    if (draft.intent === "save") {
+      void viewer.then((user) => {
+        if (user !== undefined) void save();
+      });
+    }
+  }
+
+  /** Why the transcription cannot be saved, or nothing if it can. */
+  function saveProblem(): string | undefined {
+    if (!melody || !source) return "There is nothing to save yet.";
     if (countSoundingNotes(melody) < LIMITS.noteCount.min) {
-      return "Write at least two notes before submitting.";
+      return "Write at least two notes before saving.";
     }
     // The marks can now be moved from here, so they can now be moved wrong:
     // the same gate the setup page holds its Start button to.
@@ -232,18 +340,7 @@ export function createEditorPage(
       beatsPerBarOf(source.meter),
     );
     if (timing !== undefined) return timing;
-    const wrong = detailsProblem(details);
-    if (wrong !== undefined) return wrong;
-
-    // Last, so a transcription that is unsendable for a real reason says the
-    // real reason rather than this one.
-    //
-    // Compared rather than counted: `isDirty` puts the melody, the words and
-    // the marks against what was last saved, so writing a note and writing it
-    // back leaves nothing to send and the button goes grey again. That works
-    // because the encoding is canonical — ties come out in index order and
-    // brackets are sorted — which the undo stack already relies on.
-    return isDirty() ? undefined : "Nothing has changed yet.";
+    return detailsProblem(details);
   }
 
   function showSignatures(): void {
@@ -255,62 +352,164 @@ export function createEditorPage(
       canUndo: history.canUndo(),
       canRedo: history.canRedo(),
       details,
-      submitLabel: entry.kind === "edit" ? "Save changes" : "Submit",
-      submitProblem: submitProblem(),
+      saveProblem: saveProblem(),
       saving,
+      // Compared rather than counted: `isDirty` puts the melody, the words
+      // and the marks against what was last saved, so writing a note and
+      // writing it back leaves the button at Saved. That works because the
+      // encoding is canonical — ties come out in index order and brackets are
+      // sorted — which the undo stack already relies on.
+      saved: isSaved(),
     });
   }
 
-  async function submit(): Promise<void> {
-    if (!melody || !source || saving || submitProblem() !== undefined) return;
+  /**
+   * Put what is on the page into the database.
+   *
+   * Asks who is signed in before asking the server, because the answer
+   * decides which of two things happens: a save, or a trip to sign in with
+   * the work stashed. The server's 401 is the same trip, for a session that
+   * ran out under the page.
+   */
+  async function save(): Promise<void> {
+    if (!melody || !source || saving || isSaved()) return;
+    if (saveProblem() !== undefined) return;
     saving = true;
     showSignatures();
     elements.status.textContent = "";
 
-    const editing = entry.kind === "edit";
-    const body = editing
-      ? {
-          details,
-          melody: encode(melody),
-          markStart: source.marks.start,
-          markEnd: source.marks.end,
-        }
-      : {
-          details,
-          melody: encode(melody),
-          videoId: source.videoId,
-          markStart: source.marks.start,
-          markEnd: source.marks.end,
-          clef,
-        };
-
     try {
+      const user = await viewer;
+      if (user === undefined) {
+        saving = false;
+        showSignatures();
+        await offerSignIn();
+        return;
+      }
+
+      // Taken before the request leaves, so a note written while it is out
+      // stays owed.
+      const sent = snapshot();
+      const body =
+        levelId === undefined
+          ? {
+              details,
+              melody: encode(melody),
+              videoId: source.videoId,
+              markStart: source.marks.start,
+              markEnd: source.marks.end,
+              clef,
+            }
+          : {
+              details,
+              melody: encode(melody),
+              markStart: source.marks.start,
+              markEnd: source.marks.end,
+            };
+
       const response = await fetch(
-        editing ? `/api/levels/${entry.id}` : "/api/levels",
+        levelId === undefined ? "/api/levels" : `/api/levels/${levelId}`,
         {
-          method: editing ? "PUT" : "POST",
+          method: levelId === undefined ? "POST" : "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(body),
         },
       );
+      if (response.status === 401) {
+        saving = false;
+        showSignatures();
+        await offerSignIn();
+        return;
+      }
       if (!response.ok) {
         const said = (await response.json().catch(() => ({}))) as {
           error?: string;
         };
         throw new Error(said.error ?? `The server answered ${response.status}.`);
       }
-      // Saved, so there is nothing left to warn about on the way out.
-      markSaved();
-      window.location.assign("/");
+
+      if (levelId === undefined) {
+        // A new transcription has an address now. The page takes it on
+        // without leaving, so a reload resumes this draft; `replaceState`
+        // rather than `pushState`, so Back still leaves the page rather than
+        // returning to a setup page that no longer exists.
+        const { id } = (await response.json()) as { id?: unknown };
+        if (!isTranscriptionId(id)) {
+          throw new Error("The server's answer could not be read.");
+        }
+        levelId = id;
+        window.history.replaceState(null, "", `/edit?level=${id}`);
+      }
+      markSaved(sent);
     } catch (error) {
-      saving = false;
-      showSignatures();
       elements.status.textContent =
         error instanceof Error
           ? `It could not be saved. ${error.message}`
           : "It could not be saved.";
       console.error(error);
+    } finally {
+      saving = false;
+      showSignatures();
     }
+  }
+
+  /** Where a sign-in should come back to: this draft, or a fresh page for one. */
+  const here = () =>
+    levelId === undefined ? "/edit" : `/edit?level=${levelId}`;
+
+  /**
+   * Put the work aside for a sign-in, and say whether it was put.
+   *
+   * Written before the page is left, and the page is left only if it was
+   * written: a browser that refuses its storage is told so, and keeps the
+   * work on the screen where it is. With no melody yet there is nothing to
+   * put aside, and the page may simply be left.
+   */
+  function stash(intent: Draft["intent"]): boolean {
+    if (!melody || !source) return true;
+    const kept = writeDraft(window.localStorage, {
+      melody: encode(melody),
+      details,
+      setup: {
+        clef,
+        meter: source.meter,
+        videoId: source.videoId,
+        marks: source.marks,
+        measures: source.measures,
+      },
+      ...(levelId === undefined ? {} : { levelId }),
+      intent,
+      at: Date.now(),
+    });
+    if (!kept) {
+      elements.status.textContent =
+        "This browser would not keep the work while you sign in. Sign in from another tab, then save here.";
+      return false;
+    }
+    leaving = true;
+    return true;
+  }
+
+  // The corner's sign-in puts the work aside too, and only aside: on the way
+  // back it is restored, not saved.
+  nav.beforeSignIn(() => stash("keep"));
+
+  /**
+   * Nobody is signed in, and saving needs somebody.
+   *
+   * A box with the way in drawn as Google asks, and the way back. The link
+   * stashes the work as it is followed, marked as work to be saved on return.
+   */
+  async function offerSignIn(): Promise<void> {
+    await openChoiceModal({
+      title: "Sign in to save",
+      body: [
+        "Transcriptions are saved to an account, and nobody is signed in.",
+        "Your work is kept on this device while you sign in, and saved the moment you are back.",
+      ],
+      cancel: "Not now",
+      choice: () => googleButton({ next: here(), beforeGo: () => stash("save") }),
+    });
   }
 
   function mount(): void {
@@ -346,7 +545,7 @@ export function createEditorPage(
         details = next;
         showSignatures();
       },
-      onSubmit: () => void submit(),
+      onSave: () => void save(),
     });
 
     // The person mid-edit has not moved, so their selection must not: undo,
@@ -424,15 +623,29 @@ export function createEditorPage(
    *
    * What counts as unsaved is the melody *or* the words — a title typed and
    * not sent is as much work as a note written and not sent.
+   *
+   * Not asked on the way to sign in: the work is in the stash by then, and a
+   * question about losing it would be wrong. If the visitor comes straight
+   * back — the back button, with the page restored from the browser's cache
+   * — the question is armed again, since the stash may since have been spent.
    */
   window.addEventListener("beforeunload", (event) => {
-    if (!isDirty()) return;
+    if (leaving || !isDirty()) return;
     event.preventDefault();
   });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) leaving = false;
+  });
 
-  if (entry.kind === "edit") {
-    open(entry.record);
-  } else {
-    mount();
+  switch (entry.kind) {
+    case "edit":
+      open(entry.record);
+      break;
+    case "restore":
+      restore(entry.draft);
+      break;
+    case "new":
+      mount();
+      break;
   }
 }

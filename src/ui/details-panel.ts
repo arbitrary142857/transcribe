@@ -28,7 +28,7 @@ export type DetailsPanel = {
   focusTitle(): void;
 };
 
-type FieldOptions = {
+export type FieldOptions = {
   label: string;
   hint: string;
   max: number;
@@ -36,13 +36,22 @@ type FieldOptions = {
   lines?: number;
 };
 
-type Field = {
+export type Field = {
   readonly row: HTMLElement;
   readonly input: HTMLInputElement | HTMLTextAreaElement;
   show(value: string): void;
 };
 
-function createField(options: FieldOptions, onInput: () => void): Field {
+/** How many fields have been made, so that no two ever share an id. */
+let made = 0;
+
+/**
+ * One labelled box with a live count of what is in it.
+ *
+ * Exported because the details modal wants the very same three boxes without
+ * the disclosure around them: same limit, same counter, same red star.
+ */
+export function createField(options: FieldOptions, onInput: () => void): Field {
   const row = document.createElement("div");
   row.className = "details-field";
 
@@ -80,7 +89,11 @@ function createField(options: FieldOptions, onInput: () => void): Field {
     input.setAttribute("aria-required", "true");
   }
 
-  const id = `details-${options.label.toLowerCase()}`;
+  // Numbered as well as named: the same three fields can stand in the editor's
+  // bar and in a modal at once, and a label pointing at the wrong box is
+  // worse than no label.
+  made += 1;
+  const id = `details-${options.label.toLowerCase()}-${made}`;
   input.id = id;
   label.htmlFor = id;
 

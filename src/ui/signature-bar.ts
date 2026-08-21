@@ -13,12 +13,16 @@ export type SignatureBarState = {
   canUndo: boolean;
   canRedo: boolean;
   details: TranscriptionDetails;
-  /** What the button says: submitting a new one, or saving an old one. */
-  submitLabel: string;
-  /** Why it cannot be pressed, or nothing if it can. */
-  submitProblem: string | undefined;
+  /** Why it cannot be saved, or nothing if it can. */
+  saveProblem: string | undefined;
   /** True while the request is out, so a second press cannot make a second level. */
   saving: boolean;
+  /**
+   * Nothing is owed: what is on the page is what is in the database. The
+   * button reads "Saved" and is grey, with nothing to explain — a clean page
+   * is not a problem, it is the state the button exists to reach.
+   */
+  saved: boolean;
 };
 
 export type SignatureBarHandlers = {
@@ -27,7 +31,7 @@ export type SignatureBarHandlers = {
   onUndo: () => void;
   onRedo: () => void;
   onDetails: (details: TranscriptionDetails) => void;
-  onSubmit: () => void;
+  onSave: () => void;
 };
 
 export type SignatureBar = {
@@ -136,7 +140,7 @@ export function createSignatureBar(
   const submit = document.createElement("button");
   submit.type = "button";
   submit.className = "submit-button";
-  submit.addEventListener("click", handlers.onSubmit);
+  submit.addEventListener("click", handlers.onSave);
 
   // Says why it cannot be pressed — but only when pointed at. Standing in the
   // bar, this sentence was permanent furniture on a page where the button is
@@ -173,9 +177,15 @@ export function createSignatureBar(
       undo.disabled = !state.canUndo;
       redo.disabled = !state.canRedo;
 
-      submit.textContent = state.saving ? "Saving…" : state.submitLabel;
-      submit.disabled = state.saving || state.submitProblem !== undefined;
-      submitNote.textContent = state.saving ? "" : (state.submitProblem ?? "");
+      submit.textContent = state.saving
+        ? "Saving…"
+        : state.saved
+          ? "Saved"
+          : "Save";
+      submit.disabled =
+        state.saving || state.saved || state.saveProblem !== undefined;
+      submitNote.textContent =
+        state.saving || state.saved ? "" : (state.saveProblem ?? "");
     },
   };
 }

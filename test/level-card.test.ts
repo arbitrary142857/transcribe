@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { keyName, levelStats, levelState } from "../dist/ui/level-card.js";
+import { cardPlan, keyName, levelStats, levelState } from "../dist/ui/level-card.js";
+import type { UserSummary } from "../dist/shared/session.js";
 import type { TranscriptionSummary } from "../dist/shared/transcription.js";
 
 /** A level as the listing route hands one over. */
@@ -121,5 +122,76 @@ describe("levelStats()", () => {
       levelStats(level()).map((stat) => stat.kind),
       ["bars", "notes", "tempo", "length"],
     );
+  });
+});
+
+/** Somebody looking at the list. */
+const viewer = (over: Partial<UserSummary> = {}): UserSummary => ({
+  id: "7k2m9x4p3qwt",
+  email: "jason@example.com",
+  username: undefined,
+  isAdmin: false,
+  ...over,
+});
+
+describe("cardPlan()", () => {
+  const draft = () => level({ status: "draft", publishedAt: undefined });
+  const stranger = () => viewer({ id: "2b4d6f8h0j1k" });
+  const admin = () => viewer({ id: "2b4d6f8h0j1k", isAdmin: true });
+
+  it("gives a visitor to the front page the card and nothing else", () => {
+    for (const who of [undefined, stranger(), viewer()]) {
+      assert.deepEqual(cardPlan(level(), who, "home"), {
+        draft: false,
+        edit: undefined,
+        publish: undefined,
+        delete: false,
+      });
+    }
+  });
+
+  it("gives an admin on the front page the pencil to the details box and the trash, and never Publish", () => {
+    assert.deepEqual(cardPlan(level(), admin(), "home"), {
+      draft: false,
+      edit: "details",
+      publish: undefined,
+      delete: true,
+    });
+  });
+
+  it("sends the author of a draft to the editor, and offers Publish", () => {
+    assert.deepEqual(cardPlan(draft(), viewer(), "mine"), {
+      draft: true,
+      edit: "editor",
+      publish: "publish",
+      delete: true,
+    });
+  });
+
+  it("sends the author of a published level to the details box, and offers Unpublish", () => {
+    assert.deepEqual(cardPlan(level(), viewer(), "mine"), {
+      draft: false,
+      edit: "details",
+      publish: "unpublish",
+      delete: true,
+    });
+  });
+
+  it("calls a draft a draft, whoever is looking", () => {
+    assert.equal(cardPlan(draft(), undefined, "home").draft, true);
+    assert.equal(cardPlan(draft(), stranger(), "mine").draft, true);
+  });
+
+  it("offers nothing on the author's page to nobody signed in, nor to somebody else", () => {
+    for (const who of [undefined, stranger()]) {
+      const plan = cardPlan(draft(), who, "mine");
+      assert.equal(plan.edit, undefined);
+      assert.equal(plan.publish, undefined);
+      assert.equal(plan.delete, false);
+    }
+  });
+
+  it("lets an admin act on the author's page as the author would", () => {
+    assert.deepEqual(cardPlan(draft(), admin(), "mine"), cardPlan(draft(), viewer(), "mine"));
   });
 });

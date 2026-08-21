@@ -1,12 +1,14 @@
 /**
  * Something the page stops for.
  *
- * Two kinds now: a question that cannot be taken back — leaving the setup page
- * — and a level's details, which asks nothing and simply wants reading. They
- * share everything except what goes in the box, so the shell below is the
- * shared part and the two exports are what fills it.
+ * Four kinds now: a question that cannot be taken back — leaving the setup
+ * page, deleting a level — a level's details, which asks nothing and simply
+ * wants reading, a small form, which asks for words and waits on them, and a
+ * question whose yes is a control of the caller's own. They share everything
+ * except what goes in the box, so the shell below is the shared part and the
+ * exports are what fills it.
  *
- * While either is open it blankets every keyboard shortcut on the page: the
+ * While any is open it blankets every keyboard shortcut on the page: the
  * blanket is a capture-phase listener on the window, and all of the app's
  * shortcuts listen at bubble phase, so they simply never hear anything. That
  * keeps every one of them ignorant of modals rather than each carrying a check.
@@ -14,7 +16,7 @@
 
 /** What can hold focus inside a dialog. */
 const FOCUSABLE =
-  'a[href], button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 type ShellOptions = {
   /** Given a way to close with an answer, build what goes in the box. */
@@ -155,6 +157,119 @@ export function openModal(options: ModalOptions): Promise<boolean> {
         // things down, and the default answer is no.
         buttons.append(cancel, confirm);
         return [heading, ...lines, buttons];
+      },
+    });
+  });
+}
+
+export type ChoiceModalOptions = {
+  title: string;
+  body: readonly string[];
+  /** What the retreating button says. */
+  cancel: string;
+  /**
+   * The committing control, built by the caller — for the one case where it
+   * is not a plain button: the way in to Google, which has to look as Google
+   * says and is a link rather than a button besides.
+   */
+  choice: () => HTMLElement;
+};
+
+/**
+ * A question whose yes is the caller's own control.
+ *
+ * Resolves false when the box is closed without it; the yes, being a link,
+ * leaves the page, so the promise settling at all means the answer was no.
+ */
+export function openChoiceModal(options: ChoiceModalOptions): Promise<boolean> {
+  return new Promise((resolve) => {
+    openShell({
+      onClose: resolve,
+      fill(close) {
+        const heading = document.createElement("h2");
+        heading.className = "modal-title";
+        heading.textContent = options.title;
+
+        const lines = options.body.map((line) => {
+          const paragraph = document.createElement("p");
+          paragraph.className = "modal-body";
+          paragraph.textContent = line;
+          return paragraph;
+        });
+
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "modal-cancel";
+        cancel.textContent = options.cancel;
+        cancel.addEventListener("click", () => close(false));
+
+        const buttons = document.createElement("div");
+        buttons.className = "modal-buttons";
+        // Retreat first, and so focused first, as in every question here.
+        buttons.append(cancel, options.choice());
+        return [heading, ...lines, buttons];
+      },
+    });
+  });
+}
+
+export type FormModalOptions = {
+  title: string;
+  /**
+   * Build the fields. Handed a way to say whether what they hold could be
+   * saved, which is what greys the committing button and ungreys it.
+   */
+  fill: (form: { setValid(ok: boolean): void }) => readonly Node[];
+  /** What the committing button says. */
+  confirm: string;
+  /** What the retreating button says. */
+  cancel: string;
+  /** Whether the fields start out saveable. */
+  valid?: boolean;
+  className?: string;
+};
+
+/**
+ * A box with something to fill in.
+ *
+ * Like `openModal`, it answers yes or no — but the yes can be withheld while a
+ * field is wrong, which is the one thing the confirm dialog never needed. The
+ * first field takes the opening focus rather than the way out: somebody who
+ * opened a form means to type into it. Escape and the backdrop still mean no.
+ */
+export function openFormModal(options: FormModalOptions): Promise<boolean> {
+  return new Promise((resolve) => {
+    openShell({
+      className: options.className,
+      onClose: resolve,
+      fill(close) {
+        const heading = document.createElement("h2");
+        heading.className = "modal-title";
+        heading.textContent = options.title;
+
+        const confirm = document.createElement("button");
+        confirm.type = "button";
+        confirm.className = "modal-confirm";
+        confirm.textContent = options.confirm;
+        confirm.disabled = options.valid === false;
+        confirm.addEventListener("click", () => close(true));
+
+        const fields = options.fill({
+          setValid(ok) {
+            confirm.disabled = !ok;
+          },
+        });
+
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "modal-cancel";
+        cancel.textContent = options.cancel;
+        cancel.addEventListener("click", () => close(false));
+
+        const buttons = document.createElement("div");
+        buttons.className = "modal-buttons";
+        buttons.append(cancel, confirm);
+        return [heading, ...fields, buttons];
       },
     });
   });

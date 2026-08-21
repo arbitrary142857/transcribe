@@ -1893,6 +1893,86 @@ main {
   text-decoration: underline;
 }
 
+/* The page you are on: the same link as on every other page, marked rather
+   than missing, so the bar reads the same wherever you are. */
+.site-links a[aria-current="page"] {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+}
+
+/* ---- Sign in with Google, as Google asks it to be drawn ----
+
+   The light theme: white, a grey hairline, dark words, and the four-colour G
+   at its standard size beside them. The compact form is the icon-only shape
+   the same rules allow, for the corner of the nav. Nothing here recolours the
+   G; nothing may. */
+
+.google-signin {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  color: #1f1f1f;
+  background: #ffffff;
+  border: 1px solid #747775;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.25px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.google-signin:hover {
+  background: #f2f2f2;
+  text-decoration: none;
+}
+
+.google-signin-glyph {
+  display: inline-flex;
+  width: 20px;
+  height: 20px;
+}
+
+.google-signin-glyph svg {
+  width: 100%;
+  height: 100%;
+}
+
+.google-signin.is-compact {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.google-signin.is-compact .google-signin-glyph {
+  width: 18px;
+  height: 18px;
+}
+
+/* The corner's links are grey text; the G is not, and should not look like
+   one of them. The nav's own link rule must not paint it. */
+.site-links a.google-signin {
+  color: #1f1f1f;
+}
+
+.level-trouble-signin {
+  margin-top: 0.6rem;
+}
+
+/* The note under an empty list, when it is asking rather than telling. */
+.page-note.is-asking {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
 
 /* ---- Which job the controls column is doing ----
 
@@ -2076,6 +2156,29 @@ textarea.details-input {
   cursor: not-allowed;
 }
 
+/* ---- The details box: the editor's three fields, on their own ----
+
+   Wider than a question, because a title wants room, and the fields keep the
+   spacing they have in the editor's panel. The problem line under them says
+   why Save is grey, and takes no room while there is nothing to say. */
+
+.modal-box.details-modal {
+  max-width: 30rem;
+  width: 100%;
+}
+
+.details-modal .details-field + .details-field {
+  margin-top: 0.7rem;
+}
+
+.details-modal-problem {
+  color: var(--note-selected);
+}
+
+.details-modal-problem:empty {
+  display: none;
+}
+
 
 /* ---- Pages that are documents rather than control surfaces ----
 
@@ -2203,16 +2306,30 @@ main.page {
    words. A line in the body would either be an empty line on every card that
    has nothing to say or a taller card for the few that do, and a card is one
    height. */
-.level-badge {
+/* The row the pills sit in, pinned to the picture's corner. A row rather
+   than pinning each pill, so that a draft's ✓ sits beside its "Draft" instead
+   of on top of it. */
+.level-badges {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.level-badge {
   padding: 0.1rem 0.45rem;
   font-size: 0.72rem;
   line-height: 1.45;
   border-radius: 999px;
   backdrop-filter: blur(2px);
+}
+
+.level-badge-draft {
+  color: #fff7e3;
+  background: rgb(128 92 22 / 88%);
 }
 
 .level-badge-solved {
@@ -2362,6 +2479,23 @@ main.page {
   border-color: var(--rule);
 }
 
+/* The one tool that is a word rather than a glyph: no icon says "publish"
+   plainly, and a lock would read as "locked". Same height as its neighbours,
+   as wide as the word. */
+.level-tool-text {
+  width: auto;
+  padding: 0 0.55rem;
+  font-size: 0.78rem;
+}
+
+/* Greyed with its reason in the tooltip, for a draft still missing pitches. */
+.level-tool:disabled {
+  color: #b8b0a4;
+  background: none;
+  border-color: transparent;
+  cursor: not-allowed;
+}
+
 /* Throwing the level away is the one thing on this card that cannot be undone,
    so it says so on the way to being pressed rather than only in the dialog. */
 .level-delete:hover {
@@ -2423,10 +2557,6 @@ main.page {
    the title's `::after` is stretched over the whole card and would otherwise
    swallow the pointer before the badge could explain itself. */
 .level-badge-inline {
-  position: relative;
-  top: auto;
-  right: auto;
-  z-index: 1;
   flex: 0 0 auto;
   /* Nothing behind it to blur now that it is on the card's own paper. */
   backdrop-filter: none;

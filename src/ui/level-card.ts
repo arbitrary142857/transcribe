@@ -8,6 +8,7 @@
  */
 
 import { beatsPerMinute, tempoMapOf } from "../playback/tempo-map.js";
+import type { UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { pencilIcon, trashIcon } from "./icons.js";
 import { keyLabelOfFifths } from "./key-label.js";
@@ -117,6 +118,78 @@ export const countLeft = (level: TranscriptionSummary): string =>
     ? "1 note needs a pitch"
     : `${level.unpitchedCount} notes need pitches`;
 
+/** Which list the card is in: everybody's, or the viewer's own. */
+export type CardPage = "home" | "mine";
+
+/**
+ * What a card shows and offers, decided before anything is drawn.
+ *
+ * Drawing, not permission: the server refuses a stranger's edit whatever a
+ * card offered, so this decides only what is worth offering. On the front
+ * page that is nothing, except to an admin, for whom it is the way to tidy
+ * up. On your own page it is the pencil — into the editor while a level is a
+ * draft, into the details box once it is published and its music is frozen —
+ * the way across that line, and the trash.
+ */
+export type CardPlan = {
+  /** Say so on the card: this is nobody's but the author's yet. */
+  draft: boolean;
+  edit: "editor" | "details" | undefined;
+  publish: "publish" | "unpublish" | undefined;
+  delete: boolean;
+};
+
+export function cardPlan(
+  level: TranscriptionSummary,
+  viewer: UserSummary | undefined,
+  page: CardPage,
+): CardPlan {
+  const draft = level.status === "draft";
+  const nothing: CardPlan = { draft, edit: undefined, publish: undefined, delete: false };
+  if (viewer === undefined) return nothing;
+
+  const theirs = viewer.isAdmin || viewer.id === level.ownerId;
+  if (page === "home") {
+    return viewer.isAdmin
+      ? { draft, edit: "details", publish: undefined, delete: true }
+      : nothing;
+  }
+  if (!theirs) return nothing;
+  return draft
+    ? { draft, edit: "editor", publish: "publish", delete: true }
+    : { draft, edit: "details", publish: "unpublish", delete: true };
+}
+
+/** What a card may be asked to do, beyond opening its box. */
+export type LevelCardOptions = {
+  solved: boolean;
+  /** Mark it as a draft: the author's alone, for now. */
+  draft?: boolean;
+  onOpen: () => void;
+  /**
+   * The pencil: somewhere to go, or something to do here. Absent, and the
+   * card carries no pencil — which on the front page is everybody but an
+   * admin.
+   */
+  edit?: { href: string } | { run: () => void };
+  /**
+   * The small worded button that moves a level across the line between
+   * draft and published. `blocked` draws it greyed, and says why.
+   */
+  publish?: { label: string; run: () => void; blocked?: string };
+  /** Throw this level away. Absent, and the card carries no trash. */
+  onDelete?: () => void;
+  /**
+   * Draw the card without its picture.
+   *
+   * A whole screen of stills is a lot of screen for what a card actually
+   * says, and somebody working through the list wants to see more of it at
+   * once. The picture is left out rather than hidden, so the sharper sizes are
+   * never even asked for — see `sharpenThumbnail`, which probes up to four.
+   */
+  compact?: boolean;
+};
+
 /**
  * Built from elements with their text set, never from markup.
  *
@@ -144,32 +217,13 @@ export const countLeft = (level: TranscriptionSummary): string =>
  */
 export function createLevelCard(
   level: TranscriptionSummary,
-  options: {
-    solved: boolean;
-    onOpen: () => void;
-    /**
-     * Throw this level away, if there is anywhere to throw it.
-     *
-     * A workbench tool while there is no ownership and no way to get a level
-     * back — see the route it calls. Absent, and the card carries no such
-     * button at all.
-     */
-    onDelete?: () => void;
-    /**
-     * Draw the card without its picture.
-     *
-     * A whole screen of stills is a lot of screen for what a card actually
-     * says, and somebody working through the list wants to see more of it at
-     * once. The picture is left out rather than hidden, so the sharper sizes are
-     * never even asked for — see `sharpenThumbnail`, which probes up to four.
-     */
-    compact?: boolean;
-  },
+  options: LevelCardOptions,
 ): HTMLLIElement {
   const item = document.createElement("li");
   item.className = "level-card";
   if (options.compact) item.classList.add("is-compact");
   if (options.solved) item.classList.add("is-solved");
+  if (options.draft) item.classList.add("is-draft");
 
   // What has become of this level. Over the picture where there is one, and on
   // the subtitle's line where there is not — never on the title's, which is held
@@ -184,7 +238,9 @@ export function createLevelCard(
     badges.push(span);
   };
 
-  // The ✓ has to leave the title anyway — see `.level-open` below.
+  // Draft first, because it is the fact about the level that changes what the
+  // rest mean. The ✓ has to leave the title anyway — see `.level-open` below.
+  if (options.draft) badge("draft", "Draft", "Only you can see this level");
   if (options.solved) badge("solved", "✓", "Solved");
   if (levelState(level) !== undefined) {
     badge("unfinished", "Unfinished", countLeft(level));
@@ -216,7 +272,16 @@ export function createLevelCard(
       art.hidden = true;
     });
     sharpenThumbnail(art, level.videoId);
-    frame.append(art, ...badges);
+    frame.append(art);
+
+    // In a row of their own rather than each pinned to the corner, or a
+    // draft's ✓ would sit on top of its "Draft".
+    if (badges.length > 0) {
+      const row = document.createElement("div");
+      row.className = "level-badges";
+      row.append(...badges);
+      frame.append(row);
+    }
 
     item.append(frame);
   }
@@ -248,20 +313,44 @@ export function createLevelCard(
     title.textContent = level.title;
   }
 
-  const edit = document.createElement("a");
-  edit.className = "level-tool level-edit";
-  edit.href = `/edit?level=${encodeURIComponent(level.id)}`;
-  edit.title = "Edit";
-  edit.setAttribute("aria-label", `Edit ${level.title}`);
-  // The only innerHTML on this page, and it holds a constant from icons.ts —
-  // never anything that came out of the database.
-  edit.innerHTML = pencilIcon();
-
-  // Both raised above the title's stretched `::after` by `.level-tool`, and
+  // All raised above the title's stretched `::after` by `.level-tool`, and
   // grouped so that the gap between them is theirs rather than the head's.
   const tools = document.createElement("div");
   tools.className = "level-tools";
-  tools.append(edit);
+
+  if (options.edit) {
+    // A link where there is an address to go to, a button where there is a box
+    // to open here: the same distinction the title draws.
+    const edit =
+      "href" in options.edit
+        ? document.createElement("a")
+        : document.createElement("button");
+    edit.className = "level-tool level-edit";
+    edit.title = "Edit";
+    edit.setAttribute("aria-label", `Edit ${level.title}`);
+    // The only innerHTML on this page, and it holds a constant from icons.ts —
+    // never anything that came out of the database.
+    edit.innerHTML = pencilIcon();
+    if (edit instanceof HTMLAnchorElement && "href" in options.edit) {
+      edit.href = options.edit.href;
+    } else if (edit instanceof HTMLButtonElement && "run" in options.edit) {
+      edit.type = "button";
+      edit.addEventListener("click", options.edit.run);
+    }
+    tools.append(edit);
+  }
+
+  if (options.publish) {
+    const { label, run, blocked } = options.publish;
+    const move = document.createElement("button");
+    move.type = "button";
+    move.className = "level-tool level-tool-text level-publish";
+    move.textContent = label;
+    move.disabled = blocked !== undefined;
+    move.title = blocked ?? label;
+    move.addEventListener("click", run);
+    tools.append(move);
+  }
 
   if (options.onDelete) {
     const remove = document.createElement("button");
@@ -274,7 +363,8 @@ export function createLevelCard(
     tools.append(remove);
   }
 
-  head.append(title, tools);
+  head.append(title);
+  if (tools.childElementCount > 0) head.append(tools);
 
   // The words, padded away from the edge — the picture above is not, so the
   // padding belongs to this rather than to the card.

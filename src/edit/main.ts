@@ -2,14 +2,16 @@ import {
   isTranscriptionId,
   type TranscriptionRecord,
 } from "../shared/transcription.js";
+import { clearDraft, readDraft } from "../ui/draft-stash.js";
 import { createEditorPage, type Entry } from "../ui/editor-page.js";
 import {
   fetchLevel,
   loadScoreFonts,
   required,
   showTrouble,
+  type Trouble,
 } from "../ui/page-boot.js";
-import { mountSessionNav } from "../ui/session-nav.js";
+import { mountSiteNav } from "../ui/site-nav.js";
 
 /**
  * How this page was arrived at.
@@ -20,17 +22,34 @@ import { mountSessionNav } from "../ui/session-nav.js";
  * melody that turned up afterwards would arrive to a page already showing
  * setup.
  *
+ * Unless there is a stash. Work that was put aside on the way to signing in
+ * belongs to one address — `/edit` for a transcription that never had one,
+ * `/edit?level=…` for a draft that did — and is taken up only there, and
+ * cleared the moment it is taken: it is a hand-off across a sign-in, not a
+ * place work lives. For a draft it is also newer than the row, so the row is
+ * not fetched at all.
+ *
  * The id is checked before it is sent. Every query binds its values, so a
  * strange one could do no harm, but there is nothing to look up and so nothing
  * is looked up.
  */
-async function readEntry(): Promise<Entry | { trouble: string }> {
+async function readEntry(): Promise<Entry | Trouble> {
   const asked = new URLSearchParams(window.location.search).get("level");
+  const draft = readDraft(window.localStorage);
+
   if (asked === null) {
+    if (draft !== undefined && draft.levelId === undefined) {
+      clearDraft(window.localStorage);
+      return { kind: "restore", draft };
+    }
     return { kind: "new" };
   }
   if (!isTranscriptionId(asked)) {
     return { trouble: "That address does not name a level." };
+  }
+  if (draft !== undefined && draft.levelId === asked) {
+    clearDraft(window.localStorage);
+    return { kind: "restore", draft };
   }
 
   const record = await fetchLevel<TranscriptionRecord>(
@@ -42,12 +61,18 @@ async function readEntry(): Promise<Entry | { trouble: string }> {
 }
 
 try {
-  mountSessionNav(required("session-nav"));
+  const nav = mountSiteNav(required("site-nav"));
 
   const [entry] = await Promise.all([readEntry(), loadScoreFonts()]);
 
   if ("trouble" in entry) {
-    showTrouble(required("setup"), entry.trouble);
+    // A level that is somebody's, with nobody signed in: the remedy is offered
+    // beside the sentence, and it comes back to this very address.
+    showTrouble(required("setup"), entry.trouble, {
+      signIn: entry.signIn
+        ? `${window.location.pathname}${window.location.search}`
+        : undefined,
+    });
   } else {
     createEditorPage(
       {
@@ -69,6 +94,7 @@ try {
         scoreArea: required("score-area"),
       },
       entry,
+      nav,
     );
   }
 } catch (error) {

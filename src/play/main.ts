@@ -20,7 +20,7 @@ import {
   showTrouble,
 } from "../ui/page-boot.js";
 import { createPlayPage } from "../ui/play-page.js";
-import { mountSessionNav } from "../ui/session-nav.js";
+import { mountSiteNav } from "../ui/site-nav.js";
 
 const store = createLocalProgressStore(window.localStorage);
 
@@ -57,7 +57,7 @@ async function readProgress(): Promise<PlayProgress | undefined> {
 }
 
 try {
-  mountSessionNav(required("session-nav"));
+  mountSiteNav(required("site-nav"));
 
   const [level, progress] = await Promise.all([
     readLevel(),

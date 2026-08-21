@@ -5,6 +5,8 @@
  * different routes and need exactly the same footing once they get there.
  */
 
+import { googleButton } from "./google-button.js";
+
 /**
  * Make sure the score fonts are usable before anything is measured.
  *
@@ -35,13 +37,18 @@ export function required(id: string): HTMLElement {
 }
 
 /**
- * Said instead of the score, with the way back to the list.
+ * Said instead of the score, with the way back to the list — and, when
+ * signing in would help, the way to do that and come straight back here.
  *
  * Takes the element to fill because the two pages have nowhere in common to
  * put it: the editor has its setup region standing empty at this point, and
  * the play page has only its workspace.
  */
-export function showTrouble(host: HTMLElement, message: string): void {
+export function showTrouble(
+  host: HTMLElement,
+  message: string,
+  options: { heading?: string; signIn?: string } = {},
+): void {
   host.replaceChildren();
 
   const panel = document.createElement("section");
@@ -49,11 +56,20 @@ export function showTrouble(host: HTMLElement, message: string): void {
 
   const heading = document.createElement("h1");
   heading.className = "page-title";
-  heading.textContent = "That level could not be opened";
+  heading.textContent = options.heading ?? "That level could not be opened";
 
   const said = document.createElement("p");
   said.className = "page-lede";
   said.textContent = message;
+
+  panel.append(heading, said);
+
+  if (options.signIn !== undefined) {
+    const sign = document.createElement("p");
+    sign.className = "level-trouble-signin";
+    sign.append(googleButton({ next: options.signIn }));
+    panel.append(sign);
+  }
 
   const back = document.createElement("p");
   const link = document.createElement("a");
@@ -61,20 +77,25 @@ export function showTrouble(host: HTMLElement, message: string): void {
   link.textContent = "Back to the levels";
   back.append(link);
 
-  panel.append(heading, said, back);
+  panel.append(back);
   host.append(panel);
 }
+
+/**
+ * What went wrong, in a sentence; and whether signing in is the remedy, so
+ * the page can offer it rather than merely report it.
+ */
+export type Trouble = { trouble: string; signIn?: true };
 
 /**
  * What went wrong fetching a level, in a sentence, or the body if nothing did.
  *
  * Both pages ask for a level by id and both have to answer the same handful of
  * ways it can fail — a server that cannot be reached, a level that is not
- * there, a reply that is not JSON because a captive portal answered instead.
+ * there, a reply that is not JSON because a captive portal answered instead,
+ * and now a level that is somebody's and nobody is signed in.
  */
-export async function fetchLevel<T>(
-  path: string,
-): Promise<T | { trouble: string }> {
+export async function fetchLevel<T>(path: string): Promise<T | Trouble> {
   let response: Response;
   try {
     response = await fetch(path, { headers: { accept: "application/json" } });
@@ -89,7 +110,8 @@ export async function fetchLevel<T>(
     const said = (await response.json().catch(() => ({}))) as {
       error?: string;
     };
-    return { trouble: said.error ?? `The server answered ${response.status}.` };
+    const trouble = said.error ?? `The server answered ${response.status}.`;
+    return response.status === 401 ? { trouble, signIn: true } : { trouble };
   }
 
   try {

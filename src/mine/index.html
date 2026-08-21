@@ -2,15 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!-- A document rather than a control surface, so unlike the editor this one
-         lets the page be zoomed. -->
+    <!-- A document rather than a control surface, like the front page. -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Transcribe</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>My transcriptions · Transcribe</title>
+    <link rel="stylesheet" href="../styles.css" />
   </head>
   <body>
     <nav class="site-nav">
-      <a class="site-name" href="/" aria-current="page">Transcribe</a>
+      <a class="site-name" href="/">Transcribe</a>
       <div id="site-nav" class="site-links">
         <!-- Filled in by site-nav.ts: the same places from every page, the
              one you are on marked, and the corner that knows who you are. -->
@@ -18,20 +17,18 @@
     </nav>
 
     <main class="page">
-      <h1 class="page-title">Levels</h1>
+      <h1 class="page-title">My transcriptions</h1>
       <p class="page-lede">
-        Melodies people have picked off a recording and written down.
+        Drafts nobody else can see, and what you have published.
       </p>
 
-      <!-- Filled in by home.ts. Empty in the markup rather than a checkbox
-           swapped out later, so it never flashes as one shape and settles as
-           another. -->
+      <!-- Filled in by main.ts, like the front page's. -->
       <div id="levels-controls" class="level-controls"></div>
 
       <ul id="levels" class="level-list"></ul>
       <p id="levels-note" class="page-note" role="status">Loading…</p>
     </main>
 
-    <script type="module" src="./home.ts"></script>
+    <script type="module" src="./main.ts"></script>
   </body>
 </html>
