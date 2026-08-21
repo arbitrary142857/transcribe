@@ -1,12 +1,22 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
-import type { TokenFetch } from "../dist-worker/worker/auth.js";
+import { returnPathOf, type TokenFetch } from "../dist-worker/worker/auth.js";
 import { api } from "../dist-worker/worker/routes.js";
-
-type Row = Record<string, unknown>;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import {
+  DAY_MS,
+  SIGNED_IN,
+  TOKEN,
+  sessionAnswer,
+  sha256Hex,
+} from "./helpers/signed-in.js";
+import {
+  anyFirst,
+  boundColumns,
+  errorOf,
+  stubDatabase,
+  type Row,
+} from "./helpers/stub-database.js";
 
 const CLIENT_ID = "test-client.apps.googleusercontent.com";
 const CLIENT_SECRET = "a-secret-nobody-should-see";
@@ -16,31 +26,11 @@ const STATE = "the-state-that-was-set";
 const VERIFIER = "the-verifier-that-was-set";
 const FLIGHT = { cookie: `signin=${STATE}.${VERIFIER}` };
 
-/**
- * Enough of D1 for these routes, keeping every statement and every value it
- * was asked to bind — which is how the tests below check what the server
- * decided rather than what the request claimed.
- */
-function stubDatabase(options: { rows?: readonly Row[]; first?: Row } = {}) {
-  const asked: { sql: string; values: unknown[] }[] = [];
-  const db = {
-    prepare(sql: string) {
-      const record = { sql, values: [] as unknown[] };
-      asked.push(record);
-      const statement = {
-        bind(...values: unknown[]) {
-          record.values = values;
-          return statement;
-        },
-        all: async () => ({ results: [...(options.rows ?? [])] }),
-        first: async () => options.first ?? null,
-        run: async () => ({ success: true }),
-      };
-      return statement;
-    },
-  };
-  return { asked, db };
-}
+/** The same, remembering where to go back to. */
+const encodedPath = (path: string) => Buffer.from(path).toString("base64url");
+const flightBackTo = (path: string) => ({
+  cookie: `signin=${STATE}.${VERIFIER}.${encodedPath(path)}`,
+});
 
 /**
  * Enough of Google's token endpoint: whatever it is asked, it answers with
@@ -91,9 +81,6 @@ const envOf = (
       : { clientId: CLIENT_ID, clientSecret: CLIENT_SECRET, fetch },
 });
 
-const sha256Hex = (text: string) =>
-  createHash("sha256").update(text).digest("hex");
-
 const cookiesOf = (response: Response) => response.headers.getSetCookie();
 
 const cookieNamed = (response: Response, name: string) =>
@@ -101,18 +88,6 @@ const cookieNamed = (response: Response, name: string) =>
 
 const cookieValueOf = (cookie: string) =>
   cookie.slice(cookie.indexOf("=") + 1, cookie.indexOf(";"));
-
-/** The values an INSERT bound, by the column order the statement names. */
-const boundColumns = (sql: string, values: readonly unknown[]) => {
-  const names = sql
-    .slice(sql.indexOf("(") + 1, sql.indexOf(")"))
-    .split(",")
-    .map((name) => name.trim());
-  return Object.fromEntries(names.map((name, index) => [name, values[index]]));
-};
-
-const errorOf = async (response: Response) =>
-  ((await response.json()) as { error: string }).error;
 
 // ---- starting a sign-in ---------------------------------------------------
 
@@ -219,6 +194,76 @@ describe("GET /api/auth/google", () => {
     assert.equal(await errorOf(response), "Sign-in is not set up on this server.");
     assert.equal(asked.length, 0);
   });
+
+  it("keeps the place to return to in the flight cookie, where no script can read it", async () => {
+    const { db } = stubDatabase();
+    const response = await api.request(
+      "/api/auth/google?next=%2Fedit%3Flevel%3Dk3m9x2p7qw4t",
+      undefined,
+      envOf(db, stubGoogle().fetch),
+    );
+
+    const flight = cookieValueOf(cookieNamed(response, "signin")!);
+    const [, , where] = flight.split(".");
+    assert.equal(
+      Buffer.from(where!, "base64url").toString(),
+      "/edit?level=k3m9x2p7qw4t",
+    );
+    // Google is told nothing about it: the redirect_uri it matches exactly
+    // stays what it was, and nothing else names the path.
+    const sent = new URL(response.headers.get("location")!);
+    assert.equal(sent.searchParams.get("redirect_uri"), "http://localhost/api/auth/callback");
+    assert.equal(sent.toString().includes("edit"), false);
+  });
+
+  it("remembers only the site's own pages, and home for anything else", async () => {
+    const { db } = stubDatabase();
+    const response = await api.request(
+      "/api/auth/google?next=//evil.example.com/edit",
+      undefined,
+      envOf(db, stubGoogle().fetch),
+    );
+
+    const [, , where] = cookieValueOf(cookieNamed(response, "signin")!).split(".");
+    assert.equal(Buffer.from(where!, "base64url").toString(), "/");
+  });
+});
+
+describe("returnPathOf()", () => {
+  it("keeps a path within the site, query string and all", () => {
+    assert.equal(returnPathOf("/edit?level=k3m9x2p7qw4t"), "/edit?level=k3m9x2p7qw4t");
+    assert.equal(returnPathOf("/mine"), "/mine");
+    assert.equal(returnPathOf("/"), "/");
+    assert.equal(returnPathOf("/play?level=abc#top"), "/play?level=abc#top");
+  });
+
+  it("sends a path to another site home instead", () => {
+    for (const elsewhere of [
+      "//evil.example.com/edit",
+      "/\\evil.example.com",
+      "https://evil.example.com/",
+      "javascript:alert(1)",
+      "http://localhost/edit",
+    ]) {
+      assert.equal(returnPathOf(elsewhere), "/", `kept ${elsewhere}`);
+    }
+  });
+
+  it("sends anything that is not a path home", () => {
+    for (const notAPath of [undefined, null, "", "edit", "edit?level=x", 42, {}, []]) {
+      assert.equal(returnPathOf(notAPath), "/", `kept ${String(notAPath)}`);
+    }
+  });
+
+  it("sends an unreasonably long path home", () => {
+    assert.equal(returnPathOf(`/${"a".repeat(600)}`), "/");
+  });
+
+  it("sends a path under /api home, since nothing there is a page", () => {
+    assert.equal(returnPathOf("/api/auth/google"), "/");
+    assert.equal(returnPathOf("/api"), "/");
+    assert.equal(returnPathOf("/apiary"), "/apiary");
+  });
 });
 
 // ---- finishing a sign-in ----------------------------------------------------
@@ -270,6 +315,79 @@ describe("GET /api/auth/callback", () => {
     assert.equal(asked.length, 0);
   });
 
+  it("sends the visitor back where they came from once signed in", async () => {
+    const { db } = stubDatabase();
+    const google = stubGoogle({ body: { id_token: idTokenOf() } });
+
+    const response = await api.request(
+      `/api/auth/callback?code=abc&state=${STATE}`,
+      { headers: flightBackTo("/edit?level=k3m9x2p7qw4t") },
+      envOf(db, google.fetch),
+    );
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/edit?level=k3m9x2p7qw4t");
+    assert.notEqual(cookieNamed(response, "session"), undefined);
+  });
+
+  it("sends a visitor who cancelled at Google back there too", async () => {
+    const { db } = stubDatabase();
+
+    const response = await api.request(
+      "/api/auth/callback?error=access_denied",
+      { headers: flightBackTo("/edit") },
+      envOf(db, stubGoogle().fetch),
+    );
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/edit");
+  });
+
+  it("goes home when the cookie names nowhere, as cookies set before this did", async () => {
+    const { db } = stubDatabase();
+    const google = stubGoogle({ body: { id_token: idTokenOf() } });
+
+    const response = await api.request(
+      `/api/auth/callback?code=abc&state=${STATE}`,
+      { headers: FLIGHT },
+      envOf(db, google.fetch),
+    );
+
+    assert.equal(response.headers.get("location"), "/");
+  });
+
+  it("trusts the cookie's return path no more than the query's", async () => {
+    // The cookie is the browser's to send, so a forged third segment must not
+    // become a Location header pointing off the site.
+    const { db } = stubDatabase();
+    const google = stubGoogle({ body: { id_token: idTokenOf() } });
+
+    for (const forged of ["https://evil.example.com/", "//evil.example.com", "nonsense"]) {
+      const response = await api.request(
+        `/api/auth/callback?code=abc&state=${STATE}`,
+        { headers: flightBackTo(forged) },
+        envOf(db, google.fetch),
+      );
+      assert.equal(response.status, 302, `choked on ${forged}`);
+      assert.equal(response.headers.get("location"), "/", `followed ${forged}`);
+    }
+  });
+
+  it("still refuses a mismatched state, whatever the cookie says about where to go", async () => {
+    const { db, asked } = stubDatabase();
+    const google = stubGoogle({ body: { id_token: idTokenOf() } });
+
+    const response = await api.request(
+      "/api/auth/callback?code=abc&state=some-other-state",
+      { headers: flightBackTo("/edit") },
+      envOf(db, google.fetch),
+    );
+
+    assert.equal(response.status, 400);
+    assert.equal(google.calls.length, 0);
+    assert.equal(asked.length, 0);
+  });
+
   it("creates an account at first sign-in and remembers the Google subject", async () => {
     const { db, asked } = stubDatabase();
     const google = stubGoogle({ body: { id_token: idTokenOf() } });
@@ -292,7 +410,7 @@ describe("GET /api/auth/callback", () => {
   });
 
   it("recognises a returning account rather than creating another", async () => {
-    const { db, asked } = stubDatabase({ first: { id: "7k2m9x4p3qwt" } });
+    const { db, asked } = stubDatabase([anyFirst({ id: "7k2m9x4p3qwt" })]);
     const google = stubGoogle({ body: { id_token: idTokenOf() } });
 
     await api.request(
@@ -313,7 +431,7 @@ describe("GET /api/auth/callback", () => {
   });
 
   it("refreshes the email on file at each sign-in", async () => {
-    const { db, asked } = stubDatabase({ first: { id: "7k2m9x4p3qwt" } });
+    const { db, asked } = stubDatabase([anyFirst({ id: "7k2m9x4p3qwt" })]);
     const google = stubGoogle({
       body: { id_token: idTokenOf({ email: "renamed@example.com" }) },
     });
@@ -493,20 +611,6 @@ describe("GET /api/auth/callback", () => {
 
 // ---- asking who is signed in ----------------------------------------------
 
-/** A session row as /api/me's join reads one. */
-const sessionRow = (over: Row = {}): Row => ({
-  id: "7k2m9x4p3qwt",
-  email: "jason@example.com",
-  username: null,
-  is_admin: 0,
-  google_sub: "107691503500061507151",
-  expires_at: Date.now() + 29 * DAY_MS,
-  ...over,
-});
-
-const TOKEN = "a-session-token-somebody-was-issued";
-const SESSION = { cookie: `session=${TOKEN}` };
-
 describe("GET /api/me", () => {
   it("answers nobody when no cookie was sent", async () => {
     const { db, asked } = stubDatabase();
@@ -521,7 +625,7 @@ describe("GET /api/me", () => {
     const { db } = stubDatabase();
     const response = await api.request(
       "/api/me",
-      { headers: SESSION },
+      { headers: SIGNED_IN },
       { DB: db },
     );
 
@@ -530,10 +634,10 @@ describe("GET /api/me", () => {
   });
 
   it("names the signed-in user without the google subject or any token", async () => {
-    const { db, asked } = stubDatabase({ first: sessionRow() });
+    const { db, asked } = stubDatabase([sessionAnswer()]);
     const response = await api.request(
       "/api/me",
-      { headers: SESSION },
+      { headers: SIGNED_IN },
       { DB: db },
     );
 
@@ -549,10 +653,10 @@ describe("GET /api/me", () => {
   });
 
   it("leaves out a username nobody has chosen, rather than sending null", async () => {
-    const { db } = stubDatabase({ first: sessionRow({ username: null }) });
+    const { db } = stubDatabase([sessionAnswer({ username: null })]);
     const response = await api.request(
       "/api/me",
-      { headers: SESSION },
+      { headers: SIGNED_IN },
       { DB: db },
     );
 
@@ -561,10 +665,10 @@ describe("GET /api/me", () => {
   });
 
   it("says so when the signed-in user is an admin", async () => {
-    const { db } = stubDatabase({ first: sessionRow({ is_admin: 1 }) });
+    const { db } = stubDatabase([sessionAnswer({ is_admin: 1 })]);
     const response = await api.request(
       "/api/me",
-      { headers: SESSION },
+      { headers: SIGNED_IN },
       { DB: db },
     );
 
@@ -574,7 +678,7 @@ describe("GET /api/me", () => {
 
   it("asks the database only for sessions that have not expired", async () => {
     const { db, asked } = stubDatabase();
-    await api.request("/api/me", { headers: SESSION }, { DB: db });
+    await api.request("/api/me", { headers: SIGNED_IN }, { DB: db });
 
     assert.match(asked[0]!.sql, /expires_at > \?/i);
     const now = asked[0]!.values.find((value) => typeof value === "number");
@@ -582,10 +686,8 @@ describe("GET /api/me", () => {
   });
 
   it("pushes a session's end away while it keeps being used", async () => {
-    const { db, asked } = stubDatabase({
-      first: sessionRow({ expires_at: Date.now() + 5 * DAY_MS }),
-    });
-    await api.request("/api/me", { headers: SESSION }, { DB: db });
+    const { db, asked } = stubDatabase([sessionAnswer({ expires_at: Date.now() + 5 * DAY_MS })]);
+    await api.request("/api/me", { headers: SIGNED_IN }, { DB: db });
 
     const renewal = asked.find((each) => /update sessions/i.test(each.sql));
     assert.notEqual(renewal, undefined);
@@ -596,12 +698,10 @@ describe("GET /api/me", () => {
     // The row's extension alone is not a renewal: the browser discards the
     // cookie when the Max-Age it was issued with runs out, however alive the
     // row behind it is. The same token goes back out with a fresh thirty days.
-    const { db } = stubDatabase({
-      first: sessionRow({ expires_at: Date.now() + 5 * DAY_MS }),
-    });
+    const { db } = stubDatabase([sessionAnswer({ expires_at: Date.now() + 5 * DAY_MS })]);
     const response = await api.request(
       "/api/me",
-      { headers: SESSION },
+      { headers: SIGNED_IN },
       { DB: db },
     );
 
@@ -612,12 +712,10 @@ describe("GET /api/me", () => {
   });
 
   it("leaves a fresh session's clock alone", async () => {
-    const { db, asked } = stubDatabase({
-      first: sessionRow({ expires_at: Date.now() + 29 * DAY_MS }),
-    });
+    const { db, asked } = stubDatabase([sessionAnswer({ expires_at: Date.now() + 29 * DAY_MS })]);
     const response = await api.request(
       "/api/me",
-      { headers: SESSION },
+      { headers: SIGNED_IN },
       { DB: db },
     );
 
@@ -636,7 +734,7 @@ describe("POST /api/auth/logout", () => {
     const { db, asked } = stubDatabase();
     const response = await api.request(
       "/api/auth/logout",
-      { method: "POST", headers: SESSION },
+      { method: "POST", headers: SIGNED_IN },
       { DB: db },
     );
 

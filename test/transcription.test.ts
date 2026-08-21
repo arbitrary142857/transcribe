@@ -18,6 +18,7 @@ import {
   LIMITS,
   newTranscriptionId,
   puzzleMelodyOf,
+  sameMusic,
 } from "../dist/shared/transcription.js";
 
 const C4 = new Pitch("C", 0, 4);
@@ -484,5 +485,48 @@ describe("gradeAttempt()", () => {
     );
 
     assert.equal(graded.total, countSoundingNotes(melody));
+  });
+});
+
+describe("sameMusic()", () => {
+  it("calls a melody the same as its own round trip through the codec", () => {
+    const melody = melodyOf([
+      new Note(C4, QUARTER),
+      new Note(C4, QUARTER),
+      new Rest(QUARTER),
+      new UnpitchedNote(QUARTER),
+    ]);
+    melody.tie(0);
+
+    assert.equal(sameMusic(melody, decode(encode(melody))), true);
+  });
+
+  it("tells two melodies apart by pitch, by rhythm and by tie", () => {
+    const base = () =>
+      melodyOf([new Note(C4, QUARTER), new Note(C4, QUARTER), new Note(E4, QUARTER)]);
+
+    const repitched = base();
+    repitched.setPitch(2, new Pitch("G", 0, 4));
+    assert.equal(sameMusic(base(), repitched), false);
+
+    const rerhythmed = melodyOf([
+      new Note(C4, new Duration(NoteValue.Half)),
+      new Note(E4, QUARTER),
+      new Rest(QUARTER),
+    ]);
+    assert.equal(sameMusic(base(), rerhythmed), false);
+
+    const tied = base();
+    tied.tie(0);
+    assert.equal(sameMusic(base(), tied), false);
+  });
+
+  it("counts a respelling as a change, since a score shows the spelling", () => {
+    // The check route forgives this because nobody chooses a spelling when
+    // playing. An author editing a published score is choosing one.
+    const sharp = melodyOf([new Note(C4, QUARTER), new Note(new Pitch("D", 1, 4), QUARTER)]);
+    const flat = melodyOf([new Note(C4, QUARTER), new Note(new Pitch("E", -1, 4), QUARTER)]);
+
+    assert.equal(sameMusic(sharp, flat), false);
   });
 });

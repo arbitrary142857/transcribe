@@ -4,7 +4,9 @@ How signing in works, why each piece is shaped the way it is, and how to
 operate it. The code lives in `worker/auth.ts` (routes and session lookup),
 `src/shared/session.ts` (the shapes both sides agree on),
 `src/ui/session-nav.ts` (the corner of the nav), and
-`migrations/0002_create_users_and_sessions.sql` (the tables). Tests:
+`migrations/0002_create_users_and_sessions.sql` (the tables), and
+`migrations/0003_own_and_publish_transcriptions.sql` (levels gaining owners).
+Tests:
 `test/auth.test.ts`, `test/session.test.ts`.
 
 ## The two systems
@@ -39,7 +41,7 @@ Browser                       This Worker                      Google
   |  GET /api/auth/google        |                                |
   |----------------------------->|                                |
   |   302 -> accounts.google.com |  (sets the "signin" cookie:    |
-  |<-----------------------------|   state.verifier, 10 min)      |
+  |<-----------------------------|   state.verifier.return, 10m)  |
   |  consent screen              |                                |
   |------------------------------------------------------------->|
   |   302 -> /api/auth/callback?code=...&state=...                |
@@ -49,9 +51,22 @@ Browser                       This Worker                      Google
   |                              |------------------------------->|
   |                              |   { id_token }                 |
   |                              |<-------------------------------|
-  |   302 -> /                   |  (upserts user, inserts        |
+  |   302 -> return              |  (upserts user, inserts        |
   |<-----------------------------|   session, sets "session")     |
 ```
+
+`return` is where on this site to land afterwards — `/api/auth/google?next=/edit`
+puts it in the flight cookie, and the callback reads it back. It is a path
+the browser supplied, and it becomes a `Location` header, which is the shape
+an open redirect takes, so `returnPathOf()` holds it to being one of our own
+pages: it must start with a single `/`, must still be on our origin after the
+URL parser has had its way with it (which rejects `//host`, `/\host` and any
+scheme), and must not be under `/api`, where nothing is a page and
+`/api/auth/google` itself would loop. It is checked on the way *in* and
+again on the way *out*, because on the way out it comes from a cookie, and a
+cookie is the browser's to send. Anything that fails goes home. Google is
+told nothing about it: the `redirect_uri` Google matches exactly stays what
+it was.
 
 **What each moving part defends against:**
 
@@ -152,8 +167,9 @@ on the sign-in path (every callback deletes rows already past their
 scheduled.
 
 **Reading the session** is `sessionUserOf(c)`: cookie → SHA-256 → one query
-joining `sessions` to `users`. In this phase only `/api/me` calls it. When
-ownership arrives, every write route calls it first.
+joining `sessions` to `users`. `/api/me` calls it; so does every route that
+writes a level or reads its answer, before anything else; and the two play
+routes call it only once a row has turned out to be a draft (see below).
 
 ## The tables
 
@@ -169,6 +185,13 @@ sessions  token_hash    hex SHA-256 of the cookie token; PRIMARY KEY
           user_id       -> users.id, ON DELETE CASCADE
           created_at    epoch ms
           expires_at    epoch ms; slid forward while the session is used
+
+transcriptions  (the level table, rebuilt by 0003 to carry these)
+          owner_id      -> users.id, NOT NULL; who may edit, delete, publish
+          status        'draft' | 'published'
+          published_at  epoch ms, or NULL — CHECKed to agree with status
+          updated_at    epoch ms; moved by every write, publishing included
+          CHECK         a published level has every note pitched
 ```
 
 Users have their own ids rather than using `google_sub` directly so that
@@ -187,6 +210,47 @@ boundary below.
 
 Each page asks `/api/me` fresh on load (these are separate pages, not one
 app). Until the answer arrives, the nav corner is empty rather than wrong.
+
+## What a session is for: ownership and publishing
+
+A level belongs to the account that saved it. It begins as a **draft** —
+saved work that only its owner (and an admin) can open, play, change, delete
+or publish, and that the public listing never names. **Publishing** requires
+every note to have a pitch (the route says so; the database's CHECK makes it
+a fact), stamps `published_at`, and freezes the music: from then on the only
+edit a published level accepts is to its title, subtitle and instructions,
+judged by whether the music or the marks *differ* from what is stored rather
+than by whether they were mentioned — the editor always sends the melody.
+**Unpublishing** turns it back into a draft under a **new id**. Players keep
+progress against an id, and the author is about to change the music that
+progress was keyed to note by note; rotating the id means the old progress
+meets nothing rather than the wrong answer key.
+
+Who may do what, by route:
+
+| route | session | no session | stranger, published | stranger, draft |
+| --- | --- | --- | --- | --- |
+| `GET /api/levels` | none | 200 | — | — |
+| `GET /api/mine` | required | 401 | — | — |
+| `POST /api/levels` | required | 401 | — | — |
+| `GET /api/levels/:id/source` | required | 401 | 403 | 404 |
+| `PUT /api/levels/:id` | required | 401 | 403 | 404 |
+| `DELETE /api/levels/:id` | required | 401 | 403 | 404 |
+| `POST /api/levels/:id/publish` | required | 401 | 403 | 404 |
+| `POST /api/levels/:id/unpublish` | required | 401 | 403 | 404 |
+| `GET /api/levels/:id/puzzle` | only for drafts | 200 / 404 | 200 | 404 |
+| `POST /api/levels/:id/check` | only for drafts | 200 / 404 | 200 | 404 |
+
+Three things the table encodes. A signed-out request to a gated route is
+401 before the body is read and before any row is looked up, so it learns
+nothing about any id. A stranger's request about a *published* level may be
+told "only the author can change this" (403), because a published level's
+existence is public; about a *draft* it is told exactly what a missing level
+would tell it (404, same sentence), because a draft's existence is the
+author's. And the play routes look the session up *lazily* — only after the
+row has said it is a draft — so a published level's `/check`, the hottest
+path on the site, never costs a sessions query. An admin (`is_admin = 1`)
+passes every ownership check; nothing in a request can make someone one.
 
 ## The trust boundary, in one sentence
 
@@ -232,8 +296,10 @@ is written for everyone else.
   wrangler secret put GOOGLE_CLIENT_SECRET
   ```
 - After changing `wrangler.jsonc`, rerun `npm run cf-typegen`.
-- Apply the migration: `npm run db:migrate:local` and
-  `npm run db:migrate:remote`.
+- Apply the migrations: `npm run db:migrate:local` and
+  `npm run db:migrate:remote`. 0003 rebuilds the level table and hands any
+  existing levels to the *earliest account*, so on a database that has levels
+  but no accounts it fails loudly on purpose — sign in once first.
 
 With credentials absent or blank, the sign-in routes answer 503 with a
 sentence and the rest of the site is untouched — a fresh clone works without
@@ -315,8 +381,6 @@ the "no such host" answer for a while — Cloudflare's own resolver
 
 ## Decisions a future phase will revisit
 
-- **Ownership**: `sessionUserOf` exists so the write routes can start asking
-  who is calling; nothing asks yet.
 - **`/api/me` on every page load** is one D1 read per visit; fine at this
   scale, cacheable later if it ever matters.
 - **Google-only** means a lost Google account is a lost site account.

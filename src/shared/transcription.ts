@@ -17,6 +17,22 @@ import { isId, newId } from "./id.js";
 /** The two clefs the setup page offers, and the two the database allows. */
 export type Clef = "treble" | "bass";
 
+/**
+ * Whether a level is the author's alone or everybody's.
+ *
+ * A draft is saved work: only its owner (and an admin) can open, play, or
+ * change it, and the public listing never names it. Publishing freezes the
+ * music and puts it in the listing. Unpublishing takes it back to a draft
+ * under a *new* id, so whatever anybody remembered about the old one — a
+ * bookmark, progress in a browser — points at nothing rather than at music
+ * that may since have changed.
+ *
+ * Not to be confused with "unfinished", which is about `unpitchedCount` and
+ * is a different axis: a draft may be finished, and the database refuses to
+ * let an unfinished one be published.
+ */
+export type LevelStatus = "draft" | "published";
+
 /** What an author writes about their transcription. */
 export type TranscriptionDetails = {
   title: string;
@@ -70,6 +86,17 @@ export type TranscriptionSummary = {
    * about the secrecy rule minds it travelling.
    */
   instructions: string | undefined;
+  /**
+   * Whose it is. An opaque id rather than a name, until there are names; a
+   * page compares it with the id /api/me gave to decide whether to draw the
+   * pencil and the trash, which is drawing and never permission.
+   */
+  ownerId: string;
+  status: LevelStatus;
+  /** The moment it went public, or nothing while it is a draft. */
+  publishedAt: number | undefined;
+  /** Moved by every write, including publishing; what "my transcriptions" sorts by. */
+  updatedAt: number;
   createdAt: number;
 };
 
@@ -80,9 +107,10 @@ export type TranscriptionRecord = TranscriptionSummary & {
 
 // ---- limits -------------------------------------------------------------
 //
-// These mirror the CHECK constraints in migrations/0001, and must keep
-// mirroring them: a value that passes here and fails there reaches the author
-// as a raw SQLite error instead of a sentence.
+// These mirror the CHECK constraints in migrations/0003 (which restated
+// 0001's when the table was rebuilt), and must keep mirroring them: a value
+// that passes here and fails there reaches the author as a raw SQLite error
+// instead of a sentence.
 
 export const LIMITS = {
   /** One cap for both, because a subtitle is only a second line of naming. */
@@ -176,6 +204,22 @@ export function firstSoundingNote(melody: Melody): number[] | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Whether two melodies are the same music, note for note.
+ *
+ * Both go through the codec, whose output is canonical — ties in index order,
+ * brackets sorted — so two melodies that merely list their ties differently
+ * are still the same, and a sender cannot manufacture a difference by
+ * reordering JSON. What does count as different is everything a score shows:
+ * a pitch, a length, a tie, a bracket, and a spelling. The check route
+ * forgives an enharmonic respelling because a player never chooses one; an
+ * author editing a published score is choosing one, and the published score
+ * is what players are reading.
+ */
+export function sameMusic(a: Melody, b: Melody): boolean {
+  return JSON.stringify(encode(a)) === JSON.stringify(encode(b));
 }
 
 // ---- the puzzle ---------------------------------------------------------

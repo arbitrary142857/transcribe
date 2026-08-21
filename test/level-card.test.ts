@@ -22,6 +22,10 @@ const level = (
   noteCount: 12,
   unpitchedCount: 0,
   instructions: undefined,
+  ownerId: "7k2m9x4p3qwt",
+  status: "published",
+  publishedAt: 1_754_500_000_000,
+  updatedAt: 1_754_500_000_000,
   createdAt: 1_754_500_000_000,
   ...over,
 });

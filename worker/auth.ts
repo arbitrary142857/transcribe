@@ -81,12 +81,25 @@ const SESSION_COOKIE = "session";
 
 /**
  * The cookie that lasts from pressing "sign in" to landing back here, holding
- * `state.verifier`. Scoped to /api/auth because nothing else ever reads it,
- * and short-lived because the round trip to Google takes seconds, not days.
+ * `state.verifier.return` -- the last being where on this site to go once it
+ * is over, base64url so it can hold a `/` and a `?` without the dots that
+ * separate the three meaning anything. Scoped to /api/auth because nothing
+ * else ever reads it, and short-lived because the round trip to Google takes
+ * seconds, not days.
  */
 const FLIGHT_COOKIE = "signin";
 const FLIGHT_PATH = "/api/auth";
 const FLIGHT_TTL_SECONDS = 10 * 60;
+
+/**
+ * Where a return path is measured against. A made-up origin, so that a path
+ * which resolves to anywhere else -- a scheme, a `//host`, a `/\host` the
+ * URL parser reads as one -- stands out by not resolving to this.
+ */
+const RETURN_BASE = "https://return.invalid";
+
+/** Longer than any page address here, and well inside what a cookie holds. */
+const RETURN_PATH_MAX = 512;
 
 /**
  * Thirty days, slid forward whenever a session's second half is reached — so
@@ -105,6 +118,42 @@ const TRY_AGAIN = "That sign-in could not be finished. Try again.";
 
 export const auth = new Hono<{ Bindings: ApiEnv }>();
 
+/**
+ * Where to send the visitor after sign-in: the page they asked for, if it is
+ * one of ours, and home otherwise.
+ *
+ * This becomes a Location header, which is the shape an open redirect takes,
+ * so it is held to being a path on this site and nothing else. The test is
+ * to resolve it against an origin of our own choosing and see whether it
+ * stayed there: a scheme, a `//host`, and the `/\host` the WHATWG parser reads
+ * as a host all resolve elsewhere. Nothing under /api is a page, and letting
+ * `/api/auth/google` through would send a freshly signed-in visitor round
+ * again. Run on the way in and again on the way out, because on the way out
+ * it is read from a cookie, and a cookie is the browser's to send.
+ */
+export function returnPathOf(next: unknown): string {
+  if (typeof next !== "string" || next.length > RETURN_PATH_MAX) {
+    return "/";
+  }
+  if (!next.startsWith("/") || next.startsWith("//")) {
+    return "/";
+  }
+
+  let url: URL;
+  try {
+    url = new URL(next, RETURN_BASE);
+  } catch {
+    return "/";
+  }
+  if (url.origin !== RETURN_BASE) {
+    return "/";
+  }
+  if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {
+    return "/";
+  }
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 // ---- starting: send the visitor to Google ----------------------------------
 
 auth.get("/api/auth/google", async (c) => {
@@ -122,8 +171,15 @@ auth.get("/api/auth/google", async (c) => {
   const verifier = randomToken();
   const challenge = toBase64Url(await sha256(verifier));
 
+  // Where to land afterwards rides in the cookie too, never in anything sent
+  // to Google: the redirect_uri is matched exactly against the console's
+  // list, and a path tacked onto it would match nothing.
+  const back = toBase64Url(
+    new TextEncoder().encode(returnPathOf(c.req.query("next"))),
+  );
+
   const { origin, protocol } = new URL(c.req.url);
-  setCookie(c, FLIGHT_COOKIE, `${state}.${verifier}`, {
+  setCookie(c, FLIGHT_COOKIE, `${state}.${verifier}.${back}`, {
     path: FLIGHT_PATH,
     httpOnly: true,
     sameSite: "Lax",
@@ -159,15 +215,20 @@ auth.get("/api/auth/callback", async (c) => {
   // Spent either way: a flight cookie is for one attempt, however it ends.
   deleteCookie(c, FLIGHT_COOKIE, { path: FLIGHT_PATH });
 
+  // A cookie set before there was a third part decodes to nothing, and
+  // nothing is home. A cookie somebody wrote themselves is judged exactly as
+  // the query was -- see returnPathOf.
+  const [expected, verifier, encodedBack] = (flight ?? "").split(".");
+  const back = returnPathOf(fromBase64Url(encodedBack));
+
   // The visitor pressed cancel at Google's screen. Nothing went wrong and
-  // nobody needs a sentence about it; they were going home either way.
+  // nobody needs a sentence about it; they go back to where they were.
   if (c.req.query("error") !== undefined) {
-    return c.redirect("/");
+    return c.redirect(back);
   }
 
   const code = c.req.query("code");
   const state = c.req.query("state");
-  const [expected, verifier] = (flight ?? "").split(".");
   if (!flight || !code || !state || !expected || !verifier || state !== expected) {
     return c.json({ error: TRY_AGAIN }, 400);
   }
@@ -245,7 +306,7 @@ auth.get("/api/auth/callback", async (c) => {
     .run();
 
   setSessionCookie(c, token);
-  return c.redirect("/");
+  return c.redirect(back);
 });
 
 // ---- every request after: who is asking --------------------------------------
@@ -253,10 +314,11 @@ auth.get("/api/auth/callback", async (c) => {
 /**
  * The signed-in user, or nobody.
  *
- * Called by any route that cares who is asking; in this phase that is only
- * /api/me, but ownership will call it from every write route. The expiry is
- * part of the query rather than checked afterwards, so an expired session is
- * indistinguishable from no session — including to this code.
+ * Called by any route that cares who is asking: /api/me, every route that
+ * writes a level or reads its answer, and -- only once a row has turned out
+ * to be a draft -- the two play routes. The expiry is part of the query rather
+ * than checked afterwards, so an expired session is indistinguishable from no
+ * session — including to this code.
  *
  * A session used past the middle of its life is quietly extended, which is
  * the write-on-read below: a visitor who keeps visiting stays signed in
@@ -385,6 +447,20 @@ function toBase64Url(bytes: Uint8Array): string {
     .replace(/=+$/u, "");
 }
 
+/** The text a base64url string spells, or nothing if it spells none. */
+function fromBase64Url(text: string | undefined): string | undefined {
+  if (text === undefined || text === "") {
+    return undefined;
+  }
+  try {
+    const binary = atob(text.replaceAll("-", "+").replaceAll("_", "/"));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
 async function sha256(text: string): Promise<Uint8Array> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -412,10 +488,12 @@ function readJwtClaims(token: string): Record<string, unknown> | undefined {
   if (parts.length !== 3) {
     return undefined;
   }
+  const text = fromBase64Url(parts[1]);
+  if (text === undefined) {
+    return undefined;
+  }
   try {
-    const binary = atob(parts[1]!.replaceAll("-", "+").replaceAll("_", "/"));
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const claims: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    const claims: unknown = JSON.parse(text);
     return isObject(claims) ? claims : undefined;
   } catch {
     return undefined;

@@ -6,8 +6,8 @@
  * The entry is where the real bindings are met.
  */
 
-import { Hono } from "hono";
-import { auth, type GoogleSignIn } from "./auth.js";
+import { Hono, type Context } from "hono";
+import { auth, sessionUserOf, type GoogleSignIn } from "./auth.js";
 import {
   decode,
   encode,
@@ -19,6 +19,7 @@ import type { Melody } from "../src/music/melody.js";
 import type { Mode, TimeSignature } from "../src/music/types.js";
 import { beatsPerBarOf } from "../src/playback/tempo-map.js";
 import { MEASURES_MAX, timingProblem } from "../src/playback/timing-fields.js";
+import type { UserSummary } from "../src/shared/session.js";
 import {
   cleanDetails,
   countSoundingNotes,
@@ -29,7 +30,9 @@ import {
   LIMITS,
   newTranscriptionId,
   puzzleMelodyOf,
+  sameMusic,
   type Clef,
+  type LevelStatus,
   type TranscriptionRecord,
   type TranscriptionSummary,
 } from "../src/shared/transcription.js";
@@ -38,7 +41,7 @@ import {
 //
 // These two types name no D1 class. They describe a *shape*, and anything of
 // that shape will do: the real D1PreparedStatement has these methods, and so
-// does the twenty-line stub in test/api-levels.test.ts. That is the whole
+// does the stand-in in test/helpers/stub-database.ts. That is the whole
 // reason these routes can be tested in plain Node with no Workers runtime.
 //
 // `bind` returning `Statement` is what lets the three calls chain, and is why
@@ -85,10 +88,11 @@ export type ApiEnv = { DB: Database; google?: GoogleSignIn };
 /**
  * How many levels one listing hands back.
  *
- * A read of a table that only ever grows wants a ceiling, and this is the
+ * A read of a table with no natural end wants a ceiling, and this is the
  * arbitrary part: it is simply more levels than anyone will scroll before
  * paging is worth building. When it stops being enough, that is the signal to
- * build paging rather than to raise it.
+ * build paging rather than to raise it. The same ceiling serves an author's
+ * own list, for the same reason.
  */
 const LEVELS_PAGE = 100;
 
@@ -107,22 +111,23 @@ const LEVELS_PAGE = 100;
 const LEVEL_COLUMNS = `
   id, title, subtitle, instructions, video_id, mark_start, mark_end,
   measures, clef, meter_beats, meter_unit,
-  key_fifths, key_mode, note_count, unpitched_count, created_at
+  key_fifths, key_mode, note_count, unpitched_count,
+  owner_id, status, published_at, updated_at, created_at
 `;
 
 /**
  * One row of the above.
  *
- * `clef` and `key_mode` are narrowed to the handful of words they can hold
- * rather than to `string`, because the migration says
- * `CHECK (clef IN ('treble', 'bass'))` and SQLite tests that on the way in.
- * The database is what makes this true, not this declaration.
+ * `clef`, `key_mode` and `status` are narrowed to the handful of words they
+ * can hold rather than to `string`, because the migration (0003, restating
+ * 0001) says `CHECK (clef IN ('treble', 'bass'))` and SQLite tests that on
+ * the way in. The database is what makes this true, not this declaration.
  *
  * The rest is a claim rather than a guarantee: SQLite columns are typed only
- * by affinity, so what makes `measures` a number is that the one route which
- * ever writes one validates it first. That claim is asserted in exactly one
- * place -- the cast in the handler below -- and it is worth revisiting the day
- * anything other than this codebase writes to the table.
+ * by affinity, so what makes `measures` a number is that the two routes which
+ * ever write one validate it first. That claim is asserted where rows are
+ * cast in the handlers below, and it is worth revisiting the day anything
+ * other than this codebase writes to the table.
  */
 type LevelRow = {
   id: string;
@@ -140,6 +145,10 @@ type LevelRow = {
   key_mode: Mode;
   note_count: number;
   unpitched_count: number;
+  owner_id: string;
+  status: LevelStatus;
+  published_at: number | null;
+  updated_at: number;
   created_at: number;
 };
 
@@ -169,6 +178,10 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
   keyMode: row.key_mode,
   noteCount: row.note_count,
   unpitchedCount: row.unpitched_count,
+  ownerId: row.owner_id,
+  status: row.status,
+  publishedAt: row.published_at ?? undefined,
+  updatedAt: row.updated_at,
   createdAt: row.created_at,
 });
 
@@ -186,25 +199,120 @@ api.use("*", async (c, next) => {
 //
 // Sign-in, sign-out, the session cookie and /api/me live in auth.ts; mounted
 // after the middleware above so their answers carry the same header as
-// everything else's. Nothing below requires a session yet -- that changes
-// the day levels grow owners.
+// everything else's. Every route that writes, and the one that reads the
+// answer, asks `sessionUserOf` who is calling before it does anything else.
+// The two play routes ask only once a row turns out to be a draft, which is
+// what keeps a published level's hot path to one statement.
 api.route("/", auth);
 
+const NO_LEVEL = "There is no level at that address.";
+
+const SIGN_IN_TO_EDIT = "Sign in to work on a level.";
+
+/** Said of a published level, whose existence is no secret. */
+const NOT_AUTHOR = "Only the author can change this level.";
+
+/** The two columns every gated route needs beside whatever else it asked for. */
+type Owned = { owner_id: string; status: LevelStatus };
+
+type Refusal = { status: 401 | 403 | 404; problem: string };
+
+/**
+ * Whether this user may act on this row. An admin may act on any; the flag
+ * comes off the users row by way of the session, never off a request.
+ */
+const ownerOrAdmin = (user: UserSummary, row: { owner_id: string }): boolean =>
+  user.isAdmin || row.owner_id === user.id;
+
+/**
+ * The row a gated route may act on, or the reason it may not.
+ *
+ * Four questions, in an order that is itself a rule. First, whether the id
+ * could name a level at all -- a strange one asks the database nothing.
+ * Second, who is asking: before the row, so that a signed-out request learns
+ * nothing about any id (every well-formed one is 401), and before the body on
+ * the write routes, so that an anonymous sender's bytes are never parsed.
+ * Third, the row. Fourth, whether it is theirs -- and when it is not, the
+ * answer depends on what it is. A published level's existence is public, so
+ * the refusal may say so: 403. A draft's existence is the author's, so a
+ * stranger is told what a missing level would be told: 404, in the same words.
+ *
+ * `columns` is spliced into SQL, so every caller passes a constant declared in
+ * this file -- the same rule `LEVEL_COLUMNS` is held to. The owner and status
+ * are added to whatever was asked for; a caller whose columns already name
+ * them simply gets them twice, which SQLite does not mind.
+ */
+async function readOwnedRow<T extends Record<string, unknown>>(
+  c: Context<{ Bindings: ApiEnv }>,
+  id: string,
+  columns: string,
+  notAuthor: string = NOT_AUTHOR,
+): Promise<{ user: UserSummary; row: T & Owned } | Refusal> {
+  if (!isTranscriptionId(id)) {
+    return { status: 404, problem: NO_LEVEL };
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return { status: 401, problem: SIGN_IN_TO_EDIT };
+  }
+
+  const row = (await c.env.DB.prepare(
+    `SELECT ${columns}, owner_id, status FROM transcriptions WHERE id = ?`,
+  )
+    .bind(id)
+    .first()) as (T & Owned) | null;
+  if (row === null) {
+    return { status: 404, problem: NO_LEVEL };
+  }
+
+  if (!ownerOrAdmin(user, row)) {
+    return row.status === "published"
+      ? { status: 403, problem: notAuthor }
+      : { status: 404, problem: NO_LEVEL };
+  }
+  return { user, row };
+}
+
+// ---- listing ------------------------------------------------------------
+
+// Everybody's: what is published, newest first, with nobody asked who they are.
 api.get("/api/levels", async (c) => {
   const { results } = await c.env.DB.prepare(
-    `SELECT ${LEVEL_COLUMNS} FROM transcriptions ORDER BY created_at DESC LIMIT ?`,
+    `SELECT ${LEVEL_COLUMNS} FROM transcriptions
+      WHERE status = ? ORDER BY created_at DESC LIMIT ?`,
   )
-    .bind(LEVELS_PAGE)
+    .bind("published" satisfies LevelStatus, LEVELS_PAGE)
     .all();
 
   // The one place the shape of a row is asserted rather than proved. See LevelRow.
   return c.json((results as LevelRow[]).map(toSummary));
 });
 
+// One author's: drafts and published alike, most recently touched first. An
+// admin sees their own here like anybody; a list of everybody's drafts would
+// be its own route, and there is no call for one yet.
+api.get("/api/mine", async (c) => {
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: "Sign in to see your levels." }, 401);
+  }
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT ${LEVEL_COLUMNS} FROM transcriptions
+      WHERE owner_id = ? ORDER BY updated_at DESC LIMIT ?`,
+  )
+    .bind(user.id, LEVELS_PAGE)
+    .all();
+
+  return c.json((results as LevelRow[]).map(toSummary));
+});
+
 // ---- writing ------------------------------------------------------------
 //
-// Everything below this line can be reached by anyone who can reach the site,
-// with any body they care to send. Two rules hold it together.
+// Everything below this line can be reached by anyone signed in, with any
+// body they care to send; what they may touch is decided by the row's
+// owner_id and nothing in the request. Two further rules hold it together.
 //
 // The first is that nothing is believed. A body is shape-checked before it is
 // read, and `parseMelodyJson` rebuilds the melody from only the fields it
@@ -215,7 +323,9 @@ api.get("/api/levels", async (c) => {
 // bar count and both note counts are worked out here from the decoded melody
 // and never taken from the request -- otherwise a card could advertise four
 // notes over a melody of four hundred, and the listing that must never read a
-// melody would have no way of noticing.
+// melody would have no way of noticing. The owner is never taken from the
+// request either: it is whoever the session says, and the status of a new
+// level is always draft.
 //
 // What is left, and so what a request genuinely supplies, is the four things
 // no melody can imply: the video, the two marks, and the clef.
@@ -384,6 +494,13 @@ async function readSubmission(
 }
 
 api.post("/api/levels", async (c) => {
+  // Before the body: the answer is the same whatever it holds, and nothing an
+  // anonymous sender wrote gets parsed.
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: "Sign in to save a transcription." }, 401);
+  }
+
   const read = await readSubmission(c.req.raw);
   if ("status" in read) {
     return c.json({ error: read.problem }, read.status);
@@ -413,16 +530,20 @@ api.post("/api/levels", async (c) => {
     return c.json({ error: tempo }, 400);
   }
 
+  // A draft, owned by the caller; published_at is left unnamed, which is NULL,
+  // which is what the CHECK wants beside 'draft'.
   const id = newTranscriptionId();
+  const now = Date.now();
   await c.env.DB.prepare(
     `INSERT INTO transcriptions (
-      id, title, subtitle, instructions, video_id, mark_start, mark_end,
+      id, owner_id, title, subtitle, instructions, video_id, mark_start, mark_end,
       measures, clef, meter_beats, meter_unit, key_fifths, key_mode,
-      note_count, unpitched_count, melody, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      note_count, unpitched_count, melody, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
+      user.id,
       read.details.title,
       read.details.subtitle ?? null,
       read.details.instructions ?? null,
@@ -438,7 +559,9 @@ api.post("/api/levels", async (c) => {
       derived.noteCount,
       derived.unpitchedCount,
       JSON.stringify(read.json),
-      Date.now(),
+      "draft" satisfies LevelStatus,
+      now,
+      now,
     )
     .run();
 
@@ -451,34 +574,34 @@ api.post("/api/levels", async (c) => {
  * Its own path because of what it hands over. Every other route is careful
  * never to read the melody column; this one exists to read it, which is what
  * the editor needs to reopen a transcription and what a puzzle must never be
- * given. Keeping it separate is what lets it be shut behind ownership later
- * without touching anything else.
+ * given. It is the author's door and nobody else's -- which is why it was kept
+ * separate in the first place, so that shutting it touched nothing else.
  */
 api.get("/api/levels/:id/source", async (c) => {
-  const id = c.req.param("id");
-  if (!isTranscriptionId(id)) {
-    return c.json({ error: "There is no level at that address." }, 404);
-  }
-
-  const row = (await c.env.DB.prepare(
-    `SELECT ${LEVEL_COLUMNS}, melody FROM transcriptions WHERE id = ?`,
-  )
-    .bind(id)
-    .first()) as (LevelRow & { melody: string }) | null;
-
-  if (row === null) {
-    return c.json({ error: "There is no level at that address." }, 404);
+  const read = await readOwnedRow<LevelRow & { melody: string }>(
+    c,
+    c.req.param("id"),
+    `${LEVEL_COLUMNS}, melody`,
+    "Only the author can open a level's source.",
+  );
+  if ("problem" in read) {
+    return c.json({ error: read.problem }, read.status);
   }
 
   const record: TranscriptionRecord = {
-    ...toSummary(row),
-    melody: JSON.parse(row.melody) as MelodyJson,
+    ...toSummary(read.row),
+    melody: JSON.parse(read.row.melody) as MelodyJson,
   };
   return c.json(record);
 });
 
+/** Why a published level's music and marks stay where they are. */
+const PUBLISHED_LOCKED =
+  "Only the title, subtitle and instructions of a published level can change; unpublish it to change the music or the marks.";
+
 /**
- * Replace the music, the words, and where the music sits in the video.
+ * Replace the music, the words, and where the music sits in the video -- or,
+ * once a level is published, the words alone.
  *
  * The marks are here because the first guess at them is made on the setup page,
  * against a video nobody has transcribed yet, and being a few tenths out is the
@@ -491,30 +614,69 @@ api.get("/api/levels/:id/source", async (c) => {
  * A melody of a different length or meter is refused rather than stored. The
  * bar count and the marks measure each other, and music of another length would
  * leave them measuring something else -- so of the three, only the marks move.
+ *
+ * A published level is frozen further: its music is what players are reading
+ * and what their saved attempts are keyed against, note by note, so an edit
+ * that would change it is refused and told to unpublish first. The marks are
+ * frozen with it, because moving them changes what a player hears and so how
+ * hard the puzzle is. Judged by *difference* rather than by mention -- the
+ * editor always sends the melody, and a level merely retitled should save --
+ * which is the rule the bar count and the meter were already held to.
  */
 api.put("/api/levels/:id", async (c) => {
-  const id = c.req.param("id");
-  if (!isTranscriptionId(id)) {
-    return c.json({ error: "There is no level at that address." }, 404);
+  const owned = await readOwnedRow<
+    Pick<
+      LevelRow,
+      "measures" | "meter_beats" | "meter_unit" | "mark_start" | "mark_end"
+    > & { melody: string }
+  >(
+    c,
+    c.req.param("id"),
+    "measures, meter_beats, meter_unit, mark_start, mark_end, melody",
+  );
+  if ("problem" in owned) {
+    return c.json({ error: owned.problem }, owned.status);
   }
+  const { row } = owned;
+  const id = c.req.param("id");
 
   const read = await readSubmission(c.req.raw);
   if ("status" in read) {
     return c.json({ error: read.problem }, read.status);
   }
 
-  const row = (await c.env.DB.prepare(
-    `SELECT measures, meter_beats, meter_unit, mark_start, mark_end
-       FROM transcriptions WHERE id = ?`,
-  )
-    .bind(id)
-    .first()) as Pick<
-    LevelRow,
-    "measures" | "meter_beats" | "meter_unit" | "mark_start" | "mark_end"
-  > | null;
+  if (row.status === "published") {
+    const stored = readAnswer(row.melody);
+    if (stored === undefined) {
+      throw new Error(`The melody stored for level ${id} could not be read.`);
+    }
+    const marks = readMarks(read.body, { start: row.mark_start, end: row.mark_end });
+    if ("problem" in marks) {
+      return c.json({ error: marks.problem }, 400);
+    }
+    if (
+      !sameMusic(read.melody, stored) ||
+      marks.start !== row.mark_start ||
+      marks.end !== row.mark_end
+    ) {
+      return c.json({ error: PUBLISHED_LOCKED }, 409);
+    }
 
-  if (row === null) {
-    return c.json({ error: "There is no level at that address." }, 404);
+    await c.env.DB.prepare(
+      `UPDATE transcriptions
+          SET title = ?, subtitle = ?, instructions = ?, updated_at = ?
+        WHERE id = ?`,
+    )
+      .bind(
+        read.details.title,
+        read.details.subtitle ?? null,
+        read.details.instructions ?? null,
+        Date.now(),
+        id,
+      )
+      .run();
+
+    return c.json({ id });
   }
 
   const derived = derive(read.melody);
@@ -554,7 +716,8 @@ api.put("/api/levels/:id", async (c) => {
         SET title = ?, subtitle = ?, instructions = ?,
             mark_start = ?, mark_end = ?,
             key_fifths = ?, key_mode = ?,
-            note_count = ?, unpitched_count = ?, melody = ?
+            note_count = ?, unpitched_count = ?, melody = ?,
+            updated_at = ?
       WHERE id = ?`,
   )
     .bind(
@@ -568,6 +731,7 @@ api.put("/api/levels/:id", async (c) => {
       derived.noteCount,
       derived.unpitchedCount,
       JSON.stringify(read.json),
+      Date.now(),
       id,
     )
     .run();
@@ -576,32 +740,18 @@ api.put("/api/levels/:id", async (c) => {
 });
 
 /**
- * Throw a level away.
+ * Throw a level away. The author's to do, draft or published, and an admin's.
  *
- * A workbench tool rather than a feature: there is no ownership yet, so there is
- * nobody this could belong to and nothing it could check. It exists to make a
- * local database workable while the rest is being built, and it goes — or grows
- * an owner — before any of this is somewhere strangers can reach.
- *
- * The row is looked up before it is deleted, so a mistyped address is answered
- * with "there is no such level" rather than with the silence that means "done".
- * Being wrong about which level was removed is the one mistake here that cannot
- * be taken back.
+ * The row is looked up before it is deleted -- that is what `readOwnedRow` is
+ * -- so a mistyped address is answered with "there is no such level" rather
+ * than with the silence that means "done". Being wrong about which level was
+ * removed is the one mistake here that cannot be taken back.
  */
 api.delete("/api/levels/:id", async (c) => {
   const id = c.req.param("id");
-  if (!isTranscriptionId(id)) {
-    return c.json({ error: "There is no level at that address." }, 404);
-  }
-
-  const row = await c.env.DB.prepare(
-    `SELECT id FROM transcriptions WHERE id = ?`,
-  )
-    .bind(id)
-    .first();
-
-  if (row === null) {
-    return c.json({ error: "There is no level at that address." }, 404);
+  const owned = await readOwnedRow(c, id, "id");
+  if ("problem" in owned) {
+    return c.json({ error: owned.problem }, owned.status);
   }
 
   await c.env.DB.prepare(`DELETE FROM transcriptions WHERE id = ?`)
@@ -612,6 +762,100 @@ api.delete("/api/levels/:id", async (c) => {
   return c.body(null, 204);
 });
 
+// ---- publishing -----------------------------------------------------------
+
+const ALREADY_PUBLISHED = "That level is already published.";
+const NOT_PUBLISHED = "That level is not published.";
+const PUBLISH_UNFINISHED =
+  "Every note needs a pitch before the level can be published.";
+
+/**
+ * Make a draft everybody's.
+ *
+ * A finished draft only: the database would refuse the other kind, but a
+ * sentence is owed before a constraint is. Both clocks are stamped from one
+ * moment, so a newly published level sits at the top of its author's list.
+ * The `AND status = ?` is a compare-and-set: two publishes racing each other
+ * both read 'draft', and the second then changes nothing rather than
+ * re-stamping what the first already did.
+ */
+api.post("/api/levels/:id/publish", async (c) => {
+  const id = c.req.param("id");
+  const owned = await readOwnedRow<{ unpitched_count: number }>(
+    c,
+    id,
+    "unpitched_count",
+  );
+  if ("problem" in owned) {
+    return c.json({ error: owned.problem }, owned.status);
+  }
+  if (owned.row.status !== "draft") {
+    return c.json({ error: ALREADY_PUBLISHED }, 409);
+  }
+  if (owned.row.unpitched_count > 0) {
+    return c.json({ error: PUBLISH_UNFINISHED }, 409);
+  }
+
+  const now = Date.now();
+  await c.env.DB.prepare(
+    `UPDATE transcriptions
+        SET status = ?, published_at = ?, updated_at = ?
+      WHERE id = ? AND status = ?`,
+  )
+    .bind(
+      "published" satisfies LevelStatus,
+      now,
+      now,
+      id,
+      "draft" satisfies LevelStatus,
+    )
+    .run();
+
+  return c.json({ id });
+});
+
+/**
+ * Take a level back: a draft again, under a new id.
+ *
+ * The new id is the point. Players keep their progress against a level's id --
+ * in a browser today, in a table one day -- and an author who unpublishes is
+ * about to change the music that progress was keyed to, note by note. Rather
+ * than let old progress meet new music, the old id simply stops naming
+ * anything: the draft is reached by the id this answers with, and whoever
+ * bookmarked the old one finds a level that is not there, which is the truth.
+ *
+ * `published_at = NULL` is statement text, not a bound null, which is the
+ * shape the codebase prefers. Nothing references this table's id yet; the day
+ * something does, this is the route that has to carry the change across.
+ */
+api.post("/api/levels/:id/unpublish", async (c) => {
+  const id = c.req.param("id");
+  const owned = await readOwnedRow(c, id, "id");
+  if ("problem" in owned) {
+    return c.json({ error: owned.problem }, owned.status);
+  }
+  if (owned.row.status !== "published") {
+    return c.json({ error: NOT_PUBLISHED }, 409);
+  }
+
+  const fresh = newTranscriptionId();
+  await c.env.DB.prepare(
+    `UPDATE transcriptions
+        SET id = ?, status = ?, published_at = NULL, updated_at = ?
+      WHERE id = ? AND status = ?`,
+  )
+    .bind(
+      fresh,
+      "draft" satisfies LevelStatus,
+      Date.now(),
+      id,
+      "published" satisfies LevelStatus,
+    )
+    .run();
+
+  return c.json({ id: fresh });
+});
+
 // ---- playing ------------------------------------------------------------
 //
 // The two routes a puzzle is played through, and the reason the rest of this
@@ -620,14 +864,20 @@ api.delete("/api/levels/:id", async (c) => {
 //
 // `/puzzle` is the door `/source` is not: same row, same melody column, and
 // what comes back has had every pitch but one taken out of it. A page that
-// wanted the answer would have to ask `/source`, which is what will be shut
-// behind ownership once there is such a thing.
+// wanted the answer would have to ask `/source`, which is the author's alone.
+//
+// A published level is played by anybody, and asking who they are would cost
+// every check a sessions query for nothing. A draft is played only by its
+// author, so the question is asked when -- and only when -- the row has said
+// it is one.
 
-/** Said by both routes about a draft, so the two cannot word it differently. */
+/**
+ * Said by both routes about a level still missing pitches, so the two cannot
+ * word it differently. The database no longer lets such a level be published,
+ * so only an author previewing their own unfinished draft can hear this.
+ */
 const UNFINISHED =
   "That transcription is not finished, so there is nothing to play yet.";
-
-const NO_LEVEL = "There is no level at that address.";
 
 /** Room for an attempt at a melody's worth of notes and nothing like more. */
 const MAX_ATTEMPT_BYTES = 64 * 1024;
@@ -665,19 +915,32 @@ function readAnswer(stored: string): Melody | undefined {
  * `columns` is spliced into SQL, so both callers pass a constant declared in
  * this file and nothing else ever reaches it -- the same rule `LEVEL_COLUMNS`
  * is held to. Every value still goes through `bind`.
+ *
+ * A draft answers 404 to everyone but its author and an admin -- never 401 or
+ * 403, because a draft's existence is the author's to disclose, and a stranger
+ * is told exactly what a missing level would tell them.
  */
 async function readAnswerRow<T extends Record<string, unknown>>(
-  db: Database,
+  c: Context<{ Bindings: ApiEnv }>,
   id: string,
   columns: string,
 ): Promise<{ row: T; answer: Melody } | { status: 404 | 409; problem: string }> {
-  const row = (await db
-    .prepare(`SELECT ${columns} FROM transcriptions WHERE id = ?`)
+  const row = (await c.env.DB.prepare(
+    `SELECT ${columns}, owner_id, status FROM transcriptions WHERE id = ?`,
+  )
     .bind(id)
-    .first()) as (T & { unpitched_count: number; melody: string }) | null;
+    .first()) as
+    | (T & Owned & { unpitched_count: number; melody: string })
+    | null;
 
   if (row === null) {
     return { status: 404, problem: NO_LEVEL };
+  }
+  if (row.status === "draft") {
+    const user = await sessionUserOf(c);
+    if (user === undefined || !ownerOrAdmin(user, row)) {
+      return { status: 404, problem: NO_LEVEL };
+    }
   }
   // An answer with blanks in it cannot mark anybody's attempt. Read off the
   // column rather than the melody, which is the reason the column exists.
@@ -706,11 +969,7 @@ api.get("/api/levels/:id/puzzle", async (c) => {
     return c.json({ error: NO_LEVEL }, 404);
   }
 
-  const read = await readAnswerRow<LevelRow>(
-    c.env.DB,
-    id,
-    `${LEVEL_COLUMNS}, melody`,
-  );
+  const read = await readAnswerRow<LevelRow>(c, id, `${LEVEL_COLUMNS}, melody`);
   if ("status" in read) {
     return c.json({ error: read.problem }, read.status);
   }
@@ -755,7 +1014,7 @@ api.post("/api/levels/:id/check", async (c) => {
   }
 
   const read = await readAnswerRow<{ melody: string }>(
-    c.env.DB,
+    c,
     id,
     "unpitched_count, melody",
   );

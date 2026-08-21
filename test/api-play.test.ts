@@ -7,8 +7,13 @@ import { Melody } from "../dist/music/melody.js";
 import { Note, type NoteEvent, Rest, UnpitchedNote } from "../dist/music/note-event.js";
 import { Pitch } from "../dist/music/pitch.js";
 import { api } from "../dist-worker/worker/routes.js";
-
-type Row = Record<string, unknown>;
+import { SIGNED_IN, asAdmin, asOwner, asStranger } from "./helpers/signed-in.js";
+import {
+  errorOf,
+  stubDatabase,
+  type Answer,
+  type Row,
+} from "./helpers/stub-database.js";
 
 const C4 = new Pitch("C", 0, 4);
 const E4 = new Pitch("E", 0, 4);
@@ -54,53 +59,50 @@ const rowOf = (over: Row = {}): Row => ({
   note_count: 4,
   unpitched_count: 0,
   melody: JSON.stringify(encode(ANSWER)),
+  owner_id: "7k2m9x4p3qwt",
+  status: "published",
+  published_at: 1_754_500_000_000,
+  updated_at: 1_754_500_000_000,
   created_at: 1_754_500_000_000,
   ...over,
 });
 
-function stubDatabase(first?: Row) {
-  const asked: { sql: string; values: unknown[] }[] = [];
-  const db = {
-    prepare(sql: string) {
-      const record = { sql, values: [] as unknown[] };
-      asked.push(record);
-      const statement = {
-        bind(...values: unknown[]) {
-          record.values = values;
-          return statement;
-        },
-        all: async () => ({ results: first ? [first] : [] }),
-        first: async () => first ?? null,
-        run: async () => ({ success: true }),
-      };
-      return statement;
-    },
-  };
-  return { asked, env: { DB: db } };
-}
+/** The level the statement that reads levels would find, if any. */
+const stored = (row: Row | undefined, more: readonly Answer[]): Answer[] => [
+  ...(row ? [{ when: /FROM transcriptions/iu, first: row }] : []),
+  ...more,
+];
 
-const get = async (path: string, first?: Row) => {
-  const { asked, env } = stubDatabase(first);
-  const response = await api.request(path, undefined, env);
+const get = async (
+  path: string,
+  row?: Row,
+  more: readonly Answer[] = [],
+  headers: Record<string, string> = {},
+) => {
+  const { asked, env } = stubDatabase(stored(row, more));
+  const response = await api.request(path, { headers }, env);
   return { response, asked };
 };
 
-const post = async (path: string, body: unknown, first?: Row) => {
-  const { asked, env } = stubDatabase(first);
+const post = async (
+  path: string,
+  body: unknown,
+  row?: Row,
+  more: readonly Answer[] = [],
+  headers: Record<string, string> = {},
+) => {
+  const { asked, env } = stubDatabase(stored(row, more));
   const response = await api.request(
     path,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
       body: typeof body === "string" ? body : JSON.stringify(body),
     },
     env,
   );
   return { response, asked };
 };
-
-const errorOf = async (response: Response) =>
-  ((await response.json()) as { error: string }).error;
 
 /** The attempt a player who heard it correctly would send. */
 const rightAnswer = [
@@ -204,6 +206,42 @@ describe("GET /api/levels/:id/puzzle", () => {
     const { response } = await get(`/api/levels/${ID}/puzzle`);
 
     assert.equal(response.status, 404);
+  });
+
+  describe("when the level is a draft", () => {
+    const draft = rowOf({ status: "draft", published_at: null });
+
+    it("still hands a published puzzle to anybody, without asking who they are", async () => {
+      const { response, asked } = await get(`/api/levels/${ID}/puzzle`, rowOf(), [asOwner()], SIGNED_IN);
+
+      assert.equal(response.status, 200);
+      assert.equal(asked.length, 1);
+      assert.doesNotMatch(asked[0]!.sql, /sessions/i);
+    });
+
+    it("hands a draft's puzzle to its author, and to an admin", async () => {
+      for (const who of [asOwner(), asAdmin()]) {
+        const { response } = await get(`/api/levels/${ID}/puzzle`, draft, [who], SIGNED_IN);
+        assert.equal(response.status, 200);
+      }
+    });
+
+    it("hides a draft from a stranger and from the signed-out alike, as 404", async () => {
+      const stranger = await get(`/api/levels/${ID}/puzzle`, draft, [asStranger()], SIGNED_IN);
+      assert.equal(stranger.response.status, 404);
+      assert.equal(await errorOf(stranger.response), "There is no level at that address.");
+
+      const nobody = await get(`/api/levels/${ID}/puzzle`, draft);
+      assert.equal(nobody.response.status, 404);
+    });
+
+    it("asks who is asking only after the row turns out to be a draft", async () => {
+      const { asked } = await get(`/api/levels/${ID}/puzzle`, draft, [asOwner()], SIGNED_IN);
+
+      assert.equal(asked.length, 2);
+      assert.match(asked[0]!.sql, /from transcriptions/i);
+      assert.match(asked[1]!.sql, /from sessions/i);
+    });
   });
 });
 
@@ -401,6 +439,44 @@ describe("POST /api/levels/:id/check", () => {
 
     assert.equal(response.status, 404);
     assert.equal(asked.length, 0);
+  });
+
+  it("marks a published level's attempt for anybody, with no session lookup", async () => {
+    const { response, asked } = await post(
+      `/api/levels/${ID}/check`,
+      { pitches: rightAnswer },
+      rowOf(),
+      [asOwner()],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(asked.length, 1);
+  });
+
+  it("lets the author try their own finished draft, and nobody else", async () => {
+    const draft = rowOf({ status: "draft", published_at: null });
+
+    const author = await post(`/api/levels/${ID}/check`, { pitches: rightAnswer }, draft, [asOwner()], SIGNED_IN);
+    assert.equal(author.response.status, 200);
+    assert.equal(((await author.response.json()) as { solved: boolean }).solved, true);
+
+    const stranger = await post(`/api/levels/${ID}/check`, { pitches: rightAnswer }, draft, [asStranger()], SIGNED_IN);
+    assert.equal(stranger.response.status, 404);
+
+    const nobody = await post(`/api/levels/${ID}/check`, { pitches: rightAnswer }, draft);
+    assert.equal(nobody.response.status, 404);
+  });
+
+  it("reads the attempt before the database, so a huge body is 413 whatever the level", async () => {
+    const { response, asked } = await post(
+      `/api/levels/${ID}/check`,
+      { pitches: rightAnswer, padding: "a".repeat(100_000) },
+      rowOf({ status: "draft", published_at: null }),
+    );
+
+    assert.equal(response.status, 413);
+    assert.deepEqual(asked, []);
   });
 
   it("never grades a rest, which nobody was asked to find", async () => {

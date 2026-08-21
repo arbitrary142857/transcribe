@@ -8,8 +8,22 @@ import { Note, type NoteEvent, Rest, UnpitchedNote } from "../dist/music/note-ev
 import { Pitch } from "../dist/music/pitch.js";
 import { LIMITS } from "../dist/shared/transcription.js";
 import { api } from "../dist-worker/worker/routes.js";
-
-type Row = Record<string, unknown>;
+import {
+  OWNER_ID,
+  SIGNED_IN,
+  STRANGER_ID,
+  asAdmin,
+  asOwner,
+  asStranger,
+} from "./helpers/signed-in.js";
+import {
+  boundColumns,
+  errorOf,
+  stubDatabase,
+  type Answer,
+  type Asked,
+  type Row,
+} from "./helpers/stub-database.js";
 
 /** A row exactly as the migration shapes one. */
 const ROW = {
@@ -28,56 +42,59 @@ const ROW = {
   key_mode: "major",
   note_count: 41,
   unpitched_count: 0,
+  owner_id: "7k2m9x4p3qwt",
+  status: "published",
+  published_at: 1_754_500_000_000,
+  updated_at: 1_754_500_000_000,
   created_at: 1_754_500_000_000,
 };
 
-/**
- * Enough of D1 for these routes, keeping every statement and every value it
- * was asked to bind — which is how the tests below check what the server
- * decided rather than what the request claimed.
- */
-function stubDatabase(options: { rows?: readonly Row[]; first?: Row } = {}) {
-  const asked: { sql: string; values: unknown[] }[] = [];
-  const db = {
-    prepare(sql: string) {
-      const record = { sql, values: [] as unknown[] };
-      asked.push(record);
-      const statement = {
-        bind(...values: unknown[]) {
-          record.values = values;
-          return statement;
-        },
-        all: async () => ({ results: [...(options.rows ?? [])] }),
-        first: async () => options.first ?? null,
-        run: async () => ({ success: true }),
-      };
-      return statement;
-    },
-  };
-  return { asked, env: { DB: db } };
-}
+/** The level the statement that reads levels would find. */
+const one = (row: Row): Answer => ({ when: /FROM transcriptions/iu, first: row });
+
+/** The levels the listing would find. */
+const list = (rows: readonly Row[]): Answer => ({
+  when: /FROM transcriptions/iu,
+  rows,
+});
+
+/** What was asked of the levels table, leaving aside who was asking. */
+const touched = (asked: readonly Asked[]): Asked[] =>
+  asked.filter((statement) => /transcriptions/iu.test(statement.sql));
 
 const call = async (
   path: string,
-  init?: RequestInit,
-  options?: { rows?: readonly Row[]; first?: Row },
+  init: RequestInit = {},
+  answers: readonly Answer[] = [],
+  headers: Record<string, string> = {},
 ) => {
-  const { asked, env } = stubDatabase(options);
-  const response = await api.request(path, init, env);
+  const { asked, env } = stubDatabase(answers);
+  const response = await api.request(
+    path,
+    { ...init, headers: { ...(init.headers as Record<string, string>), ...headers } },
+    env,
+  );
   return { response, asked };
 };
 
-const get = (path: string, options?: { rows?: readonly Row[]; first?: Row }) =>
-  call(path, undefined, options);
+const get = (
+  path: string,
+  answers?: readonly Answer[],
+  headers?: Record<string, string>,
+) => call(path, {}, answers, headers);
 
-const remove = (path: string, options?: { first?: Row }) =>
-  call(path, { method: "DELETE" }, options);
+const remove = (
+  path: string,
+  answers?: readonly Answer[],
+  headers?: Record<string, string>,
+) => call(path, { method: "DELETE" }, answers, headers);
 
 const send = (
   path: string,
   method: "POST" | "PUT",
   body: unknown,
-  options?: { rows?: readonly Row[]; first?: Row },
+  answers?: readonly Answer[],
+  headers?: Record<string, string>,
 ) =>
   call(
     path,
@@ -86,7 +103,8 @@ const send = (
       headers: { "content-type": "application/json" },
       body: typeof body === "string" ? body : JSON.stringify(body),
     },
-    options,
+    answers,
+    headers,
   );
 
 // ---- melodies to submit --------------------------------------------------
@@ -121,18 +139,6 @@ const submission = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-/** The values an INSERT bound, by the column order the statement names. */
-const boundColumns = (sql: string, values: readonly unknown[]) => {
-  const names = sql
-    .slice(sql.indexOf("(") + 1, sql.indexOf(")"))
-    .split(",")
-    .map((name) => name.trim());
-  return Object.fromEntries(names.map((name, index) => [name, values[index]]));
-};
-
-const errorOf = async (response: Response) =>
-  ((await response.json()) as { error: string }).error;
-
 describe("GET /api/levels", () => {
   it("answers with an empty list when nothing has been submitted", async () => {
     const { response } = await get("/api/levels");
@@ -150,9 +156,9 @@ describe("GET /api/levels", () => {
   });
 
   it("hands back no melody even when the row it read holds one", async () => {
-    const { response } = await get("/api/levels", {
-      rows: [{ ...ROW, melody: JSON.stringify({ events: [{ pitch: "secret" }] }) }],
-    });
+    const { response } = await get("/api/levels", [
+      list([{ ...ROW, melody: JSON.stringify({ events: [{ pitch: "secret" }] }) }]),
+    ]);
 
     const body = await response.text();
     assert.equal(body.includes("secret"), false);
@@ -160,7 +166,7 @@ describe("GET /api/levels", () => {
   });
 
   it("gives a level the shape the page expects", async () => {
-    const { response } = await get("/api/levels", { rows: [ROW] });
+    const { response } = await get("/api/levels", [list([ROW])]);
 
     assert.deepEqual(await response.json(), [
       {
@@ -180,24 +186,28 @@ describe("GET /api/levels", () => {
         keyMode: "major",
         noteCount: 41,
         unpitchedCount: 0,
+        ownerId: "7k2m9x4p3qwt",
+        status: "published",
+        publishedAt: 1_754_500_000_000,
+        updatedAt: 1_754_500_000_000,
         createdAt: 1_754_500_000_000,
       },
     ]);
   });
 
   it("carries how much of a level is still unpitched", async () => {
-    const { response } = await get("/api/levels", {
-      rows: [{ ...ROW, unpitched_count: 7 }],
-    });
+    const { response } = await get("/api/levels", [
+      list([{ ...ROW, unpitched_count: 7 }]),
+    ]);
 
     const [level] = (await response.json()) as Record<string, unknown>[];
     assert.equal(level!.unpitchedCount, 7);
   });
 
   it("leaves out a subtitle that was never given, rather than sending null", async () => {
-    const { response } = await get("/api/levels", {
-      rows: [{ ...ROW, subtitle: null }],
-    });
+    const { response } = await get("/api/levels", [
+      list([{ ...ROW, subtitle: null }]),
+    ]);
 
     const [level] = (await response.json()) as Record<string, unknown>[];
     assert.equal("subtitle" in level!, false);
@@ -209,17 +219,76 @@ describe("GET /api/levels", () => {
     assert.match(asked[0]!.sql, /limit/i);
     assert.match(asked[0]!.sql, /order by created_at desc/i);
   });
+
+  it("lists only what is published, and binds the word rather than spelling it in", async () => {
+    const { asked } = await get("/api/levels");
+
+    assert.equal(asked.length, 1);
+    assert.match(asked[0]!.sql, /where status = \?/i);
+    assert.deepEqual(asked[0]!.values, ["published", 100]);
+  });
+
+  it("asks nobody who they are, since the listing is everybody's", async () => {
+    const { asked } = await get("/api/levels", [asOwner()], SIGNED_IN);
+
+    assert.equal(asked.length, 1);
+    assert.doesNotMatch(asked[0]!.sql, /sessions/i);
+  });
+});
+
+describe("GET /api/mine", () => {
+  it("answers 401 without asking the database when nobody is signed in", async () => {
+    const { response, asked } = await get("/api/mine");
+
+    assert.equal(response.status, 401);
+    assert.equal(typeof (await errorOf(response)), "string");
+    assert.deepEqual(asked, []);
+  });
+
+  it("lists the caller's levels, drafts and published alike, most recently touched first", async () => {
+    const draft = { ...ROW, id: "aaaaaaaaaaaa", status: "draft", published_at: null };
+    const { response, asked } = await get(
+      "/api/mine",
+      [asOwner(), list([draft, ROW])],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 200);
+    const levels = (await response.json()) as Record<string, unknown>[];
+    assert.deepEqual(
+      levels.map((level) => level.status),
+      ["draft", "published"],
+    );
+    assert.match(asked.at(-1)!.sql, /where owner_id = \?/i);
+    assert.match(asked.at(-1)!.sql, /order by updated_at desc/i);
+    assert.equal(asked.at(-1)!.sql.includes("melody"), false);
+  });
+
+  it("asks only for the levels of the account the session named", async () => {
+    const { asked } = await get("/api/mine", [asOwner()], SIGNED_IN);
+
+    assert.deepEqual(asked.at(-1)!.values, [OWNER_ID, 100]);
+  });
+
+  it("leaves out publishedAt on a draft rather than sending null", async () => {
+    const draft = { ...ROW, status: "draft", published_at: null };
+    const { response } = await get("/api/mine", [asOwner(), list([draft])], SIGNED_IN);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal("publishedAt" in level!, false);
+    assert.equal(level!.status, "draft");
+  });
 });
 
 describe("POST /api/levels", () => {
   it("takes a whole transcription and answers with its id", async () => {
-    const { response, asked } = await send("/api/levels", "POST", submission());
+    const { response, asked } = await send("/api/levels", "POST", submission(), [asOwner()], SIGNED_IN);
 
     assert.equal(response.status, 201);
     const { id } = (await response.json()) as { id: string };
     assert.match(id, /^[0-9abcdefghjkmnpqrstvwxyz]{12}$/);
-    assert.equal(asked.length, 1);
-    assert.match(asked[0]!.sql, /insert into transcriptions/i);
+    assert.equal(asked.length, 2);
+    assert.match(asked.at(-1)!.sql, /insert into transcriptions/i);
   });
 
   it("counts the notes itself rather than believing the request", async () => {
@@ -228,9 +297,11 @@ describe("POST /api/levels", () => {
       "/api/levels",
       "POST",
       submission({ noteCount: 2, unpitchedCount: 99, measures: 1 }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
-    const bound = boundColumns(asked[0]!.sql, asked[0]!.values);
+    const bound = boundColumns(asked.at(-1)!.sql, asked.at(-1)!.values);
     assert.equal(bound.note_count, 8);
     assert.equal(bound.unpitched_count, 0);
     assert.equal(bound.measures, 2);
@@ -241,9 +312,11 @@ describe("POST /api/levels", () => {
       "/api/levels",
       "POST",
       submission({ meter: { beats: 7, beatUnit: 8 }, keyFifths: 6 }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
-    const bound = boundColumns(asked[0]!.sql, asked[0]!.values);
+    const bound = boundColumns(asked.at(-1)!.sql, asked.at(-1)!.values);
     assert.equal(bound.meter_beats, 4);
     assert.equal(bound.meter_unit, 4);
     assert.equal(bound.key_fifths, 0);
@@ -261,9 +334,11 @@ describe("POST /api/levels", () => {
       "/api/levels",
       "POST",
       submission({ melody: JSON.parse(JSON.stringify(encode(melody))) }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
-    const bound = boundColumns(asked[0]!.sql, asked[0]!.values);
+    const bound = boundColumns(asked.at(-1)!.sql, asked.at(-1)!.values);
     assert.equal(bound.note_count, 3);
     assert.equal(bound.unpitched_count, 2);
   });
@@ -273,12 +348,14 @@ describe("POST /api/levels", () => {
       "/api/levels",
       "POST",
       submission({ melody: JSON.parse(JSON.stringify(encode(bars(1)))) }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
     assert.match(await errorOf(response), /two notes/i);
     // Nothing was written; the CHECK constraint is a backstop, not the message.
-    assert.deepEqual(asked, []);
+    assert.deepEqual(touched(asked), []);
   });
 
   it("refuses details the panel would have refused too", async () => {
@@ -295,10 +372,12 @@ describe("POST /api/levels", () => {
         "/api/levels",
         "POST",
         submission({ details }),
+        [asOwner()],
+        SIGNED_IN,
       );
       assert.equal(response.status, 400, `took ${JSON.stringify(details)}`);
       assert.equal(typeof (await errorOf(response)), "string");
-      assert.deepEqual(asked, []);
+      assert.deepEqual(touched(asked), []);
     }
   });
 
@@ -310,11 +389,13 @@ describe("POST /api/levels", () => {
       "/api/levels",
       "POST",
       submission({ melody: wrong }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
     assert.match(await errorOf(response), /melody/i);
-    assert.deepEqual(asked, []);
+    assert.deepEqual(touched(asked), []);
   });
 
   it("refuses a key the stave could not print", async () => {
@@ -330,10 +411,12 @@ describe("POST /api/levels", () => {
       "/api/levels",
       "POST",
       submission({ melody: JSON.parse(JSON.stringify(encode(melody))) }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
-    assert.deepEqual(asked, []);
+    assert.deepEqual(touched(asked), []);
   });
 
   it("refuses a video id that is not one, and marks that describe no section", async () => {
@@ -354,33 +437,68 @@ describe("POST /api/levels", () => {
         "/api/levels",
         "POST",
         submission(over),
+        [asOwner()],
+        SIGNED_IN,
       );
       assert.equal(response.status, 400, `took ${JSON.stringify(over)}`);
-      assert.deepEqual(asked, []);
+      assert.deepEqual(touched(asked), []);
     }
   });
 
   it("refuses a body that is not JSON at all", async () => {
-    const { response, asked } = await send("/api/levels", "POST", "not json");
+    const { response, asked } = await send("/api/levels", "POST", "not json", [asOwner()], SIGNED_IN);
 
     assert.equal(response.status, 400);
-    assert.deepEqual(asked, []);
+    assert.deepEqual(touched(asked), []);
   });
 
   it("refuses a body too large to be a transcription", async () => {
     const huge = { ...submission(), instructions: "a".repeat(200_000) };
 
-    const { response, asked } = await send("/api/levels", "POST", huge);
+    const { response, asked } = await send("/api/levels", "POST", huge, [asOwner()], SIGNED_IN);
 
     assert.equal(response.status, 413);
+    assert.deepEqual(touched(asked), []);
+  });
+
+  it("turns away a signed-out author before reading a byte of the body", async () => {
+    // A body of nonsense would be a 400 from anybody signed in. Signed out, it
+    // is 401 before it is looked at: the remedy is the same whatever it holds.
+    const { response, asked } = await send("/api/levels", "POST", "not json");
+
+    assert.equal(response.status, 401);
+    assert.match(await errorOf(response), /sign in/i);
     assert.deepEqual(asked, []);
+  });
+
+  it("saves a new transcription as a draft owned by whoever is signed in", async () => {
+    const { asked } = await send(
+      "/api/levels",
+      "POST",
+      submission({ ownerId: STRANGER_ID, status: "published" }),
+      [asOwner()],
+      SIGNED_IN,
+    );
+
+    const bound = boundColumns(asked.at(-1)!.sql, asked.at(-1)!.values);
+    assert.equal(bound.owner_id, OWNER_ID);
+    assert.equal(bound.status, "draft");
+    assert.equal("published_at" in bound, false);
+  });
+
+  it("dates updated_at from the same moment as created_at", async () => {
+    const { asked } = await send("/api/levels", "POST", submission(), [asOwner()], SIGNED_IN);
+
+    const bound = boundColumns(asked.at(-1)!.sql, asked.at(-1)!.values);
+    assert.equal(typeof bound.created_at, "number");
+    assert.equal(bound.updated_at, bound.created_at);
   });
 
   it("keeps the video, the marks and the clef the request gave", async () => {
     // These four are the only things it may not work out for itself.
-    const { asked } = await send("/api/levels", "POST", submission());
+    const { asked } = await send("/api/levels", "POST", submission(), [asOwner()], SIGNED_IN);
 
-    const bound = boundColumns(asked[0]!.sql, asked[0]!.values);
+    const bound = boundColumns(asked.at(-1)!.sql, asked.at(-1)!.values);
     assert.equal(bound.video_id, "dQw4w9WgXcQ");
     assert.equal(bound.mark_start, 12.5);
     assert.equal(bound.mark_end, 16.5);
@@ -391,9 +509,11 @@ describe("POST /api/levels", () => {
 describe("GET /api/levels/:id/source", () => {
   it("hands over the melody, since this is the route that is meant to", async () => {
     const melody = JSON.parse(JSON.stringify(encode(bars(8))));
-    const { response } = await get("/api/levels/k3m9x2p7qw4t/source", {
-      first: { ...ROW, melody: JSON.stringify(melody) },
-    });
+    const { response } = await get("/api/levels/k3m9x2p7qw4t/source", [
+      asOwner(),
+      one({ ...ROW, melody: JSON.stringify(melody) }),
+    ],
+    SIGNED_IN);
 
     assert.equal(response.status, 200);
     const record = (await response.json()) as Record<string, unknown>;
@@ -412,10 +532,51 @@ describe("GET /api/levels/:id/source", () => {
   });
 
   it("says so plainly when there is no such level", async () => {
-    const { response } = await get("/api/levels/k3m9x2p7qw4t/source");
+    const { response } = await get("/api/levels/k3m9x2p7qw4t/source", [asOwner()], SIGNED_IN);
 
     assert.equal(response.status, 404);
     assert.equal(typeof (await errorOf(response)), "string");
+  });
+
+  it("answers 401 when nobody is signed in, whatever the id, and looks nothing up", async () => {
+    const { response, asked } = await get("/api/levels/k3m9x2p7qw4t/source", [
+      one({ ...ROW, melody: "{}" }),
+    ]);
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(asked, []);
+  });
+
+  it("answers 403 to a stranger asking for a published level's source", async () => {
+    const { response } = await get(
+      "/api/levels/k3m9x2p7qw4t/source",
+      [asStranger(), one({ ...ROW, melody: "{}" })],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 403);
+    assert.match(await errorOf(response), /author/i);
+  });
+
+  it("tells a stranger a draft is not there rather than that it is not theirs", async () => {
+    const { response } = await get(
+      "/api/levels/k3m9x2p7qw4t/source",
+      [asStranger(), one({ ...ROW, status: "draft", published_at: null, melody: "{}" })],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 404);
+    assert.equal(await errorOf(response), "There is no level at that address.");
+  });
+
+  it("hands an admin anybody's", async () => {
+    const { response } = await get(
+      "/api/levels/k3m9x2p7qw4t/source",
+      [asAdmin(), one({ ...ROW, status: "draft", published_at: null, melody: "{}" })],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 200);
   });
 });
 
@@ -425,6 +586,8 @@ describe("PUT /api/levels/:id", () => {
   // which would make every test below pass without reaching the UPDATE.
   const stored = {
     ...ROW,
+    status: "draft",
+    published_at: null,
     measures: 2,
     melody: JSON.stringify(encode(bars(8))),
   };
@@ -435,7 +598,7 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       edit,
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 200);
@@ -449,7 +612,7 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       { ...edit, clef: "bass", videoId: "aaaaaaaaaaa" },
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 200);
@@ -467,7 +630,7 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       { ...edit, markStart: 13.25, markEnd: 45 },
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 200);
@@ -483,7 +646,7 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       edit,
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 200);
@@ -504,7 +667,7 @@ describe("PUT /api/levels/:id", () => {
         "/api/levels/k3m9x2p7qw4t",
         "PUT",
         { ...edit, ...over },
-        { first: stored },
+        [asOwner(), one(stored)], SIGNED_IN,
       );
       assert.equal(response.status, 400, `took ${JSON.stringify(over)}`);
     }
@@ -517,7 +680,7 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       { ...edit, melody: JSON.parse(JSON.stringify(encode(bars(12)))) },
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
@@ -535,7 +698,7 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       { ...edit, melody: JSON.parse(JSON.stringify(encode(melody))) },
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
@@ -546,6 +709,8 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       edit,
+      [asOwner()],
+      SIGNED_IN,
     );
 
     assert.equal(response.status, 404);
@@ -560,18 +725,155 @@ describe("PUT /api/levels/:id", () => {
       "/api/levels/k3m9x2p7qw4t",
       "PUT",
       { ...edit, details: { title: "" } },
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
+  });
+
+  it("stamps updated_at on a draft edit", async () => {
+    const { asked } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      edit,
+      [asOwner(), one(stored)], SIGNED_IN,
+    );
+
+    const update = asked.at(-1)!;
+    assert.match(update.sql, /updated_at = \?/i);
+    assert.equal(update.values.some((value) => typeof value === "number" && value > 1_700_000_000_000), true);
+  });
+
+  it("answers 401 before reading the body when nobody is signed in", async () => {
+    const { response, asked } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      "not json",
+      [one(stored)],
+    );
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(asked, []);
+  });
+
+  it("refuses a stranger's edit to a published level with 403, and writes nothing", async () => {
+    const published = { ...stored, status: "published", published_at: 1 };
+    const { response, asked } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      edit,
+      [asStranger(), one(published)], SIGNED_IN,
+    );
+
+    assert.equal(response.status, 403);
+    assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+  });
+
+  it("hides a draft from a stranger as 404", async () => {
+    const { response, asked } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      edit,
+      [asStranger(), one(stored)], SIGNED_IN,
+    );
+
+    assert.equal(response.status, 404);
+    assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+  });
+
+  it("lets an admin edit a level that is not theirs", async () => {
+    const { response } = await send(
+      "/api/levels/k3m9x2p7qw4t",
+      "PUT",
+      edit,
+      [asAdmin(), one(stored)], SIGNED_IN,
+    );
+
+    assert.equal(response.status, 200);
+  });
+
+  describe("on a published level", () => {
+    const published = { ...stored, status: "published", published_at: 1 };
+    // The melody the row holds, sent back exactly as it is.
+    const sameMelody = JSON.parse(stored.melody);
+
+    it("takes new details and writes nothing but them", async () => {
+      const { response, asked } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Clair de lune", subtitle: "Debussy" }, melody: sameMelody },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 200);
+      const update = asked.at(-1)!;
+      assert.match(update.sql, /update transcriptions/i);
+      assert.match(update.sql, /updated_at/);
+      for (const column of ["melody", "mark_start", "mark_end", "key_fifths", "note_count"]) {
+        assert.equal(update.sql.includes(column), false, `update touched ${column}`);
+      }
+      assert.equal(update.values.includes("Debussy"), true);
+    });
+
+    it("does not mind the melody being sent back unchanged, however its JSON is ordered", async () => {
+      // The editor always sends the melody. What matters is whether the music
+      // changed, not whether it was mentioned -- and the codec's canonical
+      // form is what the comparison reads, so key order is nothing.
+      const reordered = { tuplets: [], ties: [], events: sameMelody.events, meter: sameMelody.meter, key: sameMelody.key };
+      const { response } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Renamed" }, melody: reordered },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 200);
+    });
+
+    it("refuses to change the music, and says to unpublish it first", async () => {
+      const changed = JSON.parse(JSON.stringify(encode(bars(8))));
+      changed.events[3].pitch.letter = "E";
+
+      const { response, asked } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Clair de lune" }, melody: changed },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 409);
+      assert.match(await errorOf(response), /unpublish/i);
+      assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+    });
+
+    it("refuses to move the marks", async () => {
+      const { response, asked } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Clair de lune" }, melody: sameMelody, markStart: 13, markEnd: 45 },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 409);
+      assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+    });
+
+    it("leaves the marks alone when an edit does not mention them, as for a draft", async () => {
+      const { response } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Clair de lune" }, melody: sameMelody },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 200);
+    });
   });
 });
 
 describe("DELETE /api/levels/:id", () => {
   it("removes the level and says nothing back", async () => {
-    const { response, asked } = await remove("/api/levels/k3m9x2p7qw4t", {
-      first: ROW,
-    });
+    const { response, asked } = await remove("/api/levels/k3m9x2p7qw4t", [asOwner(), one(ROW)], SIGNED_IN);
 
     assert.equal(response.status, 204);
     assert.equal(await response.text(), "");
@@ -581,7 +883,7 @@ describe("DELETE /api/levels/:id", () => {
   it("names the row to delete by binding it, never by splicing it", async () => {
     // The id arrives in a URL, so the one thing that must never happen is for
     // it to reach the statement as text.
-    const { asked } = await remove("/api/levels/k3m9x2p7qw4t", { first: ROW });
+    const { asked } = await remove("/api/levels/k3m9x2p7qw4t", [asOwner(), one(ROW)], SIGNED_IN);
 
     const statement = asked.at(-1)!;
     assert.equal(statement.sql.includes("k3m9x2p7qw4t"), false);
@@ -599,7 +901,7 @@ describe("DELETE /api/levels/:id", () => {
   it("says so plainly when there is no such level, and deletes nothing", async () => {
     // Answering 204 either way would be simpler and would say that a mistyped
     // address had done something.
-    const { response, asked } = await remove("/api/levels/k3m9x2p7qw4t");
+    const { response, asked } = await remove("/api/levels/k3m9x2p7qw4t", [asOwner()], SIGNED_IN);
 
     assert.equal(response.status, 404);
     assert.equal(typeof (await errorOf(response)), "string");
@@ -607,6 +909,142 @@ describe("DELETE /api/levels/:id", () => {
       asked.some((statement) => /DELETE/.test(statement.sql)),
       false,
     );
+  });
+});
+
+describe("DELETE /api/levels/:id, now that levels are somebody's", () => {
+  const draft = { ...ROW, status: "draft", published_at: null };
+
+  it("lets the author delete their level, draft or published, and an admin anybody's", async () => {
+    for (const [who, row] of [
+      [asOwner(), ROW],
+      [asOwner(), draft],
+      [asAdmin(), ROW],
+      [asAdmin(), draft],
+    ] as const) {
+      const { response, asked } = await remove("/api/levels/k3m9x2p7qw4t", [who, one(row)], SIGNED_IN);
+      assert.equal(response.status, 204);
+      assert.match(asked.at(-1)!.sql, /DELETE FROM transcriptions/);
+    }
+  });
+
+  it("answers 401 signed out, 403 to a stranger on a published level, 404 on a draft", async () => {
+    const signedOut = await remove("/api/levels/k3m9x2p7qw4t", [one(ROW)]);
+    assert.equal(signedOut.response.status, 401);
+    assert.deepEqual(signedOut.asked, []);
+
+    const stranger = await remove("/api/levels/k3m9x2p7qw4t", [asStranger(), one(ROW)], SIGNED_IN);
+    assert.equal(stranger.response.status, 403);
+
+    const hidden = await remove("/api/levels/k3m9x2p7qw4t", [asStranger(), one(draft)], SIGNED_IN);
+    assert.equal(hidden.response.status, 404);
+
+    for (const { asked } of [stranger, hidden]) {
+      assert.equal(asked.some((statement) => /DELETE/.test(statement.sql)), false);
+    }
+  });
+});
+
+describe("POST /api/levels/:id/publish", () => {
+  const draft = { ...ROW, status: "draft", published_at: null };
+  const publish = (answers: readonly Answer[], headers?: Record<string, string>) =>
+    call("/api/levels/k3m9x2p7qw4t/publish", { method: "POST" }, answers, headers);
+
+  it("publishes a finished draft, stamping published_at and updated_at from one moment", async () => {
+    const { response, asked } = await publish([asOwner(), one(draft)], SIGNED_IN);
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { id: "k3m9x2p7qw4t" });
+    const update = asked.at(-1)!;
+    assert.match(update.sql, /update transcriptions/i);
+    assert.match(update.sql, /status = \?/i);
+    const [status, publishedAt, updatedAt, id, was] = update.values;
+    assert.equal(status, "published");
+    assert.equal(typeof publishedAt, "number");
+    assert.equal(updatedAt, publishedAt);
+    assert.equal(id, "k3m9x2p7qw4t");
+    // Compare-and-set: a second publish racing this one changes nothing.
+    assert.equal(was, "draft");
+  });
+
+  it("refuses a draft still missing pitches, and says why", async () => {
+    const { response, asked } = await publish(
+      [asOwner(), one({ ...draft, unpitched_count: 3 })],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 409);
+    assert.match(await errorOf(response), /pitch/i);
+    assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+  });
+
+  it("refuses a level that is already published", async () => {
+    const { response, asked } = await publish([asOwner(), one(ROW)], SIGNED_IN);
+
+    assert.equal(response.status, 409);
+    assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+  });
+
+  it("is the author's or an admin's to do, and nobody else's", async () => {
+    assert.equal((await publish([asAdmin(), one(draft)], SIGNED_IN)).response.status, 200);
+    assert.equal((await publish([asStranger(), one(draft)], SIGNED_IN)).response.status, 404);
+    assert.equal((await publish([one(draft)])).response.status, 401);
+  });
+
+  it("turns away an id that could not be one, without asking the database", async () => {
+    const { response, asked } = await call("/api/levels/nope/publish", { method: "POST" }, [asOwner()], SIGNED_IN);
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(asked, []);
+  });
+});
+
+describe("POST /api/levels/:id/unpublish", () => {
+  const unpublish = (answers: readonly Answer[], headers?: Record<string, string>) =>
+    call("/api/levels/k3m9x2p7qw4t/unpublish", { method: "POST" }, answers, headers);
+
+  it("turns a published level back into a draft under a new id, and says which", async () => {
+    const { response, asked } = await unpublish([asOwner(), one(ROW)], SIGNED_IN);
+
+    assert.equal(response.status, 200);
+    const { id } = (await response.json()) as { id: string };
+    assert.match(id, /^[0-9abcdefghjkmnpqrstvwxyz]{12}$/);
+    assert.notEqual(id, "k3m9x2p7qw4t");
+
+    const update = asked.at(-1)!;
+    assert.match(update.sql, /update transcriptions/i);
+    assert.match(update.sql, /set id = \?/i);
+    assert.equal(update.values[0], id);
+    assert.equal(update.values.includes("draft"), true);
+  });
+
+  it("clears published_at and binds both ids, splicing neither", async () => {
+    const { response, asked } = await unpublish([asOwner(), one(ROW)], SIGNED_IN);
+    const { id } = (await response.json()) as { id: string };
+
+    const update = asked.at(-1)!;
+    assert.match(update.sql, /published_at = NULL/i);
+    assert.equal(update.sql.includes(id), false);
+    assert.equal(update.sql.includes("k3m9x2p7qw4t"), false);
+    assert.equal(update.values.includes("k3m9x2p7qw4t"), true);
+    // Compare-and-set, as for publishing.
+    assert.equal(update.values.at(-1), "published");
+  });
+
+  it("refuses a level that is not published", async () => {
+    const { response, asked } = await unpublish(
+      [asOwner(), one({ ...ROW, status: "draft", published_at: null })],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 409);
+    assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+  });
+
+  it("is the author's or an admin's to do, and nobody else's", async () => {
+    assert.equal((await unpublish([asAdmin(), one(ROW)], SIGNED_IN)).response.status, 200);
+    assert.equal((await unpublish([asStranger(), one(ROW)], SIGNED_IN)).response.status, 403);
+    assert.equal((await unpublish([one(ROW)])).response.status, 401);
   });
 });
 
@@ -627,8 +1065,11 @@ describe("the api's edges", () => {
 });
 
 describe("the tempo the marks imply", () => {
+  // A draft, since a published level's marks cannot move at all.
   const stored = {
     ...ROW,
+    status: "draft",
+    published_at: null,
     measures: 2,
     melody: JSON.stringify(encode(bars(8))),
   };
@@ -640,11 +1081,13 @@ describe("the tempo the marks imply", () => {
       "/api/levels",
       "POST",
       submission({ markStart: 0, markEnd: 0.2 }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
     assert.match(await errorOf(response), /BPM/);
-    assert.deepEqual(asked, []);
+    assert.deepEqual(touched(asked), []);
   });
 
   it("is refused when it is slower than music goes", async () => {
@@ -652,6 +1095,8 @@ describe("the tempo the marks imply", () => {
       "/api/levels",
       "POST",
       submission({ markStart: 0, markEnd: 600 }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
@@ -668,7 +1113,7 @@ describe("the tempo the marks imply", () => {
         markStart: 0,
         markEnd: 0.2,
       },
-      { first: stored },
+      [asOwner(), one(stored)], SIGNED_IN,
     );
 
     assert.equal(response.status, 400);
@@ -693,6 +1138,8 @@ describe("the tempo the marks imply", () => {
         // Four felt beats across two seconds is 120; twelve would be 360.
         markEnd: 2,
       }),
+      [asOwner()],
+      SIGNED_IN,
     );
 
     assert.equal(response.status, 201);
