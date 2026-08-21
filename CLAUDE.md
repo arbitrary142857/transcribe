@@ -31,3 +31,20 @@ to read `node_modules/`, and say so when doing it.
 
 Write tests first, then code.
 Consult previously-existing tests for reference on how to name tests.
+
+## The accounts work follows a roadmap
+
+`docs/roadmap.md` holds the phases of the accounts and ownership work, what
+has been decided and why, and which phase is next. Read it before touching
+auth, levels or migrations, and update its status table when a phase lands.
+`docs/authentication.md` is the reference for how sign-in and ownership work.
+
+## Never edit an applied migration
+
+A schema change is a new numbered file in `migrations/`. Editing one that has
+been applied changes nothing in any database and leaves the file lying about
+what is there — it happened once, and the first real deploy met a column that
+was not there. `test/migrations.test.ts` runs the files against real SQLite
+for this reason. Apply with `npm run db:migrate:local` and
+`db:migrate:remote`; for an additive change, migrate remote before deploying
+code that needs it.
