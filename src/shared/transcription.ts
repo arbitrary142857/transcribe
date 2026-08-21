@@ -12,6 +12,7 @@ import { decode, encode, type MelodyJson } from "../editor/codec.js";
 import type { Melody } from "../music/melody.js";
 import { Note, Rest, UnpitchedNote } from "../music/note-event.js";
 import type { Mode, TimeSignature } from "../music/types.js";
+import { isId, newId } from "./id.js";
 
 /** The two clefs the setup page offers, and the two the database allows. */
 export type Clef = "treble" | "bass";
@@ -103,48 +104,14 @@ export const LIMITS = {
 } as const;
 
 // ---- ids ----------------------------------------------------------------
+//
+// The machinery lives in id.ts now, shared with users; re-exported here under
+// the old names so nothing that asks after a transcription id has to know
+// where ids come from.
 
-/**
- * Crockford's base 32.
- *
- * `i`, `l` and `o` are gone because a reader sees `1`, `1` and `0`; `u` is
- * gone so that no id accidentally spells an obscenity. What is left is exactly
- * 32 characters, which is the point: 256 divides by it, so `% length` below
- * draws every character as often as every other.
- */
-const ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
-
-export const ID_LENGTH = 12;
-
-/** Built from the alphabet so the two cannot drift; it holds no metacharacters. */
-const ID_PATTERN = new RegExp(`^[${ALPHABET}]{${ID_LENGTH}}$`);
-
-/**
- * A fresh id: 60 bits, which stays collision-free well past any level count
- * this will see. Random rather than counted, so the levels cannot be walked
- * from 1 upwards by anyone curious about what is in the database.
- */
-export function newTranscriptionId(): string {
-  const bytes = new Uint8Array(ID_LENGTH);
-  crypto.getRandomValues(bytes);
-  let id = "";
-  for (const byte of bytes) {
-    id += ALPHABET[byte % ALPHABET.length]!;
-  }
-  return id;
-}
-
-/**
- * Whether this is an id at all.
- *
- * Ids arrive in URLs, so nothing is assumed about them. The database is safe
- * from a strange one regardless — every query binds its values rather than
- * spelling them into SQL — but a request that cannot name a level should be
- * turned away before it asks.
- */
-export function isTranscriptionId(value: unknown): value is string {
-  return typeof value === "string" && ID_PATTERN.test(value);
-}
+export { ID_LENGTH } from "./id.js";
+export const newTranscriptionId = newId;
+export const isTranscriptionId = isId;
 
 // ---- counting notes -----------------------------------------------------
 

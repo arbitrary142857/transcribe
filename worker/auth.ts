@@ -1,0 +1,470 @@
+/**
+ * Sign-in, and the session that remembers it.
+ *
+ * Two systems share this file because neither is anything without the other.
+ * The OAuth dance with Google proves who the visitor is, once; the session
+ * cookie is what carries that proof to every request after. Google is spoken
+ * to twice in the whole affair: the visitor is sent to Google's consent page,
+ * and the code they come back with is traded for an ID token in one
+ * server-to-server call.
+ *
+ * That call is why there is no JWKS fetching and no signature checking here.
+ * The ID token arrives straight from Google over TLS, authenticated by the
+ * client secret, so its signature proves nothing the connection has not
+ * already proved — Google's own guidance says so. What still gets checked is
+ * what the connection cannot promise: that the token names this application
+ * (`aud`), came from Google (`iss`), has not expired (`exp`), and carries an
+ * email Google has actually confirmed (`email_verified`).
+ *
+ * Accounts are keyed on the `sub` claim and never on the email. An email is a
+ * fact about a person that a person can change; `sub` is the one identifier
+ * Google promises is permanent. The email is stored anyway — refreshed at
+ * each sign-in — so a human reading the users table can tell who is who.
+ *
+ * Kept free of any Workers type, like routes.ts: Google's token endpoint is
+ * reached through a function handed in from the entry, so the tests can stand
+ * in for Google exactly as they stand in for D1.
+ */
+
+import type { Context } from "hono";
+import { Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { newId } from "../src/shared/id.js";
+import type { UserSummary } from "../src/shared/session.js";
+import type { ApiEnv } from "./routes.js";
+
+// ---- what Google is, as far as this file is concerned ---------------------
+
+/**
+ * The one request this file ever sends: the code-for-token exchange. Typed as
+ * a shape rather than as `fetch` so the entry can hand in the real one and a
+ * test can hand in a recording — the same reason `Database` names no D1 class.
+ */
+export type TokenFetch = (
+  url: string,
+  init: { method: "POST"; headers: Record<string, string>; body: string },
+) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+
+/** The credentials from the Google Cloud console, and the way to Google. */
+export type GoogleSignIn = {
+  clientId: string;
+  clientSecret: string;
+  fetch: TokenFetch;
+};
+
+/**
+ * The environment's Google credentials, if it has any.
+ *
+ * Nothing, rather than a half-configured object, when either credential is
+ * absent or empty — which is the state of a fresh clone without .dev.vars,
+ * and of the deployed Worker before the secret is put. The routes answer that
+ * state with a sentence instead of sending anybody to Google with a blank
+ * client id.
+ */
+export function googleSignInOf(
+  clientId: string | undefined,
+  clientSecret: string | undefined,
+  fetch: TokenFetch,
+): GoogleSignIn | undefined {
+  return clientId && clientSecret
+    ? { clientId, clientSecret, fetch }
+    : undefined;
+}
+
+// ---- the shape of the dance ------------------------------------------------
+
+const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+
+/** The cookie a browser holds between requests. Its value is the raw token. */
+const SESSION_COOKIE = "session";
+
+/**
+ * The cookie that lasts from pressing "sign in" to landing back here, holding
+ * `state.verifier`. Scoped to /api/auth because nothing else ever reads it,
+ * and short-lived because the round trip to Google takes seconds, not days.
+ */
+const FLIGHT_COOKIE = "signin";
+const FLIGHT_PATH = "/api/auth";
+const FLIGHT_TTL_SECONDS = 10 * 60;
+
+/**
+ * Thirty days, slid forward whenever a session's second half is reached — so
+ * a visitor who keeps visiting is never signed out, and one who stops is,
+ * within a month. Milliseconds, like every other timestamp in the database.
+ */
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const RENEW_BELOW_MS = SESSION_TTL_MS / 2;
+
+const NOT_SET_UP = "Sign-in is not set up on this server.";
+
+/** One sentence for every way a callback can be malformed. Which check failed
+ * is a detail for nobody: the visitor's remedy is the same, and a probe is
+ * owed no map of the checks. */
+const TRY_AGAIN = "That sign-in could not be finished. Try again.";
+
+export const auth = new Hono<{ Bindings: ApiEnv }>();
+
+// ---- starting: send the visitor to Google ----------------------------------
+
+auth.get("/api/auth/google", async (c) => {
+  const google = c.env.google;
+  if (google === undefined) {
+    return c.json({ error: NOT_SET_UP }, 503);
+  }
+
+  // `state` is an unguessable name for this one attempt: Google hands it back
+  // untouched, and a callback bearing the wrong one was started by somebody
+  // else (a forged link, a replay) and is refused. The PKCE verifier rides
+  // beside it; only its hash travels to Google, so a snooped redirect learns
+  // nothing that redeems the code it carries.
+  const state = randomToken();
+  const verifier = randomToken();
+  const challenge = toBase64Url(await sha256(verifier));
+
+  const { origin, protocol } = new URL(c.req.url);
+  setCookie(c, FLIGHT_COOKIE, `${state}.${verifier}`, {
+    path: FLIGHT_PATH,
+    httpOnly: true,
+    sameSite: "Lax",
+    // Not over plain http, where dev serves from localhost and Secure cookies
+    // would be dropped — and sign-in would quietly never finish.
+    secure: protocol === "https:",
+    maxAge: FLIGHT_TTL_SECONDS,
+  });
+
+  // The return address is derived from where this request arrived rather than
+  // configured, so localhost, workers.dev and the custom domain all work
+  // untouched — provided each is on the Google console's allowed list.
+  const ask = new URL(AUTH_URL);
+  ask.searchParams.set("client_id", google.clientId);
+  ask.searchParams.set("redirect_uri", `${origin}/api/auth/callback`);
+  ask.searchParams.set("response_type", "code");
+  ask.searchParams.set("scope", "openid email profile");
+  ask.searchParams.set("state", state);
+  ask.searchParams.set("code_challenge", challenge);
+  ask.searchParams.set("code_challenge_method", "S256");
+  return c.redirect(ask.toString());
+});
+
+// ---- finishing: the visitor lands back with a code ---------------------------
+
+auth.get("/api/auth/callback", async (c) => {
+  const google = c.env.google;
+  if (google === undefined) {
+    return c.json({ error: NOT_SET_UP }, 503);
+  }
+
+  const flight = getCookie(c, FLIGHT_COOKIE);
+  // Spent either way: a flight cookie is for one attempt, however it ends.
+  deleteCookie(c, FLIGHT_COOKIE, { path: FLIGHT_PATH });
+
+  // The visitor pressed cancel at Google's screen. Nothing went wrong and
+  // nobody needs a sentence about it; they were going home either way.
+  if (c.req.query("error") !== undefined) {
+    return c.redirect("/");
+  }
+
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  const [expected, verifier] = (flight ?? "").split(".");
+  if (!flight || !code || !state || !expected || !verifier || state !== expected) {
+    return c.json({ error: TRY_AGAIN }, 400);
+  }
+
+  // The exchange. The secret leaves the server here and nowhere else.
+  const answer = await google.fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: google.clientId,
+      client_secret: google.clientSecret,
+      redirect_uri: `${new URL(c.req.url).origin}/api/auth/callback`,
+      grant_type: "authorization_code",
+      code_verifier: verifier,
+    }).toString(),
+  });
+  if (!answer.ok) {
+    // Usually a stale or reused code. Google's own words stay in the logs'
+    // domain; the visitor gets the remedy.
+    return c.json({ error: TRY_AGAIN }, 400);
+  }
+
+  const tokens = await answer.json();
+  const claims = readIdToken(
+    isObject(tokens) ? tokens.id_token : undefined,
+    google.clientId,
+  );
+  if (claims === undefined) {
+    return c.json({ error: TRY_AGAIN }, 400);
+  }
+
+  // The account, found by subject or begun. The email is refreshed on the
+  // way through because it is a copy of Google's current answer, not a name
+  // this site owns.
+  const existing = (await c.env.DB.prepare(
+    `SELECT id FROM users WHERE google_sub = ?`,
+  )
+    .bind(claims.sub)
+    .first()) as { id: string } | null;
+
+  let userId: string;
+  if (existing === null) {
+    userId = newId();
+    await c.env.DB.prepare(
+      `INSERT INTO users (id, google_sub, email, created_at) VALUES (?, ?, ?, ?)`,
+    )
+      .bind(userId, claims.sub, claims.email, Date.now())
+      .run();
+  } else {
+    userId = existing.id;
+    await c.env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`)
+      .bind(claims.email, userId)
+      .run();
+  }
+
+  // The session: the browser keeps the token, the database keeps its hash.
+  // Whoever reads the database — a backup, a breach, an admin's own eyes —
+  // holds nothing a Cookie header would accept.
+  const token = randomToken();
+  const now = Date.now();
+  await c.env.DB.prepare(
+    `INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+  )
+    .bind(await sha256Hex(token), userId, now, now + SESSION_TTL_MS)
+    .run();
+
+  // Sessions that quietly lapsed are swept here, on the rare write path,
+  // rather than by anything scheduled: every sign-in tidies the table a
+  // little, and a table nobody signs into needs no tidying. The lookup
+  // ignores expired rows regardless; this only keeps the table the size of
+  // the truth.
+  await c.env.DB.prepare(`DELETE FROM sessions WHERE expires_at < ?`)
+    .bind(now)
+    .run();
+
+  setSessionCookie(c, token);
+  return c.redirect("/");
+});
+
+// ---- every request after: who is asking --------------------------------------
+
+/**
+ * The signed-in user, or nobody.
+ *
+ * Called by any route that cares who is asking; in this phase that is only
+ * /api/me, but ownership will call it from every write route. The expiry is
+ * part of the query rather than checked afterwards, so an expired session is
+ * indistinguishable from no session — including to this code.
+ *
+ * A session used past the middle of its life is quietly extended, which is
+ * the write-on-read below: a visitor who keeps visiting stays signed in
+ * without ever being asked again. Extended in both of the places thirty days
+ * is written down — the row, and the cookie. The browser discards a cookie
+ * when the Max-Age it was issued with runs out, however alive the row behind
+ * it is, so a renewal that moved only the row would still sign the faithful
+ * visitor out on day thirty; it would just do it more confusingly.
+ */
+export async function sessionUserOf(
+  c: Context<{ Bindings: ApiEnv }>,
+): Promise<UserSummary | undefined> {
+  const token = getCookie(c, SESSION_COOKIE);
+  if (token === undefined || token === "") {
+    return undefined;
+  }
+
+  const hash = await sha256Hex(token);
+  const now = Date.now();
+  const row = (await c.env.DB.prepare(
+    `SELECT users.id AS id, users.email AS email, users.username AS username,
+            users.is_admin AS is_admin, sessions.expires_at AS expires_at
+       FROM sessions JOIN users ON users.id = sessions.user_id
+      WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
+  )
+    .bind(hash, now)
+    .first()) as
+    | {
+        id: string;
+        email: string;
+        username: string | null;
+        is_admin: number;
+        expires_at: number;
+      }
+    | null;
+
+  if (row === null) {
+    return undefined;
+  }
+
+  if (row.expires_at - now < RENEW_BELOW_MS) {
+    await c.env.DB.prepare(
+      `UPDATE sessions SET expires_at = ? WHERE token_hash = ?`,
+    )
+      .bind(now + SESSION_TTL_MS, hash)
+      .run();
+    // The same token, freshly dated — see the note above.
+    setSessionCookie(c, token);
+  }
+
+  // Field by field, never the row: the row knows the google_sub and the
+  // expiry, and neither is the page's to know.
+  return {
+    id: row.id,
+    email: row.email,
+    username: row.username ?? undefined,
+    isAdmin: row.is_admin === 1,
+  };
+}
+
+// Works without Google configured: a session already issued answers to
+// nobody's client id, only to the sessions table.
+auth.get("/api/me", async (c) => {
+  const user = await sessionUserOf(c);
+  return c.json(user === undefined ? {} : { user });
+});
+
+auth.post("/api/auth/logout", async (c) => {
+  const token = getCookie(c, SESSION_COOKIE);
+  if (token !== undefined && token !== "") {
+    // The row goes, not just the cookie: sign-out is a fact about the server,
+    // or a copied token would outlive the button that promised otherwise.
+    await c.env.DB.prepare(`DELETE FROM sessions WHERE token_hash = ?`)
+      .bind(await sha256Hex(token))
+      .run();
+  }
+  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  return c.body(null, 204);
+});
+
+// ---- small parts -------------------------------------------------------------
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The session cookie, freshly dated: thirty days from now, whenever now is.
+ * Set at sign-in and set again by the renewal in `sessionUserOf`, so the
+ * browser's copy of the deadline moves with the row's.
+ */
+function setSessionCookie(
+  c: Context<{ Bindings: ApiEnv }>,
+  token: string,
+): void {
+  setCookie(c, SESSION_COOKIE, token, {
+    path: "/",
+    // HttpOnly: no script can read it, so a script injected despite every
+    // other defence still cannot carry it away. SameSite=Lax: other sites'
+    // requests arrive here without it, which is most of what CSRF is.
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: new URL(c.req.url).protocol === "https:",
+    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+  });
+}
+
+/**
+ * 32 random bytes as base64url: 256 bits, which is the strength of the whole
+ * session system, since guessing one of these *is* signing in as somebody.
+ */
+function randomToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return toBase64Url(bytes);
+}
+
+/** Standard base64url: what PKCE requires of the challenge, unpadded. */
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+}
+
+async function sha256(text: string): Promise<Uint8Array> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return new Uint8Array(digest);
+}
+
+async function sha256Hex(text: string): Promise<string> {
+  return [...(await sha256(text))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * The claims of a JWT, read without any signature check.
+ *
+ * Deliberate, and only safe where this file calls it: on a token that arrived
+ * by the server-to-server exchange. A token that came from a browser instead
+ * would need the signature checked against Google's published keys, because a
+ * browser can be made to carry anything.
+ */
+function readJwtClaims(token: string): Record<string, unknown> | undefined {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return undefined;
+  }
+  try {
+    const binary = atob(parts[1]!.replaceAll("-", "+").replaceAll("_", "/"));
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const claims: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return isObject(claims) ? claims : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Who Google says this is, if the token really is Google's answer to us.
+ *
+ * `aud` is the check that matters most: without it, any application's ID
+ * token — minted for any site the visitor ever signed into — would open an
+ * account here.
+ */
+function readIdToken(
+  idToken: unknown,
+  clientId: string,
+): { sub: string; email: string } | undefined {
+  if (typeof idToken !== "string") {
+    return undefined;
+  }
+  const claims = readJwtClaims(idToken);
+  if (claims === undefined) {
+    return undefined;
+  }
+
+  const { iss, aud, exp, sub, email } = claims;
+  if (iss !== "https://accounts.google.com" && iss !== "accounts.google.com") {
+    return undefined;
+  }
+  if (aud !== clientId) {
+    return undefined;
+  }
+  if (typeof exp !== "number" || exp * 1000 <= Date.now()) {
+    return undefined;
+  }
+  if (typeof sub !== "string" || sub === "") {
+    return undefined;
+  }
+  if (typeof email !== "string" || email === "") {
+    return undefined;
+  }
+  // A Google account can carry an address Google has never confirmed the
+  // holder controls — Workspace-provisioned and some legacy accounts do.
+  // This site stores and shows the email, so an email Google will not vouch
+  // for does not get in wearing this site's trust. (And it is one reason the
+  // admin flag is granted by google_sub, never by email: the email column is
+  // a display field, only ever as true as this check.)
+  if (claims.email_verified !== true) {
+    return undefined;
+  }
+  return { sub, email };
+}

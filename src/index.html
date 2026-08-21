@@ -5,13 +5,18 @@
     <!-- A document rather than a control surface, so unlike the editor this one
          lets the page be zoomed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Daily Transcribe</title>
+    <title>Transcribe</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <nav class="site-nav">
-      <a class="site-name" href="/" aria-current="page">Daily Transcribe</a>
-      <div class="site-links"><a href="/edit">New transcription</a></div>
+      <a class="site-name" href="/" aria-current="page">Transcribe</a>
+      <div class="site-links">
+        <a href="/edit">New transcription</a>
+        <!-- Filled in by session-nav.ts once /api/me has answered. Empty in
+             the markup so nothing flashes one state and settles as another. -->
+        <span id="session-nav" class="session-slot"></span>
+      </div>
     </nav>
 
     <main class="page">

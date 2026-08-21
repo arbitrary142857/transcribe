@@ -1,5 +1,5 @@
 {
-  "name": "daily-transcribe",
+  "name": "transcribe",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy -c dist-web/transcribe/wrangler.json",
     "cf-typegen": "wrangler types",
-    "db:migrate:local": "wrangler d1 migrations apply transcriptions --local",
-    "db:migrate:remote": "wrangler d1 migrations apply transcriptions --remote"
+    "db:migrate:local": "wrangler d1 migrations apply transcribe --local",
+    "db:migrate:remote": "wrangler d1 migrations apply transcribe --remote"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.51.1",

@@ -1,4 +1,4 @@
-# daily-transcribe
+# transcribe
 
 ## Never read generated output
 

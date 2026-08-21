@@ -15,11 +15,14 @@ import { createLevelCard } from "./ui/level-card.js";
 import { readCompact, writeCompact } from "./ui/level-density.js";
 import { openLevelModal } from "./ui/level-modal.js";
 import { openModal } from "./ui/modal.js";
+import { mountSessionNav } from "./ui/session-nav.js";
 import { createSwitch } from "./ui/switch.js";
 
 const list = document.getElementById("levels")!;
 const note = document.getElementById("levels-note")!;
 const controls = document.getElementById("levels-controls")!;
+
+mountSessionNav(document.getElementById("session-nav")!);
 
 /**
  * What has been solved, on this machine.

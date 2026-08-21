@@ -9,6 +9,7 @@ import {
   required,
   showTrouble,
 } from "../ui/page-boot.js";
+import { mountSessionNav } from "../ui/session-nav.js";
 
 /**
  * How this page was arrived at.
@@ -41,6 +42,8 @@ async function readEntry(): Promise<Entry | { trouble: string }> {
 }
 
 try {
+  mountSessionNav(required("session-nav"));
+
   const [entry] = await Promise.all([readEntry(), loadScoreFonts()]);
 
   if ("trouble" in entry) {

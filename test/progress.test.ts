@@ -92,7 +92,7 @@ describe("createLocalProgressStore()", () => {
       '{"levelId":"k3m9x2p7qw4t","elapsedMs":-1,"checkCount":1,"pitches":[]}',
     ]) {
       const { storage } = stubStorage({
-        "daily-transcribe:progress:k3m9x2p7qw4t": held,
+        "transcribe:progress:k3m9x2p7qw4t": held,
       });
       const store = createLocalProgressStore(storage);
 
@@ -102,7 +102,7 @@ describe("createLocalProgressStore()", () => {
 
   it("refuses progress filed under another level, however it got there", async () => {
     const { storage } = stubStorage({
-      "daily-transcribe:progress:k3m9x2p7qw4t": JSON.stringify({
+      "transcribe:progress:k3m9x2p7qw4t": JSON.stringify({
         ...PROGRESS,
         levelId: "aaaaaaaaaaaa",
       }),
@@ -114,7 +114,7 @@ describe("createLocalProgressStore()", () => {
 
   it("keeps only the fields it knows, so nothing rides along", async () => {
     const { storage } = stubStorage({
-      "daily-transcribe:progress:k3m9x2p7qw4t": JSON.stringify({
+      "transcribe:progress:k3m9x2p7qw4t": JSON.stringify({
         ...PROGRESS,
         answer: "C E G",
       }),
@@ -148,7 +148,7 @@ describe("the judged pitches", () => {
     // verdicts to colour with, which is where it was before this was stored.
     const { judged, ...older } = PROGRESS;
     const { storage } = stubStorage({
-      "daily-transcribe:progress:k3m9x2p7qw4t": JSON.stringify(older),
+      "transcribe:progress:k3m9x2p7qw4t": JSON.stringify(older),
     });
 
     return createLocalProgressStore(storage)
@@ -166,7 +166,7 @@ describe("the judged pitches", () => {
       stored({ judged: [{ index: 0, midi: 900, correct: true }] }),
     ]) {
       const { storage } = stubStorage({
-        "daily-transcribe:progress:k3m9x2p7qw4t": broken,
+        "transcribe:progress:k3m9x2p7qw4t": broken,
       });
       const read = await createLocalProgressStore(storage).read("k3m9x2p7qw4t");
       assert.equal(read, undefined, broken);

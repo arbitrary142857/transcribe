@@ -1,15 +1,14 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
 
-  // The Worker's own name, and nothing else's: it decides the default
-  // <name>.workers.dev URL and how the script is listed in the dashboard.
-  // No code reads it, and it need not match the repo or the database.
+  // The Worker's own name, and nothing else's: it decides how the script is
+  // listed in the dashboard and what its workers.dev URL would be called. No
+  // code reads it, and it need not match the repo or the database.
   //
-  // Named for where this is going rather than where it came from. Once
-  // transcribe.jasonmao.com is attached as a custom domain the workers.dev
-  // URL stops being seen at all, so this is the last moment the name is
-  // worth choosing — and the only moment it is free, since renaming after a
-  // deploy creates a second Worker and leaves the first one serving.
+  // Named for where it lives rather than where it came from: the site is
+  // transcribe.jasonmao.me, and renaming a Worker after a deploy creates a
+  // second Worker and leaves the first one serving, so the name was chosen
+  // once, before the first deploy, and stays.
   "name": "transcribe",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-08-07",
@@ -20,16 +19,58 @@
   //
   // Assets win by default, so the Worker only ever sees a request no file
   // answers — which is every /api/* path, and nothing else worth serving.
+  //
+  // Except that "assets win" has a sharper edge for *navigations*: since
+  // compatibility date 2025-04-01, a navigated path with no matching file is
+  // answered by the 404 page directly, and the Worker never runs. Most of
+  // /api never notices, because pages reach it with fetch() — but sign-in is
+  // a chain of top-level navigations by design (that is what SameSite=Lax
+  // cookies travel on), so without the line below, clicking "Sign in" lands
+  // on "Nothing here" instead of Google. This sends /api to the Worker
+  // before any of that, navigations included.
   "assets": {
     "binding": "ASSETS",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
   },
 
+  // The site's address. A custom domain is a door to the Worker, not a
+  // second deployment: `npm run deploy` is the whole release, and it serves
+  // here the moment it finishes. Declared here rather than in the dashboard
+  // so that deploying is enough — Cloudflare writes the DNS record and issues
+  // the certificate itself. The jasonmao.me zone has to be on Cloudflare DNS
+  // for that to work, and it is.
+  "routes": [{ "pattern": "transcribe.jasonmao.me", "custom_domain": true }],
+
+  // One door, on purpose. The workers.dev hostname is closed so that the site
+  // has exactly one origin — the one on Google's redirect allowlist. (Wrangler
+  // closes it by default once `routes` exists; saying so here keeps that from
+  // being a surprise.) Preview URLs would reopen the workers.dev subdomain for
+  // `wrangler versions upload` pre-flights; flip to true the day that is
+  // wanted.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // Named after the application rather than after any one table: it began
+  // life as "transcriptions" when that was the only table, and was moved
+  // (D1 cannot rename, so: created anew, contents carried over) once users
+  // and sessions arrived to share it.
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "transcriptions",
-      "database_id": "98d19a4c-9754-4675-be1a-b840caf8124e"
+      "database_name": "transcribe",
+      "database_id": "1e9e85a5-72af-4bb8-9587-774877b6d489"
     }
-  ]
+  ],
+
+  // Google sign-in. The client id is public by nature — it travels in every
+  // sign-in redirect — so it can live here in the open. The client secret
+  // must not: it is `wrangler secret put GOOGLE_CLIENT_SECRET` for the
+  // deployed Worker, and a line in .dev.vars (gitignored) for local work,
+  // where both of these can be overridden. Left empty, sign-in answers 503
+  // with a sentence rather than sending anybody to Google with a blank
+  // application name.
+  "vars": {
+    "GOOGLE_CLIENT_ID": "824101453235-c23446n3gm01kqnurnogsupjjgfj1d6k.apps.googleusercontent.com"
+  }
 }

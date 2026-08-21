@@ -1,3 +1,3 @@
-# daily-transcribe
+# transcribe
 
-a daily musical transcription game
+a musical transcription game

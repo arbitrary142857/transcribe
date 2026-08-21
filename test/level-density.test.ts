@@ -83,7 +83,7 @@ describe("writeCompact()", () => {
 
     writeCompact(storage, true);
 
-    assert.ok(COMPACT_KEY.startsWith("daily-transcribe:"));
+    assert.ok(COMPACT_KEY.startsWith("transcribe:"));
     assert.deepEqual([...held.keys()], [COMPACT_KEY]);
   });
 

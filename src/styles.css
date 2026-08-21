@@ -1863,6 +1863,36 @@ main {
   text-decoration: none;
 }
 
+/* ---- Who is signed in, in the corner every page shares ----
+
+   The slot renders as nothing at all, so its children sit in .site-links'
+   own flex row and pick up its gap — and while /api/me is still being asked,
+   an empty slot costs the row no space. */
+
+.session-slot {
+  display: contents;
+}
+
+/* The name is a fact, not a door: link-grey, but nothing happens on hover. */
+.session-name {
+  color: #6c6459;
+}
+
+/* A button dressed as the links beside it, because it belongs to the nav,
+   not to a form. */
+.session-out {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: #6c6459;
+  cursor: pointer;
+}
+
+.session-out:hover {
+  text-decoration: underline;
+}
+
 
 /* ---- Which job the controls column is doing ----
 

@@ -9,13 +9,17 @@
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
     />
-    <title>Playing a level · Daily Transcribe</title>
+    <title>Playing a level · Transcribe</title>
     <link rel="stylesheet" href="../styles.css" />
   </head>
   <body>
     <nav class="site-nav">
-      <a class="site-name" href="/">Daily Transcribe</a>
-      <div class="site-links"><a href="/">Levels</a></div>
+      <a class="site-name" href="/">Transcribe</a>
+      <div class="site-links">
+        <a href="/">Levels</a>
+        <!-- Filled in by session-nav.ts once /api/me has answered. -->
+        <span id="session-nav" class="session-slot"></span>
+      </div>
     </nav>
 
     <!-- The same band the editor uses, holding a different bar. Hidden until

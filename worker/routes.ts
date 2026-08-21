@@ -7,6 +7,7 @@
  */
 
 import { Hono } from "hono";
+import { auth, type GoogleSignIn } from "./auth.js";
 import {
   decode,
   encode,
@@ -73,8 +74,13 @@ export type Database = {
  * The real binding is fitted to this shape in index.ts, and tsc checks there
  * that the two agree -- so if the description above is wrong, the entry stops
  * compiling rather than this file quietly lying.
+ *
+ * `google` is the way to Google's token endpoint plus the credentials for it,
+ * assembled in index.ts out of the vars and the secret -- or absent, when the
+ * environment has no credentials, which the auth routes answer with a
+ * sentence rather than a broken redirect.
  */
-export type ApiEnv = { DB: Database };
+export type ApiEnv = { DB: Database; google?: GoogleSignIn };
 
 /**
  * How many levels one listing hands back.
@@ -175,6 +181,14 @@ api.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
 });
+
+// ---- who is asking --------------------------------------------------------
+//
+// Sign-in, sign-out, the session cookie and /api/me live in auth.ts; mounted
+// after the middleware above so their answers carry the same header as
+// everything else's. Nothing below requires a session yet -- that changes
+// the day levels grow owners.
+api.route("/", auth);
 
 api.get("/api/levels", async (c) => {
   const { results } = await c.env.DB.prepare(

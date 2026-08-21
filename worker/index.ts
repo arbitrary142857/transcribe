@@ -12,6 +12,7 @@
  * a binding there.
  */
 
+import { googleSignInOf, type TokenFetch } from "./auth.js";
 import { api, type Database } from "./routes.js";
 
 export default {
@@ -24,7 +25,19 @@ export default {
       // it, the Worker stops compiling rather than the tests going on passing
       // against a stand-in that no longer resembles anything.
       const database: Database = env.DB;
-      return api.fetch(request, { DB: database }, ctx);
+
+      // The real fetch, fitted to the shape auth.ts describes, for the same
+      // reason. GOOGLE_CLIENT_ID is a var in wrangler.jsonc; the secret is
+      // `wrangler secret put` for the deployed Worker and .dev.vars locally.
+      // Either one absent means sign-in answers with a sentence.
+      const exchange: TokenFetch = (url, init) => fetch(url, init);
+      const google = googleSignInOf(
+        env.GOOGLE_CLIENT_ID,
+        env.GOOGLE_CLIENT_SECRET,
+        exchange,
+      );
+
+      return api.fetch(request, { DB: database, google }, ctx);
     }
 
     return env.ASSETS.fetch(request);

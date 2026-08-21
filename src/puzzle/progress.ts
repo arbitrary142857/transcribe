@@ -62,7 +62,7 @@ export type Storage = {
   removeItem(key: string): void;
 };
 
-const KEY_PREFIX = "daily-transcribe:progress:";
+const KEY_PREFIX = "transcribe:progress:";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

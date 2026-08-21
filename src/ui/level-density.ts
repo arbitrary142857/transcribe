@@ -15,7 +15,7 @@
 
 import type { Storage } from "../puzzle/progress.js";
 
-export const COMPACT_KEY = "daily-transcribe:compact-levels";
+export const COMPACT_KEY = "transcribe:compact-levels";
 
 /**
  * The one value that means compact.
