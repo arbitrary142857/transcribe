@@ -13,10 +13,13 @@
  * these pages, they never left the database.
  */
 
+import { progressStoreFor } from "../puzzle/account-progress.js";
+import { mergeIntoAccount } from "../puzzle/handoff.js";
 import {
   createLocalProgressStore,
+  type ListableStorage,
   type PlayProgress,
-  type Storage,
+  type ProgressStore,
 } from "../puzzle/progress.js";
 import type { UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
@@ -30,14 +33,27 @@ import {
   type LevelCardOptions,
 } from "./level-card.js";
 import { readCompact, writeCompact } from "./level-density.js";
+import {
+  FILTERS,
+  emptyFilterSentence,
+  filterLevels,
+  type ProgressFilter,
+} from "./level-filter.js";
 import { openLevelModal } from "./level-modal.js";
+import {
+  createHandoffLine,
+  offerMergeOnArrival,
+  offerToForget,
+} from "./merge-offer.js";
 import { openModal } from "./modal.js";
+import { browserFetch } from "./page-boot.js";
+import { createSegmented } from "./segmented.js";
 import { createSwitch } from "./switch.js";
 
 export type LevelListOptions = {
   elements: { list: HTMLElement; note: HTMLElement; controls: HTMLElement };
-  /** Where progress and the compact preference are kept. */
-  storage: Storage;
+  /** Where this browser's progress and the compact preference are kept. */
+  storage: ListableStorage;
   /** Who is looking, once /api/me has said. */
   viewer: Promise<UserSummary | undefined>;
   page: CardPage;
@@ -64,30 +80,59 @@ export function createLevelList(options: LevelListOptions): LevelList {
   const { page, storage, viewer } = options;
 
   /**
-   * What has been solved, on this machine.
-   *
-   * Local storage until there are accounts to file it under, which is why it
-   * is read here rather than arriving with the levels: the server does not
-   * know which of these the visitor has finished.
+   * Where the visitor's progress is kept: this browser's records for whoever
+   * is signed out, the account's for whoever is signed in. Which one is known
+   * only once /api/me has answered, so `store` is settled in `load`.
    */
-  const store = createLocalProgressStore(storage);
+  const local = createLocalProgressStore(storage);
+  let store: ProgressStore = local;
 
   /**
    * The levels and what is known of them, kept so the list can be drawn again.
    *
-   * Turning the pictures off is a change of drawing, not a change of facts, so
-   * it rebuilds the cards from these rather than asking the server a second
-   * question it has already answered.
+   * Turning the pictures off, or choosing a filter, is a change of drawing,
+   * not a change of facts, so it rebuilds the cards from these rather than
+   * asking the server a second question it has already answered.
    */
   let showing: { level: TranscriptionSummary; progress?: PlayProgress }[] = [];
   let compact = readCompact(storage);
+  let filter: ProgressFilter = "all";
   let user: UserSummary | undefined;
+
+  /**
+   * What this browser still holds from before somebody signed in — only ever
+   * on the front page, with somebody signed in, and only while records remain.
+   * The standing line under the list offers them.
+   */
+  let held: PlayProgress[] = [];
 
   function render(): void {
     list.classList.toggle("is-compact", compact);
+    const shown = filterLevels(showing, filter);
     list.replaceChildren(
-      ...showing.map((each) => cardFor(each.level, each.progress)),
+      ...shown.map((each) => cardFor(each.level, each.progress)),
     );
+    if (showing.length === 0) {
+      sayEmpty();
+    } else {
+      say(shown.length === 0 ? (emptyFilterSentence(filter) ?? "") : "");
+    }
+  }
+
+  // The filter is the front page's: "my transcriptions" is a list of work,
+  // not of puzzles, and solved-ness means little there.
+  if (page === "home") {
+    const which = createSegmented({
+      label: "Which levels to show",
+      choices: FILTERS,
+      value: filter,
+      onChange(next) {
+        filter = next;
+        render();
+      },
+    });
+    which.element.classList.add("level-filter");
+    controls.append(which.element);
   }
 
   controls.append(
@@ -103,16 +148,38 @@ export function createLevelList(options: LevelListOptions): LevelList {
     }).element,
   );
 
+  /**
+   * The sentence about the list, and under it the line about this browser's
+   * records when there is one. Everything the note says goes through here, so
+   * the line is never lost under a later sentence.
+   */
+  function drawNote(sentence: readonly (Node | string)[]): void {
+    note.classList.remove("is-asking");
+    const parts: (Node | string)[] = [...sentence];
+    if (held.length > 0) {
+      parts.push(
+        createHandoffLine({
+          count: held.length,
+          onBringIn: () => void bringIn(),
+          onForget: () => void forget(),
+        }),
+      );
+    }
+    note.replaceChildren(...parts);
+  }
+
+  const say = (text: string): void => drawNote(text === "" ? [] : [text]);
+
   /** The list emptying is worth saying, or the page just goes blank. */
   function sayEmpty(): void {
     if (page === "home") {
-      note.textContent = "No levels yet.";
+      say("No levels yet.");
       return;
     }
     const start = document.createElement("a");
     start.href = "/edit";
     start.textContent = "Start a transcription";
-    note.replaceChildren("Nothing yet. ", start);
+    drawNote(["Nothing yet. ", start]);
   }
 
   /** Your own list, with nobody signed in: the way to change that. */
@@ -126,9 +193,17 @@ export function createLevelList(options: LevelListOptions): LevelList {
   async function load(): Promise<void> {
     try {
       user = await viewer;
-      const response = await fetch(SOURCE[page], {
-        headers: { accept: "application/json" },
-      });
+      store = progressStoreFor(user, { fetch: browserFetch, local });
+
+      // The question about this browser's records is asked while the levels
+      // are on their way, and settled before their progress is read, so the
+      // list opens showing what was just brought in.
+      const [response, trouble] = await Promise.all([
+        fetch(SOURCE[page], { headers: { accept: "application/json" } }),
+        page === "home"
+          ? offerMergeOnArrival({ user, storage, local, fetch: browserFetch })
+          : undefined,
+      ]);
       if (response.status === 401 && page === "mine") {
         list.replaceChildren();
         askToSignIn();
@@ -139,32 +214,41 @@ export function createLevelList(options: LevelListOptions): LevelList {
       }
       const levels = (await response.json()) as TranscriptionSummary[];
 
-      if (levels.length === 0) {
-        showing = [];
-        list.replaceChildren();
-        sayEmpty();
-        return;
-      }
+      // One question for every level at once: a single request for an
+      // account, one local read per level for a browser.
+      const progress = await store.readMany(levels.map((level) => level.id));
+      showing = levels.map((level) => ({ level, progress: progress.get(level.id) }));
+      held = page === "home" && user !== undefined ? await local.readAll() : [];
 
-      // One read per level, all at once: the store is asynchronous because
-      // the database version will be, and this is the shape that stays right
-      // when it becomes one request instead of a hundred local reads.
-      const progress = await Promise.all(
-        levels.map((level) => store.read(level.id)),
-      );
-
-      showing = levels.map((level, at) => ({ level, progress: progress[at] }));
       render();
-      note.textContent = "";
-      note.classList.remove("is-asking");
+      if (trouble !== undefined) say(trouble);
     } catch (error) {
       // The sentence is the only thing on the page at this point, so it says
       // what happened rather than "something went wrong".
-      note.textContent =
+      say(
         error instanceof Error
           ? `The levels could not be loaded. ${error.message}`
-          : "The levels could not be loaded.";
+          : "The levels could not be loaded.",
+      );
       console.error(error);
+    }
+  }
+
+  /** The standing line's first way out: the records go to the account, and the list is read again. */
+  async function bringIn(): Promise<void> {
+    const outcome = await mergeIntoAccount({ fetch: browserFetch, local, records: held });
+    if ("trouble" in outcome) {
+      say(outcome.trouble);
+      return;
+    }
+    await load();
+  }
+
+  /** The other way out: the records are dropped, behind the question. */
+  async function forget(): Promise<void> {
+    if (await offerToForget(local, held)) {
+      held = [];
+      render();
     }
   }
 
@@ -228,10 +312,11 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
   /** What to say when something could not be done to a level. */
   function complain(level: TranscriptionSummary, did: string, error: unknown): void {
-    note.textContent =
+    say(
       error instanceof Error
         ? `${level.title} could not be ${did}. ${error.message}`
-        : `${level.title} could not be ${did}.`;
+        : `${level.title} could not be ${did}.`,
+    );
     console.error(error);
   }
 

@@ -59,11 +59,13 @@ const TICK_MS = 500;
 /**
  * How long after the last edit progress is written.
  *
- * Local storage would not mind being written on every keypress. The store it
- * becomes will, and the debounce is easier to put in now than at the point it
- * is making a request per notehead.
+ * Local storage would not mind being written on every keypress. The account
+ * store is a request per write, so a run of pitches entered at one a second
+ * becomes one save rather than one per note. What a longer wait can lose is
+ * bounded by the saves that do not wait: on the tab hiding, after a check,
+ * and on the way out.
  */
-const SAVE_AFTER_MS = 400;
+const SAVE_AFTER_MS = 1000;
 
 export function createPlayPage(
   elements: PlayPageElements,
@@ -200,8 +202,13 @@ export function createPlayPage(
   });
 
   function save(): void {
+    // A save that is going now takes the place of one that was waiting: two
+    // whole snapshots in flight can land in either order, and the older one
+    // landing last would be the one kept.
+    clearTimeout(saveTimer);
     // Failure is the store's to swallow: a note being entered is not the
-    // moment to interrupt anybody about local storage being full.
+    // moment to interrupt anybody about storage being full or a server being
+    // away.
     void store.write(progressNow());
   }
 

@@ -1,11 +1,14 @@
 /**
  * Where a puzzle got to, kept between visits.
  *
- * Local storage today because there is nobody to file it under. When there is,
- * this becomes a table — a row per (player, level), with `pitches` as a JSON
- * column, which is the shape `melody` already has.
+ * In local storage for whoever is signed out, and in a table -- a row per
+ * (player, level), with `pitches` as a JSON column, which is the shape
+ * `melody` already has -- for whoever is signed in. This file is the shape
+ * and the local store; `account-progress.ts` is the store that talks to the
+ * table, and `handoff.ts` is how a browser's records are offered to an
+ * account. docs/progress.md says how the two keepers divide the fields.
  *
- * Two things here are shaped for that day rather than for this one.
+ * Two things here were shaped for the table before there was one, and held.
  *
  * The first is that `ProgressStore` is asynchronous although local storage is
  * not. The cost of changing that later is not the `await` keyword: it is that
@@ -14,16 +17,18 @@
  * written assuming both. A page built on those assumptions has to be revisited
  * question by question — what do I draw while I am waiting, and what do I do
  * if it never comes — at exactly the moment there is a network to get wrong.
- * Answered now, while the answers are free, the shape is already right.
+ * Answered early, while the answers were free, the shape was already right
+ * when the network came.
  *
  * The second is that `PlayProgress` is flat and made only of things JSON has.
  * It travels as a row without a translation layer, and there is nowhere in it
  * to put anything that would not survive the trip.
  *
- * What none of this settles, and what the database will bring with it: merging
- * a local record into an account at first sign-in, and moving the clock's
- * authority off the page once times are compared. Neither is storage.
+ * What is still the page's: the clock. Its authority moves off the page the
+ * day times are compared between people, which they are not.
  */
+
+import { isId } from "../shared/id.js";
 
 export type PlayProgress = {
   levelId: string;
@@ -47,20 +52,70 @@ export type PlayProgress = {
 
 export type ProgressStore = {
   read(levelId: string): Promise<PlayProgress | undefined>;
+  /**
+   * Progress on many levels, as one question.
+   *
+   * The catalog asks about every level it lists at once, which over a network
+   * is one request rather than a hundred. A level with no record is simply
+   * absent from the map.
+   */
+  readMany(levelIds: readonly string[]): Promise<Map<string, PlayProgress>>;
   write(progress: PlayProgress): Promise<void>;
 };
 
 /**
- * Only what this file needs, so a test can hand it a Map and no DOM.
+ * The local store knows two things the account store does not: everything it
+ * holds, and how to let go of one record. Both are for the hand-off to an
+ * account, and nothing else asks.
+ */
+export type LocalProgressStore = ProgressStore & {
+  /** Every readable record here. Unreadable ones are left out, never sent anywhere. */
+  readAll(): Promise<PlayProgress[]>;
+  remove(levelId: string): Promise<void>;
+};
+
+/**
+ * Only what most of this needs, so a test can hand it a Map and no DOM.
  *
- * Exported because `level-density.ts` keeps a preference the same way and wants
- * the same stub in its own tests.
+ * Exported because `level-density.ts` and `draft-stash.ts` keep things the
+ * same way and want the same stub in their own tests.
  */
 export type Storage = {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 };
+
+/**
+ * `Storage` plus the two members that let its keys be walked, which only the
+ * hand-off to an account needs. The browser's has both; the other two modules
+ * keeping things in local storage never ask, so they are not asked to stub
+ * them.
+ */
+export type ListableStorage = Storage & {
+  readonly length: number;
+  key(index: number): string | null;
+};
+
+/**
+ * The one shape of request the stores send, so a test can hand in a
+ * recording — `worker/auth.ts` does the same with `TokenFetch`. The real
+ * `fetch` fits it; `page-boot.ts` hands that over as `browserFetch`.
+ */
+export type FetchInit = {
+  method: "GET" | "PUT" | "POST";
+  headers: Record<string, string>;
+  body?: string;
+  keepalive?: boolean;
+};
+
+export type FetchResponse = {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+};
+
+export type Fetch = (url: string, init: FetchInit) => Promise<FetchResponse>;
 
 const KEY_PREFIX = "transcribe:progress:";
 
@@ -140,10 +195,33 @@ export function readProgress(value: unknown, levelId: string): PlayProgress | un
   };
 }
 
-export function createLocalProgressStore(storage: Storage): ProgressStore {
+export function createLocalProgressStore(storage: ListableStorage): LocalProgressStore {
   const keyFor = (levelId: string) => `${KEY_PREFIX}${levelId}`;
 
-  return {
+  /**
+   * The level ids this browser holds records under.
+   *
+   * Taken as a snapshot before anything is read, and held to being ids: a
+   * stray key under the prefix must never reach the merge route, where one
+   * bad id would sink the whole batch.
+   */
+  function heldLevelIds(): string[] {
+    const ids: string[] = [];
+    try {
+      for (let at = 0; at < storage.length; at++) {
+        const key = storage.key(at);
+        if (key === null || !key.startsWith(KEY_PREFIX)) continue;
+        const id = key.slice(KEY_PREFIX.length);
+        if (isId(id)) ids.push(id);
+      }
+    } catch {
+      // A storage that cannot be walked holds nothing anybody can be offered.
+      return [];
+    }
+    return ids;
+  }
+
+  const store: LocalProgressStore = {
     async read(levelId) {
       let held: string | null;
       try {
@@ -161,6 +239,15 @@ export function createLocalProgressStore(storage: Storage): ProgressStore {
       }
     },
 
+    async readMany(levelIds) {
+      const many = new Map<string, PlayProgress>();
+      for (const levelId of levelIds) {
+        const progress = await store.read(levelId);
+        if (progress !== undefined) many.set(levelId, progress);
+      }
+      return many;
+    },
+
     async write(progress) {
       try {
         storage.setItem(keyFor(progress.levelId), JSON.stringify(progress));
@@ -171,5 +258,23 @@ export function createLocalProgressStore(storage: Storage): ProgressStore {
         // swallowed rather than raised into the middle of an edit.
       }
     },
+
+    async readAll() {
+      const all: PlayProgress[] = [];
+      for (const levelId of heldLevelIds()) {
+        const progress = await store.read(levelId);
+        if (progress !== undefined) all.push(progress);
+      }
+      return all;
+    },
+
+    async remove(levelId) {
+      try {
+        storage.removeItem(keyFor(levelId));
+      } catch {
+        // Swallowed for the reason `write` swallows.
+      }
+    },
   };
+  return store;
 }

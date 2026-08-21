@@ -12,7 +12,7 @@ update the status table when a phase lands.
 | --- | --- | --- |
 | 1 | Sign in with Google; sessions; `/api/me` | Shipped 2026-08-20 (`dc0528e`) |
 | 2 | Levels have owners; drafts and publishing; `/mine`; sign-in-to-save | Shipped 2026-08-21 (`4b81daf` server, `c1b9c1c` client) |
-| 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Server shipped 2026-08-21; client next |
+| 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Shipped 2026-08-21 (`3b6d72e` server, then client) |
 | 4 | Profile page: username, account deletion, privacy page; a button to merge this browser's progress; a per-account "keep my progress on this machine" opt-out | — |
 | 5 | Admin tools beyond ownership bypass | Mostly folded into 2; a moderation view remains |
 | 6 | Difficulty, thumbs-up, error reports | — |
@@ -91,9 +91,16 @@ nothing. Three decisions moved from the sketch above this once said:
 - **The elapsed clock stays the page's**, as planned; no time comparisons
   until it moves server-side.
 
-Still to build on the client (session B): the account store with local
-fallback, the hand-off modal and standing line, `readMany` for the catalog,
-and the All · Unplayed · In progress · Solved filter on `/`.
+On the client: the account store (`account-progress.ts`) falls back to
+local storage when a save or read cannot reach the server, so nothing typed
+is lost; the hand-off (`handoff.ts`, drawn by `merge-offer.ts`) asks on `/`
+and `/play` and stands as a line under the catalog afterwards; the catalog
+reads progress with one request (`readMany`) and filters All · Unplayed ·
+In progress · Solved, not remembered between visits.
+
+Known rough edges carried forward from this phase: a merge and a check
+landing in the same instant (the merged row wins; the window is one sign-in
+landing); `/mine` shows neither the hand-off nor the filter, by design.
 
 ## How the work is done
 

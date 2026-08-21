@@ -2216,11 +2216,41 @@ main.page {
    melody is not among them, so nothing here has to remember to leave the
    pitches out. */
 
-/* The switch that hides the pictures, on its own line above the list. */
+/* The controls above the list: the filter at the left, where there is one,
+   and the switch that hides the pictures at the right. */
 .level-controls {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
   margin: 0.75rem 0 1rem;
+}
+
+.level-filter {
+  margin-right: auto;
+}
+
+/* The line about records still in this browser, under whatever the note
+   says; and a way out drawn as words in a sentence, like the sign-out. */
+.note-handoff {
+  display: block;
+  margin-top: 0.4rem;
+}
+
+.note-action {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: #6c6459;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.note-action:hover {
+  color: var(--ink);
 }
 
 /* Four across.

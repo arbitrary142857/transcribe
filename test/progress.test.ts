@@ -4,25 +4,7 @@ import {
   createLocalProgressStore,
   type PlayProgress,
 } from "../dist/puzzle/progress.js";
-
-/**
- * Enough of `Storage` for the store, and no more.
- *
- * A stub rather than the real thing because these tests run in plain Node with
- * no DOM — the same reason `createLocalProgressStore` takes its storage as an
- * argument instead of reaching for `window`.
- */
-function stubStorage(seed: Record<string, string> = {}) {
-  const held = new Map(Object.entries(seed));
-  return {
-    held,
-    storage: {
-      getItem: (key: string) => held.get(key) ?? null,
-      setItem: (key: string, value: string) => void held.set(key, value),
-      removeItem: (key: string) => void held.delete(key),
-    },
-  };
-}
+import { refusingStorage, stubStorage } from "./helpers/stub-storage.js";
 
 const PROGRESS: PlayProgress = {
   levelId: "k3m9x2p7qw4t",
@@ -127,15 +109,95 @@ describe("createLocalProgressStore()", () => {
   it("lets a write that cannot happen pass rather than break the puzzle", async () => {
     // Safari in private browsing throws from setItem. Losing the record of a
     // session is a nuisance; losing the note you were entering is not.
-    const store = createLocalProgressStore({
-      getItem: () => null,
-      setItem: () => {
-        throw new DOMException("QuotaExceededError");
-      },
-      removeItem: () => {},
-    });
+    const store = createLocalProgressStore(refusingStorage);
 
     await assert.doesNotReject(() => store.write(PROGRESS));
+  });
+});
+
+describe("createLocalProgressStore().readMany()", () => {
+  it("answers one record per level it knows and none for the rest", async () => {
+    const { storage } = stubStorage();
+    const store = createLocalProgressStore(storage);
+    await store.write(PROGRESS);
+    await store.write({ ...PROGRESS, levelId: "aaaaaaaaaaaa", checkCount: 9 });
+
+    const many = await store.readMany([PROGRESS.levelId, "bbbbbbbbbbbb", "aaaaaaaaaaaa"]);
+
+    assert.deepEqual([...many.keys()], [PROGRESS.levelId, "aaaaaaaaaaaa"]);
+    assert.equal(many.get("aaaaaaaaaaaa")!.checkCount, 9);
+  });
+
+  it("answers an empty map for no levels", async () => {
+    const store = createLocalProgressStore(stubStorage().storage);
+
+    assert.deepEqual(await store.readMany([]), new Map());
+  });
+});
+
+describe("createLocalProgressStore().readAll()", () => {
+  it("lists every record this browser holds, and only those", async () => {
+    const { storage } = stubStorage({
+      "transcribe:compact-levels": "1",
+      "transcribe:draft": JSON.stringify({ melody: {} }),
+      "transcribe:viewer": "7k2m9x4p3qwt",
+    });
+    const store = createLocalProgressStore(storage);
+    await store.write(PROGRESS);
+    await store.write({ ...PROGRESS, levelId: "aaaaaaaaaaaa" });
+
+    const all = await store.readAll();
+
+    assert.deepEqual(
+      all.map((record) => record.levelId).sort(),
+      ["aaaaaaaaaaaa", PROGRESS.levelId],
+    );
+  });
+
+  it("leaves out a record it cannot read, so nothing broken is ever sent", async () => {
+    const { storage } = stubStorage({
+      "transcribe:progress:aaaaaaaaaaaa": "not json",
+      "transcribe:progress:bbbbbbbbbbbb": JSON.stringify({ ...PROGRESS, levelId: "cccccccccccc" }),
+    });
+    const store = createLocalProgressStore(storage);
+    await store.write(PROGRESS);
+
+    assert.deepEqual(await store.readAll(), [PROGRESS]);
+  });
+
+  it("leaves out a key whose suffix is not a level id", async () => {
+    const { storage } = stubStorage({
+      "transcribe:progress:": JSON.stringify(PROGRESS),
+      "transcribe:progress:NOT-AN-ID": JSON.stringify(PROGRESS),
+      "transcribe:progress:k3m9x2p7qw4t/extra": JSON.stringify(PROGRESS),
+    });
+
+    assert.deepEqual(await createLocalProgressStore(storage).readAll(), []);
+  });
+
+  it("answers nothing when storage cannot be walked", async () => {
+    assert.deepEqual(await createLocalProgressStore(refusingStorage).readAll(), []);
+  });
+});
+
+describe("createLocalProgressStore().remove()", () => {
+  it("forgets one level and keeps the others", async () => {
+    const { storage, held } = stubStorage();
+    const store = createLocalProgressStore(storage);
+    await store.write(PROGRESS);
+    await store.write({ ...PROGRESS, levelId: "aaaaaaaaaaaa" });
+
+    await store.remove(PROGRESS.levelId);
+
+    assert.equal(await store.read(PROGRESS.levelId), undefined);
+    assert.notEqual(await store.read("aaaaaaaaaaaa"), undefined);
+    assert.deepEqual([...held.keys()], ["transcribe:progress:aaaaaaaaaaaa"]);
+  });
+
+  it("lets a storage that refuses pass", async () => {
+    await assert.doesNotReject(() =>
+      createLocalProgressStore(refusingStorage).remove(PROGRESS.levelId),
+    );
   });
 });
 

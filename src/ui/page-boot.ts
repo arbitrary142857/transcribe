@@ -5,7 +5,16 @@
  * different routes and need exactly the same footing once they get there.
  */
 
+import type { Fetch } from "../puzzle/progress.js";
 import { googleButton } from "./google-button.js";
+
+/**
+ * The browser's own `fetch`, in the shape the progress stores take.
+ *
+ * The stores are handed their fetch rather than reaching for the global, so
+ * a test can hand them a recording; this is the one the pages hand them.
+ */
+export const browserFetch: Fetch = (url, init) => fetch(url, init);
 
 /**
  * Make sure the score fonts are usable before anything is measured.
