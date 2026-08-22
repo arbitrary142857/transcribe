@@ -226,7 +226,15 @@ describe("createAccountProgressStore().readMany()", () => {
 });
 
 describe("progressStoreFor()", () => {
-  const user = { id: "7k2m9x4p3qwt", email: "jason@example.com", username: undefined, isAdmin: false };
+  const user = {
+    id: "7k2m9x4p3qwt",
+    email: "jason@example.com",
+    username: undefined,
+    isAdmin: false,
+    choseUsername: false,
+    anonymousAuthor: false,
+    shareStats: true,
+  };
 
   it("hands a signed-in viewer the account store, which is what sends the first request", async () => {
     const { calls, fetch } = stubFetch({ status: 204 });

@@ -210,12 +210,16 @@ exists, only `users` changes.
 
 ## What the page knows
 
-`GET /api/me` answers `{ user: { id, email, username?, isAdmin } }` or `{}`.
-Deliberately absent from that answer: the session token (the cookie carries
-it and scripts cannot read the cookie), `google_sub` (how someone signs in is
-not the page's business), and the expiry. `isAdmin` is carried so the page
-can *draw* admin controls, never so it can grant them — see the trust
-boundary below.
+`GET /api/me` answers `{ user: { id, email, username?, isAdmin,
+choseUsername, anonymousAuthor, shareStats } }` or `{}`. Deliberately absent
+from that answer: the session token (the cookie carries it and scripts cannot
+read the cookie), `google_sub` (how someone signs in is not the page's
+business), and the expiry. `isAdmin` is carried so the page can *draw* admin
+controls, never so it can grant them — see the trust boundary below. The
+last three are the account's own settings, changed on the profile page (see
+"The account's own" below): whether the username was the person's choice or
+one minted for them, whether their bylines read Anonymous, and whether their
+play may count towards the figures other players see.
 
 Each page asks `/api/me` fresh on load (these are separate pages, not one
 app). Until the answer arrives, the nav corner is empty rather than wrong.
@@ -297,6 +301,9 @@ Who may do what, by route:
 | `GET /api/progress/:id` | required | 401 | 200 / 204 | 404 |
 | `PUT /api/progress/:id` | required | 401 | 204 | 404 |
 | `POST /api/progress/merge` | required | 401 | — | — |
+| `GET /api/username?name=` | required | 401 | — | — |
+| `PATCH /api/me` | required | 401 | — | — |
+| `DELETE /api/me` | required | 401 | — | — |
 
 Three things the table encodes. A signed-out request to a gated route is
 401 before the body is read and before any row is looked up, so it learns
@@ -315,6 +322,42 @@ attempt is graded, so that the check can be counted against their account
 The four progress routes are the account's own: each is 401 before anything
 is looked up, and about a level the viewer may not see they say what `/puzzle`
 would say. How progress is kept and merged is `progress.md`'s subject.
+
+## The account's own
+
+**Every account has a name.** `username` is minted at sign-in for an account
+that has none — two words and a hyphen, `quiet-heron`, with a number when
+that pair is taken (`src/shared/names.ts`; the callback tries a few and then
+leaves the row unnamed, to be named next time, rather than fail a sign-in
+over a word) — so the corner of every page shows a name from the first
+moment. `chose_username` records whether the person has since picked their
+own; until they do, `/mine` and the profile page say once, quietly, that the
+name was picked for them. A chosen name is held to `usernameProblem`
+(`src/shared/session.ts`, shared with the page): 2–24 characters, letters and
+digits of any script plus `_` and `-`, not `anonymous`/`admin`/`transcribe`,
+unique whatever its case (the column is `COLLATE NOCASE`), and never empty.
+The name is a fact about the user, not the level: every byline reads it from
+`users` at listing time, so a rename renames them all.
+
+**`GET /api/username?name=`** says whether a name is free, for the profile
+page to say so as the person types: one indexed lookup, the account's own
+current name excepted, and nothing reserved by asking. **`PATCH /api/me`**
+takes `{ username?, anonymousAuthor?, shareStats? }`, each optional, as one
+batch of single-column updates; a name the unique index refuses is the one
+database error a route catches, answered 409. The answer is the user as just
+written.
+
+**`DELETE /api/me` deletes everything.** The account's levels first — drafts
+and published alike, and with them every player's progress on them, by the
+cascade — then the row, whose cascades take the sessions and the account's
+own progress. One batch. This reverses an earlier decision to keep published
+levels anonymized: the author owns the work, the site holds no licence to
+keep it, and somebody who published something they should not have must be
+able to take it down by leaving. The `users` foreign key on `transcriptions`
+has no cascade on purpose, so that a route which forgot the levels would be
+refused by the database rather than leave levels owned by nobody. Deleting
+the only admin leaves the site with none; the runbook's grant is the way
+back.
 
 ## The trust boundary, in one sentence
 
@@ -370,6 +413,9 @@ sentence and the rest of the site is untouched — a fresh clone works without
 any Google setup.
 
 ### Granting (and revoking) admin
+
+An account that deletes itself takes its admin flag with it; if it was the
+only admin, grant another as below.
 
 By hand, and only by hand — no route writes `is_admin`, which is the entire
 security model: becoming an admin requires the Cloudflare account, not a

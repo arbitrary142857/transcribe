@@ -39,6 +39,12 @@ export const sessionAnswer = (over: Row = {}): Answer => ({
     email: "jason@example.com",
     username: null,
     is_admin: 0,
+    // The three columns 0005 added, at their defaults. Load-bearing: the
+    // route maps them with `=== 1`, so a fixture without them would read
+    // share_stats as off in every test.
+    chose_username: 0,
+    anonymous_author: 0,
+    share_stats: 1,
     // The row holds the subject; a test can check the answer never does.
     google_sub: "107691503500061507151",
     expires_at: Date.now() + 29 * DAY_MS,

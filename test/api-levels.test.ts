@@ -213,6 +213,37 @@ describe("GET /api/levels", () => {
     assert.equal("subtitle" in level!, false);
   });
 
+  it("names the author beside every level, reading the name off the users table as the author would have it shown", async () => {
+    const { response, asked } = await get("/api/levels", [
+      list([{ ...ROW, author: "quiet-heron" }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal(level!.author, "quiet-heron");
+    // The name comes from users, and only when the author has not chosen to
+    // be anonymous; the level row itself says nothing about either.
+    assert.match(asked[0]!.sql, /FROM users/i);
+    assert.match(asked[0]!.sql, /anonymous_author/i);
+    assert.match(asked[0]!.sql, /AS author/i);
+  });
+
+  it("leaves out the author of a level whose author shows no name, rather than sending null", async () => {
+    const { response } = await get("/api/levels", [list([{ ...ROW, author: null }])]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal("author" in level!, false);
+  });
+
+  it("carries the author's difficulty in stars, from the halves the table holds, and leaves it out when unrated", async () => {
+    const rated = await get("/api/levels", [list([{ ...ROW, difficulty_half: 5 }])]);
+    const [level] = (await rated.response.json()) as Record<string, unknown>[];
+    assert.equal(level!.authorDifficulty, 2.5);
+
+    const unrated = await get("/api/levels", [list([{ ...ROW, difficulty_half: null }])]);
+    const [plain] = (await unrated.response.json()) as Record<string, unknown>[];
+    assert.equal("authorDifficulty" in plain!, false);
+  });
+
   it("asks for no more than a page of them, newest first", async () => {
     const { asked } = await get("/api/levels");
 
@@ -484,6 +515,34 @@ describe("POST /api/levels", () => {
     assert.equal(bound.owner_id, OWNER_ID);
     assert.equal(bound.status, "draft");
     assert.equal("published_at" in bound, false);
+  });
+
+  it("stores the difficulty as a count of halves, and none as NULL", async () => {
+    const rated = await send(
+      "/api/levels", "POST",
+      submission({ details: { title: "Clair de lune", difficulty: 2.5 } }),
+      [asOwner()], SIGNED_IN,
+    );
+    assert.equal(rated.response.status, 201);
+    const bound = boundColumns(rated.asked.at(-1)!.sql, rated.asked.at(-1)!.values);
+    assert.equal(bound.difficulty_half, 5);
+
+    const unrated = await send("/api/levels", "POST", submission(), [asOwner()], SIGNED_IN);
+    const plain = boundColumns(unrated.asked.at(-1)!.sql, unrated.asked.at(-1)!.values);
+    assert.equal(plain.difficulty_half, null);
+  });
+
+  it("refuses a difficulty that is not half a star to five in halves", async () => {
+    for (const difficulty of [0, 6, 2.25, "3"]) {
+      const { response, asked } = await send(
+        "/api/levels", "POST",
+        submission({ details: { title: "Clair de lune", difficulty } }),
+        [asOwner()], SIGNED_IN,
+      );
+      assert.equal(response.status, 400, `accepted ${String(difficulty)}`);
+      assert.match(await errorOf(response), /difficulty/i);
+      assert.equal(asked.some((each) => /insert/i.test(each.sql)), false);
+    }
   });
 
   it("dates updated_at from the same moment as created_at", async () => {
@@ -844,6 +903,20 @@ describe("PUT /api/levels/:id", () => {
       assert.match(update.sql, /update transcriptions/i);
       assert.equal(update.sql.includes("melody"), false);
       assert.equal(update.values.includes("Renamed"), true);
+    });
+
+    it("takes a new difficulty as one of the words, since it is the author's to change", async () => {
+      const { response, asked } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Clair de lune", subtitle: "Debussy", difficulty: 4 } },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 200);
+      const update = asked.at(-1)!;
+      assert.match(update.sql, /difficulty_half = \?/i);
+      assert.equal(update.values.includes(8), true);
     });
 
     it("does not mind the melody being sent back unchanged, however its JSON is ordered", async () => {

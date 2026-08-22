@@ -13,9 +13,9 @@ update the status table when a phase lands.
 | 1 | Sign in with Google; sessions; `/api/me` | Shipped 2026-08-20 (`dc0528e`) |
 | 2 | Levels have owners; drafts and publishing; `/mine`; sign-in-to-save | Shipped 2026-08-21 (`4b81daf` server, `c1b9c1c` client) |
 | 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Shipped 2026-08-21 (`3b6d72e` server, then client) |
-| 4 | Profile page: username, account deletion, privacy page; a button to merge this browser's progress; a per-account "keep my progress on this machine" opt-out | — |
+| 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Server shipped 2026-08-21; client next |
 | 5 | Admin tools beyond ownership bypass | Mostly folded into 2; a moderation view remains |
-| 6 | Difficulty, thumbs-up, error reports | — |
+| 6 | Difficulty from play data (the author's word shipped in 4; honour `share_stats`), thumbs-up, error reports | — |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
@@ -42,7 +42,7 @@ Google's branding rules require. Signing in returns to the page you were on
 admins): the listing never names it, `/puzzle` and `/check` answer 404 to
 anybody else. Publishing requires every note pitched (a CHECK, not only a
 sentence) and freezes the music, key, meter, bars, clef, video and marks; a
-published level takes edits to its title, subtitle and instructions only,
+published level takes edits to its title, subtitle, instructions and difficulty only,
 judged by whether the music *differs* (a body with no melody means
 unchanged). Unpublishing returns it to a draft under a **new id**, because
 players' progress is keyed to an id note by note and the old one must meet
@@ -61,12 +61,25 @@ address, ignored after a day, with an `intent` of `save` (from the button)
 or `keep` (from the nav). The nav is built by one module from one list, the
 current page marked.
 
-**Still open** (decide when the phase needs it): whether cards show "by
-⟨username⟩" (and so when the choose-a-username prompt ships); whether a daily
-level mechanic is coming (streaks presuppose one); whether ratings reset on
-republish (the new id implies yes); account deletion keeps published levels
-anonymized (decided) but the exact cascade for progress and ratings is phase
-4's to write down; dark mode is a per-machine preference, not an account one.
+**Names and deletion (phase 4).** Every card says "by ⟨name⟩": a name is
+minted at sign-in for any account without one (two words, a number when
+taken), chosen on the profile page, and shown as Anonymous when the author
+asks. **Deleting an account deletes everything** it made, published levels
+included — reversing the earlier "keep them, anonymized": the author owns
+the work, the site holds no licence, and somebody who published something
+they should not have must be able to take it down by leaving. The
+"keep my progress on this machine" opt-out was dropped (a browser's records
+carry no account id and would mix with a signed-out player's) in favour of
+`share_stats`, "count my play in public statistics", stored now for phase 6
+to honour. The author-set difficulty — half a star to five, in halves,
+stored as an integer count — was pulled forward from phase 6 so every card
+has the same shape; `src/shared/difficulty.ts` is the one function that
+decides what is shown, and phase 6 changes only its body.
+
+**Still open** (decide when the phase needs it): whether a daily level
+mechanic is coming (streaks presuppose one); whether ratings reset on
+republish (the new id implies yes); dark mode is a per-machine preference,
+not an account one.
 
 ## Phase 3, as built
 
@@ -101,6 +114,24 @@ In progress · Solved, not remembered between visits.
 Known rough edges carried forward from this phase: a merge and a check
 landing in the same instant (the merged row wins; the window is one sign-in
 landing); `/mine` shows neither the hand-off nor the filter, by design.
+
+## Phase 4, as built
+
+`authentication.md` ("The account's own") is the reference for names and
+deletion. Server side (migration 0005, additive): `chose_username`,
+`anonymous_author`, `share_stats` on `users`; `difficulty_half` on
+`transcriptions`; names minted at sign-in; every level response carries
+`author` (a correlated subselect on `users`, honouring `anonymous_author`)
+and `authorDifficulty` (stars, from the halves); difficulty is one of the
+details, so a published level's details box can change it;
+`GET /api/username`, `PATCH /api/me`, `DELETE /api/me`.
+
+Still to build on the client (session B): the card's new row (difficulty at
+the left, tools at the right) and byline; bylines in the level box and the
+play bar; the half-star picker in the editor and the details box; the nav
+corner as the link to `/account`; the `/account` page (name with the live
+check, the two settings, this browser's progress, delete); `/privacy` and a
+footer on every page; the `/mine` nudge while the name is a minted one.
 
 ## How the work is done
 

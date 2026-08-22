@@ -30,7 +30,12 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { newId } from "../src/shared/id.js";
-import type { UserSummary } from "../src/shared/session.js";
+import { mintName } from "../src/shared/names.js";
+import {
+  cleanUsername,
+  usernameProblem,
+  type UserSummary,
+} from "../src/shared/session.js";
 import type { ApiEnv } from "./routes.js";
 
 // ---- what Google is, as far as this file is concerned ---------------------
@@ -268,26 +273,46 @@ auth.get("/api/auth/callback", async (c) => {
 
   // The account, found by subject or begun. The email is refreshed on the
   // way through because it is a copy of Google's current answer, not a name
-  // this site owns.
+  // this site owns. A name is minted for an account that has none -- a new
+  // one, or one from before names were minted -- so that every account has
+  // something for a byline to say (see `nameAccount`).
   const existing = (await c.env.DB.prepare(
-    `SELECT id FROM users WHERE google_sub = ?`,
+    `SELECT id, username FROM users WHERE google_sub = ?`,
   )
     .bind(claims.sub)
-    .first()) as { id: string } | null;
+    .first()) as { id: string; username: string | null } | null;
 
   let userId: string;
   if (existing === null) {
     userId = newId();
-    await c.env.DB.prepare(
-      `INSERT INTO users (id, google_sub, email, created_at) VALUES (?, ?, ?, ?)`,
-    )
-      .bind(userId, claims.sub, claims.email, Date.now())
-      .run();
+    const begin = async (username: string | null) => {
+      await c.env.DB.prepare(
+        `INSERT INTO users (id, google_sub, email, username, created_at) VALUES (?, ?, ?, ?, ?)`,
+      )
+        .bind(userId, claims.sub, claims.email, username, Date.now())
+        .run();
+    };
+    // Every minted name refused is no reason to refuse the account: it is
+    // begun unnamed, and named at the next sign-in.
+    if (!(await withMintedName(begin))) {
+      await begin(null);
+    }
   } else {
     userId = existing.id;
     await c.env.DB.prepare(`UPDATE users SET email = ? WHERE id = ?`)
       .bind(claims.email, userId)
       .run();
+    if (existing.username === null || existing.username === undefined) {
+      await withMintedName(async (username) => {
+        // `username IS NULL` so that a sign-in racing this one cannot name
+        // the account twice; the second try finds nothing to do.
+        await c.env.DB.prepare(
+          `UPDATE users SET username = ? WHERE id = ? AND username IS NULL`,
+        )
+          .bind(username, userId)
+          .run();
+      });
+    }
   }
 
   // The session: the browser keeps the token, the database keeps its hash.
@@ -345,7 +370,9 @@ export async function sessionUserOf(
   const now = Date.now();
   const row = (await c.env.DB.prepare(
     `SELECT users.id AS id, users.email AS email, users.username AS username,
-            users.is_admin AS is_admin, sessions.expires_at AS expires_at
+            users.is_admin AS is_admin, users.chose_username AS chose_username,
+            users.anonymous_author AS anonymous_author, users.share_stats AS share_stats,
+            sessions.expires_at AS expires_at
        FROM sessions JOIN users ON users.id = sessions.user_id
       WHERE sessions.token_hash = ? AND sessions.expires_at > ?`,
   )
@@ -356,6 +383,9 @@ export async function sessionUserOf(
         email: string;
         username: string | null;
         is_admin: number;
+        chose_username: number;
+        anonymous_author: number;
+        share_stats: number;
         expires_at: number;
       }
     | null;
@@ -381,6 +411,9 @@ export async function sessionUserOf(
     email: row.email,
     username: row.username ?? undefined,
     isAdmin: row.is_admin === 1,
+    choseUsername: row.chose_username === 1,
+    anonymousAuthor: row.anonymous_author === 1,
+    shareStats: row.share_stats === 1,
   };
 }
 
@@ -404,7 +437,186 @@ auth.post("/api/auth/logout", async (c) => {
   return c.body(null, 204);
 });
 
+// ---- the account's own --------------------------------------------------------
+//
+// What the profile page does: check a name, change the name and the two
+// settings, and delete the account. Each asks who is calling first and
+// answers 401 before a body is read; nothing here is for nobody.
+
+const SIGN_IN_FIRST = "Sign in to change your account.";
+
+const NAME_TAKEN = "That username is taken.";
+
+/** Room for a name and two yes-or-nos, and nothing like more. */
+const MAX_ACCOUNT_BYTES = 4 * 1024;
+
+/**
+ * Whether the name is free, for the page to say so as the person types.
+ *
+ * The column is NOCASE, so `=` already compares the way the unique index
+ * does; the account's own current name is left out of the question, since
+ * keeping it is not taking it. Nothing is reserved by asking: the PATCH that
+ * follows still meets the index, and a 409 there is the race.
+ */
+auth.get("/api/username", async (c) => {
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_FIRST }, 401);
+  }
+
+  const name = cleanUsername(c.req.query("name") ?? "");
+  const problem = usernameProblem(name);
+  if (problem !== undefined) {
+    return c.json({ available: false, problem });
+  }
+
+  const holder = await c.env.DB.prepare(
+    `SELECT id FROM users WHERE username = ? AND id <> ?`,
+  )
+    .bind(name, user.id)
+    .first();
+  return c.json({ available: holder === null });
+});
+
+/** The columns a PATCH may set, by the field that sets them. Spliced, so named here and nowhere else. */
+const ACCOUNT_COLUMNS = {
+  username: "username",
+  choseUsername: "chose_username",
+  anonymousAuthor: "anonymous_author",
+  shareStats: "share_stats",
+} as const;
+
+/**
+ * Change the name, or either setting.
+ *
+ * Each field given is one UPDATE, and they go as one batch. A name is held
+ * to `usernameProblem` here as on the page, and a name the index refuses is
+ * a 409 -- the one database error a route catches, because it is the one
+ * that is somebody's doing rather than the server's. The answer is the user
+ * as just written, assembled from the session's user and the values bound,
+ * rather than read back: a second JOIN would cost a query and, past the
+ * middle of the session's life, a cookie re-set, to learn what this already
+ * knows.
+ */
+auth.patch("/api/me", async (c) => {
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_FIRST }, 401);
+  }
+
+  const text = await c.req.raw.text();
+  if (text.length > MAX_ACCOUNT_BYTES) {
+    return c.json({ error: "That is too much to change at once." }, 413);
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return c.json({ error: "The request was not JSON." }, 400);
+  }
+  if (!isObject(body)) {
+    return c.json({ error: "The request was not a change to the account." }, 400);
+  }
+
+  const changed: UserSummary = { ...user };
+  const writes: { column: string; value: string | number }[] = [];
+
+  if (body.username !== undefined) {
+    if (typeof body.username !== "string") {
+      return c.json({ error: "A username is text." }, 400);
+    }
+    const username = cleanUsername(body.username);
+    const problem = usernameProblem(username);
+    if (problem !== undefined) {
+      return c.json({ error: problem }, 400);
+    }
+    writes.push({ column: ACCOUNT_COLUMNS.username, value: username });
+    writes.push({ column: ACCOUNT_COLUMNS.choseUsername, value: 1 });
+    changed.username = username;
+    changed.choseUsername = true;
+  }
+  for (const field of ["anonymousAuthor", "shareStats"] as const) {
+    if (body[field] === undefined) continue;
+    if (typeof body[field] !== "boolean") {
+      return c.json({ error: "A setting is a yes or a no." }, 400);
+    }
+    writes.push({ column: ACCOUNT_COLUMNS[field], value: body[field] ? 1 : 0 });
+    changed[field] = body[field];
+  }
+
+  if (writes.length > 0) {
+    try {
+      await c.env.DB.batch(
+        writes.map(({ column, value }) =>
+          c.env.DB.prepare(`UPDATE users SET ${column} = ? WHERE id = ?`).bind(value, user.id),
+        ),
+      );
+    } catch (error) {
+      if (isUniqueRefusal(error)) {
+        return c.json({ error: NAME_TAKEN }, 409);
+      }
+      throw error;
+    }
+  }
+
+  return c.json({ user: changed });
+});
+
+/**
+ * Delete the account, and everything it made.
+ *
+ * The levels first, because the users foreign key on transcriptions has no
+ * cascade -- on purpose, so that a route which forgot them would be refused
+ * rather than leave levels owned by nobody -- and then the row, whose
+ * cascades take the sessions and the progress. Other players' progress on
+ * the deleted levels goes with those levels. One batch: either all of it
+ * happened or none did. The cookie is cleared as sign-out clears it, though
+ * the row it named is gone either way.
+ */
+auth.delete("/api/me", async (c) => {
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_FIRST }, 401);
+  }
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(`DELETE FROM transcriptions WHERE owner_id = ?`).bind(user.id),
+    c.env.DB.prepare(`DELETE FROM users WHERE id = ?`).bind(user.id),
+  ]);
+
+  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  return c.body(null, 204);
+});
+
 // ---- small parts -------------------------------------------------------------
+
+/** How many names are tried for an account before it is left unnamed. */
+const NAME_TRIES = 5;
+
+/** What D1 says when the unique index on a name refuses one. */
+const isUniqueRefusal = (error: unknown): boolean =>
+  error instanceof Error && /UNIQUE constraint failed/u.test(error.message);
+
+/**
+ * Run `write` with a minted name, and with another when the index refuses
+ * it, a few times; then give up quietly, answering whether a name was
+ * written. An unnamed account is shown as Anonymous and named at its next
+ * sign-in, which is a better outcome than a sign-in that fails over a word.
+ */
+async function withMintedName(
+  write: (username: string) => Promise<void>,
+): Promise<boolean> {
+  const pick = (n: number) => Math.floor(Math.random() * n);
+  for (let attempt = 0; attempt < NAME_TRIES; attempt++) {
+    try {
+      await write(mintName(pick, attempt));
+      return true;
+    } catch (error) {
+      if (!isUniqueRefusal(error)) throw error;
+    }
+  }
+  return false;
+}
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

@@ -205,8 +205,14 @@ question asked now rather than a way of liking the page.
 - **Editing a draft's music** under the same id does not clear progress on
   it. Only the author (or an admin) can have any, and the play page skips a
   restored pitch at an index that is no longer a note.
-- **Deleting an account** (phase 4) takes its progress with it, by the other
-  cascade.
+- **Deleting an account** takes its progress with it, by the other cascade
+  — and deletes every level it published, so other players' progress on
+  those goes too, by the first one (`authentication.md`, "The account's
+  own").
+- **`share_stats`**, the account setting "count my play in public
+  statistics", is stored now and read by nothing yet: the figures phase 6
+  works out from play data must leave out the rows of anybody who turned it
+  off.
 
 ## Operating it
 

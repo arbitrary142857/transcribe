@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { describe, it } from "node:test";
+import { usernameProblem } from "../dist/shared/session.js";
 import { returnPathOf, type TokenFetch } from "../dist-worker/worker/auth.js";
 import { api } from "../dist-worker/worker/routes.js";
 import {
   DAY_MS,
+  OWNER_ID,
   SIGNED_IN,
   TOKEN,
   sessionAnswer,
@@ -15,6 +17,7 @@ import {
   boundColumns,
   errorOf,
   stubDatabase,
+  type Answer,
   type Row,
 } from "./helpers/stub-database.js";
 
@@ -462,6 +465,71 @@ describe("GET /api/auth/callback", () => {
     assert.deepEqual(update!.values, ["renamed@example.com", "7k2m9x4p3qwt"]);
   });
 
+  it("names a new account as it is made, with a name the person could have chosen", async () => {
+    const { db, asked } = stubDatabase();
+    const google = stubGoogle({ body: { id_token: idTokenOf() } });
+
+    await api.request(
+      `/api/auth/callback?code=abc&state=${STATE}`,
+      { headers: FLIGHT },
+      envOf(db, google.fetch),
+    );
+
+    const insert = asked.find((each) => /insert into users/i.test(each.sql))!;
+    const bound = boundColumns(insert.sql, insert.values);
+    assert.equal(typeof bound.username, "string");
+    assert.equal(usernameProblem(bound.username as string), undefined, bound.username as string);
+    assert.match(bound.username as string, /^[a-z]+-[a-z]+$/);
+    // Picked for them, not by them.
+    assert.equal("chose_username" in bound, false);
+  });
+
+  it("names a returning account that has none, and leaves a named one alone", async () => {
+    const unnamed = stubDatabase([anyFirst({ id: "7k2m9x4p3qwt", username: null })]);
+    await api.request(
+      `/api/auth/callback?code=abc&state=${STATE}`,
+      { headers: FLIGHT },
+      envOf(unnamed.db, stubGoogle({ body: { id_token: idTokenOf() } }).fetch),
+    );
+    const named = unnamed.asked.find((each) => /set username/i.test(each.sql))!;
+    assert.notEqual(named, undefined);
+    assert.match(named.sql, /username IS NULL/i);
+    assert.equal(usernameProblem(named.values[0] as string), undefined);
+    assert.equal(named.values[1], "7k2m9x4p3qwt");
+
+    const already = stubDatabase([anyFirst({ id: "7k2m9x4p3qwt", username: "jason" })]);
+    await api.request(
+      `/api/auth/callback?code=abc&state=${STATE}`,
+      { headers: FLIGHT },
+      envOf(already.db, stubGoogle({ body: { id_token: idTokenOf() } }).fetch),
+    );
+    assert.equal(already.asked.some((each) => /set username/i.test(each.sql)), false);
+  });
+
+  it("tries another name when the first is taken, and signs the visitor in either way", async () => {
+    const taken: Answer = {
+      when: /set username/iu,
+      throws: (nth) =>
+        nth < 2
+          ? new Error("D1_ERROR: UNIQUE constraint failed: users.username: SQLITE_CONSTRAINT")
+          : undefined,
+    };
+    const { db, asked } = stubDatabase([taken, anyFirst({ id: "7k2m9x4p3qwt", username: null })]);
+
+    const response = await api.request(
+      `/api/auth/callback?code=abc&state=${STATE}`,
+      { headers: FLIGHT },
+      envOf(db, stubGoogle({ body: { id_token: idTokenOf() } }).fetch),
+    );
+
+    assert.equal(response.status, 302);
+    const tries = asked.filter((each) => /set username/i.test(each.sql));
+    assert.equal(tries.length, 3);
+    // The third try carries a number, which is what makes it a different name.
+    assert.match(tries[2]!.values[0] as string, /-\d+$/);
+    assert.notEqual(asked.find((each) => /insert into sessions/i.test(each.sql)), undefined);
+  });
+
   it("stores a hash of the session token, never the token", async () => {
     const { db, asked } = stubDatabase();
     const google = stubGoogle({ body: { id_token: idTokenOf() } });
@@ -658,7 +726,14 @@ describe("GET /api/me", () => {
 
     const said = await response.text();
     assert.deepEqual(JSON.parse(said), {
-      user: { id: "7k2m9x4p3qwt", email: "jason@example.com", isAdmin: false },
+      user: {
+        id: "7k2m9x4p3qwt",
+        email: "jason@example.com",
+        isAdmin: false,
+        choseUsername: false,
+        anonymousAuthor: false,
+        shareStats: true,
+      },
     });
     // The row held the subject; the answer must not.
     assert.equal(said.includes("107691503500061507151"), false);
@@ -772,5 +847,187 @@ describe("POST /api/auth/logout", () => {
 
     assert.equal(response.status, 204);
     assert.equal(asked.length, 0);
+  });
+});
+
+
+// ---- the account's own routes ----------------------------------------------
+
+const patchMe = async (body: unknown, answers: readonly Answer[] = [sessionAnswer()], headers: Record<string, string> = SIGNED_IN) => {
+  const { db, asked, batches } = stubDatabase(answers);
+  const response = await api.request(
+    "/api/me",
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...headers },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    },
+    { DB: db },
+  );
+  return { response, asked, batches };
+};
+
+describe("GET /api/username", () => {
+  const check = async (name: string, answers: readonly Answer[] = [sessionAnswer()], headers: Record<string, string> = SIGNED_IN) => {
+    const { db, asked } = stubDatabase(answers);
+    const response = await api.request(`/api/username?name=${encodeURIComponent(name)}`, { headers }, { DB: db });
+    return { response, asked };
+  };
+
+  it("answers 401 without asking the database when nobody is signed in", async () => {
+    const { response, asked } = await check("jason", [], {});
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(asked, []);
+  });
+
+  it("says why a name breaks the rules, without looking it up", async () => {
+    const { response, asked } = await check("a");
+
+    assert.equal(response.status, 200);
+    const said = (await response.json()) as { available: boolean; problem?: string };
+    assert.equal(said.available, false);
+    assert.equal(typeof said.problem, "string");
+    assert.equal(asked.some((each) => /username = \?/i.test(each.sql)), false);
+  });
+
+  it("says a name somebody else holds is taken", async () => {
+    const { response } = await check("jason", [
+      sessionAnswer(),
+      { when: /username = \?/iu, first: { id: "2b4d6f8h0j1k" } },
+    ]);
+
+    assert.deepEqual(await response.json(), { available: false });
+  });
+
+  it("says a free name is available, asking about every account but one's own", async () => {
+    const { response, asked } = await check("jason");
+
+    assert.deepEqual(await response.json(), { available: true });
+    const lookup = asked.find((each) => /username = \?/i.test(each.sql))!;
+    assert.match(lookup.sql, /id <> \?/i);
+    assert.deepEqual(lookup.values, ["jason", OWNER_ID]);
+  });
+
+  it("judges the name as it would be stored: trimmed and settled", async () => {
+    const { asked } = await check("  Cafe\u0301  ");
+
+    const lookup = asked.find((each) => /username = \?/i.test(each.sql))!;
+    assert.equal(lookup.values[0], "Caf\u00E9");
+  });
+});
+
+describe("PATCH /api/me", () => {
+  it("answers 401 before reading a byte of the body when nobody is signed in", async () => {
+    const { response, asked } = await patchMe("not even json", [], {});
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(asked, []);
+  });
+
+  it("sets the username, marks it chosen, and answers the user as written", async () => {
+    const { response, batches } = await patchMe({ username: "jason" });
+
+    assert.equal(response.status, 200);
+    const { user } = (await response.json()) as { user: Row };
+    assert.equal(user.username, "jason");
+    assert.equal(user.choseUsername, true);
+    assert.equal(user.email, "jason@example.com");
+
+    assert.equal(batches.length, 1);
+    const sql = batches[0]!.map((each) => each.sql).join("\n");
+    assert.match(sql, /SET username = \?/i);
+    assert.match(sql, /SET chose_username = \?/i);
+    for (const each of batches[0]!) {
+      assert.equal(each.values.at(-1), OWNER_ID);
+      assert.equal(each.sql.includes("jason"), false);
+    }
+  });
+
+  it("stores the name trimmed and settled", async () => {
+    const { batches } = await patchMe({ username: "  Cafe\u0301  " });
+
+    const named = batches[0]!.find((each) => /SET username/i.test(each.sql))!;
+    assert.equal(named.values[0], "Caf\u00E9");
+  });
+
+  it("refuses a name that breaks the rules, with the sentence, and writes nothing", async () => {
+    for (const username of ["", "a", "jason mao", "Anonymous", "a".repeat(25)]) {
+      const { response, batches, asked } = await patchMe({ username });
+      assert.equal(response.status, 400, `accepted ${JSON.stringify(username)}`);
+      assert.equal(typeof (await errorOf(response)), "string");
+      assert.deepEqual(batches, []);
+      assert.equal(asked.some((each) => /update users/i.test(each.sql)), false);
+    }
+  });
+
+  it("answers 409 when the name is somebody else's", async () => {
+    const { response } = await patchMe({ username: "jason" }, [
+      { when: /SET username/iu, throws: new Error("D1_ERROR: UNIQUE constraint failed: users.username: SQLITE_CONSTRAINT") },
+      sessionAnswer(),
+    ]);
+
+    assert.equal(response.status, 409);
+    assert.match(await errorOf(response), /taken/i);
+  });
+
+  it("flips each setting on its own, and says so back", async () => {
+    const anonymous = await patchMe({ anonymousAuthor: true });
+    assert.equal(((await anonymous.response.json()) as { user: Row }).user.anonymousAuthor, true);
+    const [flip] = anonymous.batches[0]!;
+    assert.match(flip!.sql, /SET anonymous_author = \?/i);
+    assert.deepEqual(flip!.values, [1, OWNER_ID]);
+
+    const quiet = await patchMe({ shareStats: false });
+    assert.equal(((await quiet.response.json()) as { user: Row }).user.shareStats, false);
+    assert.deepEqual(quiet.batches[0]![0]!.values, [0, OWNER_ID]);
+  });
+
+  it("ignores what it does not know, and writes nothing for a body that asks nothing", async () => {
+    const { response, batches } = await patchMe({ isAdmin: true, email: "x@y", id: "zzzzzzzzzzzz" });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(batches, []);
+    const { user } = (await response.json()) as { user: Row };
+    assert.equal(user.isAdmin, false);
+    assert.equal(user.id, OWNER_ID);
+  });
+
+  it("refuses a body that is not JSON, a setting that is not a yes or no, and a body too large", async () => {
+    assert.equal((await patchMe("{ nope")).response.status, 400);
+    assert.equal((await patchMe({ shareStats: "no" })).response.status, 400);
+    assert.equal((await patchMe({ username: "jason", padding: "a".repeat(5000) })).response.status, 413);
+  });
+});
+
+describe("DELETE /api/me", () => {
+  const deleteMe = async (answers: readonly Answer[] = [sessionAnswer()], headers: Record<string, string> = SIGNED_IN) => {
+    const { db, asked, batches } = stubDatabase(answers);
+    const response = await api.request("/api/me", { method: "DELETE", headers }, { DB: db });
+    return { response, asked, batches };
+  };
+
+  it("answers 401 without asking the database when nobody is signed in", async () => {
+    const { response, asked } = await deleteMe([], {});
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(asked, []);
+  });
+
+  it("deletes the account's levels and then the account, in one batch, and clears the cookie", async () => {
+    const { response, batches } = await deleteMe();
+
+    assert.equal(response.status, 204);
+    assert.equal(await response.text(), "");
+    assert.equal(batches.length, 1);
+    const [levels, account] = batches[0]!;
+    assert.match(levels!.sql, /DELETE FROM transcriptions WHERE owner_id = \?/i);
+    assert.deepEqual(levels!.values, [OWNER_ID]);
+    assert.match(account!.sql, /DELETE FROM users WHERE id = \?/i);
+    assert.deepEqual(account!.values, [OWNER_ID]);
+
+    const cookie = cookieNamed(response, "session")!;
+    assert.match(cookie, /Max-Age=0/i);
+    assert.match(cookie, /Path=\//i);
   });
 });

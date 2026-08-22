@@ -131,6 +131,9 @@ const viewer = (over: Partial<UserSummary> = {}): UserSummary => ({
   email: "jason@example.com",
   username: undefined,
   isAdmin: false,
+  choseUsername: false,
+  anonymousAuthor: false,
+  shareStats: true,
   ...over,
 });
 

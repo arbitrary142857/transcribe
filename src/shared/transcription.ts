@@ -12,6 +12,7 @@ import { decode, encode, type MelodyJson } from "../editor/codec.js";
 import type { Melody } from "../music/melody.js";
 import { Note, Rest, UnpitchedNote } from "../music/note-event.js";
 import type { Mode, TimeSignature } from "../music/types.js";
+import { isStars } from "./difficulty.js";
 import { isId, newId } from "./id.js";
 
 /** The two clefs the setup page offers, and the two the database allows. */
@@ -38,6 +39,8 @@ export type TranscriptionDetails = {
   title: string;
   subtitle?: string;
   instructions?: string;
+  /** How hard the author says it is: half a star to five, in halves, or unsaid. */
+  difficulty?: number;
 };
 
 /** The same, settled: trimmed, normalized, and empty fields dropped. */
@@ -45,6 +48,7 @@ export type CleanDetails = {
   title: string;
   subtitle: string | undefined;
   instructions: string | undefined;
+  difficulty: number | undefined;
 };
 
 /**
@@ -87,11 +91,21 @@ export type TranscriptionSummary = {
    */
   instructions: string | undefined;
   /**
-   * Whose it is. An opaque id rather than a name, until there are names; a
-   * page compares it with the id /api/me gave to decide whether to draw the
-   * pencil and the trash, which is drawing and never permission.
+   * Whose it is. An opaque id; a page compares it with the id /api/me gave
+   * to decide whether to draw the pencil and the trash, which is drawing and
+   * never permission.
    */
   ownerId: string;
+  /**
+   * The author's name as they would have it shown: their username, unless
+   * they have asked to be Anonymous, in which case nothing. Optional rather
+   * than `string | undefined` like the fields above it, so that every
+   * summary written before it existed still type-checks; `authorDifficulty`
+   * likewise.
+   */
+  author?: string;
+  /** The author's word on how hard it is, in stars; nothing if unsaid. */
+  authorDifficulty?: number;
   status: LevelStatus;
   /** The moment it went public, or nothing while it is a draft. */
   publishedAt: number | undefined;
@@ -361,6 +375,9 @@ export function cleanDetails(raw: TranscriptionDetails): CleanDetails {
     title: tidy(raw.title),
     subtitle: orNothing(raw.subtitle),
     instructions: orNothing(raw.instructions),
+    // Passed through as given: `detailsProblem` has already held it to a
+    // rating, and there is nothing to settle about a number.
+    difficulty: raw.difficulty,
   };
 }
 
@@ -432,6 +449,10 @@ export function detailsProblem(
     if (characters(instructions) > LIMITS.instructions.max) {
       return `The instructions are longer than ${LIMITS.instructions.max} characters.`;
     }
+  }
+
+  if (raw.difficulty !== undefined && !isStars(raw.difficulty)) {
+    return "The difficulty is half a star to five stars, in halves.";
   }
 
   return undefined;

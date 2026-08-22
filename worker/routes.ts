@@ -20,6 +20,7 @@ import type { Mode, TimeSignature } from "../src/music/types.js";
 import { beatsPerBarOf } from "../src/playback/tempo-map.js";
 import { MEASURES_MAX, timingProblem } from "../src/playback/timing-fields.js";
 import { mergeProgress, regradeProgress } from "../src/puzzle/merge.js";
+import { halfOfStars, starsOfHalf } from "../src/shared/difficulty.js";
 import { readProgress, type PlayProgress } from "../src/puzzle/progress.js";
 import type { UserSummary } from "../src/shared/session.js";
 import {
@@ -113,12 +114,21 @@ const LEVELS_PAGE = 100;
  * injection takes -- so, plainly: it is a constant declared here, nothing
  * reaches it from a request, and it is the only thing in this file ever
  * spliced into a statement. Every value goes through `bind`.
+ *
+ * The last column reads the users table: the author's name, as they would
+ * have it shown, or nothing when they have asked to be Anonymous. A
+ * correlated subselect rather than a JOIN, so that every statement this is
+ * spliced into stays `FROM transcriptions` and `id` keeps meaning the
+ * level's. A rename in users renames every byline, which is the point of
+ * the name living there.
  */
 const LEVEL_COLUMNS = `
   id, title, subtitle, instructions, video_id, mark_start, mark_end,
   measures, clef, meter_beats, meter_unit,
-  key_fifths, key_mode, note_count, unpitched_count,
-  owner_id, status, published_at, updated_at, created_at
+  key_fifths, key_mode, note_count, unpitched_count, difficulty_half,
+  owner_id, status, published_at, updated_at, created_at,
+  (SELECT CASE WHEN u.anonymous_author = 1 THEN NULL ELSE u.username END
+     FROM users u WHERE u.id = transcriptions.owner_id) AS author
 `;
 
 /**
@@ -151,7 +161,9 @@ type LevelRow = {
   key_mode: Mode;
   note_count: number;
   unpitched_count: number;
+  difficulty_half: number | null;
   owner_id: string;
+  author: string | null;
   status: LevelStatus;
   published_at: number | null;
   updated_at: number;
@@ -185,6 +197,11 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
   noteCount: row.note_count,
   unpitchedCount: row.unpitched_count,
   ownerId: row.owner_id,
+  author: row.author ?? undefined,
+  authorDifficulty:
+    row.difficulty_half === null || row.difficulty_half === undefined
+      ? undefined
+      : starsOfHalf(row.difficulty_half),
   status: row.status,
   publishedAt: row.published_at ?? undefined,
   updatedAt: row.updated_at,
@@ -344,6 +361,10 @@ const VIDEO_ID = /^[\w-]{11}$/;
 
 const isFinite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+/** The author's stars as the column holds them: halves, or NULL for unsaid. */
+const halfOrNull = (stars: number | undefined): number | null =>
+  stars === undefined ? null : halfOfStars(stars);
 
 /**
  * The two moments the marks name, if they name two.
@@ -562,10 +583,10 @@ api.post("/api/levels", async (c) => {
   const now = Date.now();
   await c.env.DB.prepare(
     `INSERT INTO transcriptions (
-      id, owner_id, title, subtitle, instructions, video_id, mark_start, mark_end,
+      id, owner_id, title, subtitle, instructions, difficulty_half, video_id, mark_start, mark_end,
       measures, clef, meter_beats, meter_unit, key_fifths, key_mode,
       note_count, unpitched_count, melody, status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -573,6 +594,7 @@ api.post("/api/levels", async (c) => {
       read.details.title,
       read.details.subtitle ?? null,
       read.details.instructions ?? null,
+      halfOrNull(read.details.difficulty),
       videoId,
       marks.start,
       marks.end,
@@ -623,7 +645,7 @@ api.get("/api/levels/:id/source", async (c) => {
 
 /** Why a published level's music and marks stay where they are. */
 const PUBLISHED_LOCKED =
-  "Only the title, subtitle and instructions of a published level can change; unpublish it to change the music or the marks.";
+  "Only the title, subtitle, instructions and difficulty of a published level can change; unpublish it to change the music or the marks.";
 
 /**
  * Replace the music, the words, and where the music sits in the video -- or,
@@ -698,13 +720,15 @@ api.put("/api/levels/:id", async (c) => {
 
     await c.env.DB.prepare(
       `UPDATE transcriptions
-          SET title = ?, subtitle = ?, instructions = ?, updated_at = ?
+          SET title = ?, subtitle = ?, instructions = ?, difficulty_half = ?,
+              updated_at = ?
         WHERE id = ?`,
     )
       .bind(
         words.details.title,
         words.details.subtitle ?? null,
         words.details.instructions ?? null,
+        halfOrNull(words.details.difficulty),
         Date.now(),
         id,
       )
@@ -753,7 +777,7 @@ api.put("/api/levels/:id", async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE transcriptions
-        SET title = ?, subtitle = ?, instructions = ?,
+        SET title = ?, subtitle = ?, instructions = ?, difficulty_half = ?,
             mark_start = ?, mark_end = ?,
             key_fifths = ?, key_mode = ?,
             note_count = ?, unpitched_count = ?, melody = ?,
@@ -764,6 +788,7 @@ api.put("/api/levels/:id", async (c) => {
       read.details.title,
       read.details.subtitle ?? null,
       read.details.instructions ?? null,
+      halfOrNull(read.details.difficulty),
       marks.start,
       marks.end,
       derived.keyFifths,

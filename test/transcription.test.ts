@@ -197,6 +197,19 @@ describe("detailsProblem()", () => {
     assert.equal(detailsProblem({ title: "Clair de lune" }), undefined);
   });
 
+  it("takes a difficulty of half a star to five, in halves, and refuses any other", () => {
+    for (const difficulty of [0.5, 2.5, 5]) {
+      assert.equal(detailsProblem({ title: "x", difficulty }), undefined, `refused ${difficulty}`);
+    }
+    for (const difficulty of [0, 5.5, 2.25, "3", Number.NaN]) {
+      assert.match(
+        detailsProblem({ title: "x", difficulty: difficulty as never }) ?? "",
+        /difficulty/i,
+        `accepted ${String(difficulty)}`,
+      );
+    }
+  });
+
   it("refuses a title of nothing but spaces", () => {
     assert.notEqual(detailsProblem({ title: "   " }), undefined);
     assert.notEqual(detailsProblem({ title: "" }), undefined);
@@ -295,14 +308,20 @@ describe("cleanDetails()", () => {
       title: "Clair de lune",
       subtitle: undefined,
       instructions: undefined,
+      difficulty: undefined,
     });
   });
 
   it("drops a field that was only spaces, rather than storing emptiness", () => {
     assert.deepEqual(
       cleanDetails({ title: "Clair de lune", subtitle: "   ", instructions: "" }),
-      { title: "Clair de lune", subtitle: undefined, instructions: undefined },
+      { title: "Clair de lune", subtitle: undefined, instructions: undefined, difficulty: undefined },
     );
+  });
+
+  it("carries the difficulty through as the author set it", () => {
+    assert.equal(cleanDetails({ title: "x", difficulty: 2.5 }).difficulty, 2.5);
+    assert.equal(cleanDetails({ title: "x" }).difficulty, undefined);
   });
 
   it("settles accents into one spelling, so length and equality are steady", () => {

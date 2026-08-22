@@ -244,12 +244,14 @@ describe("migration 0003", () => {
 // ---- 0004 -----------------------------------------------------------------
 
 const PROGRESS_MIGRATION = "0004_keep_progress_per_account.sql";
+const NAMES_MIGRATION = "0005_name_the_author.sql";
 
 /** The database as every migration leaves it, with whatever `seed` puts in it. */
 function current(seed: (db: DatabaseSync) => void = () => {}): DatabaseSync {
   const db = before();
   db.exec(sqlOf(MIGRATION));
   db.exec(sqlOf(PROGRESS_MIGRATION));
+  db.exec(sqlOf(NAMES_MIGRATION));
   seed(db);
   return db;
 }
@@ -592,5 +594,84 @@ describe("the progress statements the routes run", () => {
     );
     assert.equal(one(db, SOMEBODY).elapsed_ms, 3);
     assert.equal(db.prepare(PROGRESS_SQL.read).get(SOMEBODY, OTHER_LEVEL), undefined);
+  });
+});
+
+// ---- 0005 -----------------------------------------------------------------
+
+describe("migration 0005", () => {
+  /** Everything up to 0004, a user and a level, then 0005 over them. */
+  const upgraded = (): DatabaseSync => {
+    const db = before();
+    db.exec(sqlOf(MIGRATION));
+    db.exec(sqlOf(PROGRESS_MIGRATION));
+    addUser(db, JASON, 1);
+    addOwnedLevel(db, LEVEL, JASON);
+    db.exec(sqlOf(NAMES_MIGRATION));
+    return db;
+  };
+
+  it("gives every existing account its two settings and an unchosen name, and every level no difficulty", () => {
+    const db = upgraded();
+
+    assert.deepEqual(
+      rows(db, `SELECT username, chose_username, anonymous_author, share_stats FROM users`),
+      [{ username: null, chose_username: 0, anonymous_author: 0, share_stats: 1 }],
+    );
+    assert.deepEqual(rows(db, `SELECT difficulty_half FROM transcriptions`), [
+      { difficulty_half: null },
+    ]);
+  });
+
+  it("holds a difficulty of half a star to five, in halves, or none", () => {
+    const db = upgraded();
+    const rate = (half: number | null) =>
+      db.prepare(`UPDATE transcriptions SET difficulty_half = ? WHERE id = ?`).run(half, LEVEL);
+
+    for (const half of [1, 5, 10, null]) {
+      assert.doesNotThrow(() => rate(half), `refused ${half}`);
+    }
+    assert.throws(() => rate(0), /CHECK/);
+    assert.throws(() => rate(11), /CHECK/);
+  });
+
+  it("holds each setting as a yes or a no and nothing else", () => {
+    const db = upgraded();
+    const set = (column: string, value: number) =>
+      db.prepare(`UPDATE users SET ${column} = ? WHERE id = ?`).run(value, JASON);
+
+    for (const column of ["chose_username", "anonymous_author", "share_stats"]) {
+      assert.doesNotThrow(() => set(column, 1));
+      assert.doesNotThrow(() => set(column, 0));
+      assert.throws(() => set(column, 2), /CHECK/, column);
+    }
+  });
+
+  it("leaves the name unique whatever its case, as 0002 made it", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+    });
+    db.prepare(`UPDATE users SET username = ? WHERE id = ?`).run("quiet-heron", JASON);
+
+    assert.throws(
+      () => db.prepare(`UPDATE users SET username = ? WHERE id = ?`).run("Quiet-Heron", SOMEBODY),
+      /UNIQUE/,
+    );
+  });
+
+  it("will not let an account go while it still owns a level, which is what makes the route delete them first", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addOwnedLevel(db, LEVEL, JASON);
+      addProgress(db, JASON, LEVEL);
+    });
+
+    assert.throws(() => db.prepare(`DELETE FROM users WHERE id = ?`).run(JASON), /FOREIGN KEY/);
+
+    db.prepare(`DELETE FROM transcriptions WHERE owner_id = ?`).run(JASON);
+    assert.doesNotThrow(() => db.prepare(`DELETE FROM users WHERE id = ?`).run(JASON));
+    assert.deepEqual(rows(db, `SELECT * FROM progress`), []);
+    assert.deepEqual(rows(db, `SELECT * FROM sessions`), []);
   });
 });

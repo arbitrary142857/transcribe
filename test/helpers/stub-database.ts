@@ -31,11 +31,18 @@ export type Asked = { sql: string; values: unknown[] };
  * One answer the stand-in gives, to any statement whose text matches `when`.
  * `first` answers `.first()`, `rows` answers `.all()`; a statement matching
  * nothing gets `null` and `[]`, as an empty table would give.
+ *
+ * `throws` is what the database says instead of answering — a UNIQUE index
+ * refusing a name is the one a route has to handle. An `Error` is thrown
+ * every time the statement runs; a function is asked each time, with how many
+ * times this answer has run before, so a test can have the first try refused
+ * and the next accepted.
  */
 export type Answer = {
   when: RegExp;
   first?: Row;
   rows?: readonly Row[];
+  throws?: Error | ((nth: number) => Error | undefined);
 };
 
 /** Whatever the statement, this row — for a test with only one query in view. */
@@ -56,20 +63,33 @@ export function stubDatabase(answers: readonly Answer[] = []): {
 } {
   const asked: Asked[] = [];
   const batches: Asked[][] = [];
+  const ran = new Map<Answer, number>();
   const db: Database = {
     prepare(sql: string) {
       const record: Asked = { sql, values: [] };
       asked.push(record);
       const answer = answers.find((each) => each.when.test(sql));
+      /** What the database would have said instead of answering, if anything. */
+      const refusal = (): Error | undefined => {
+        if (answer?.throws === undefined) return undefined;
+        const nth = ran.get(answer) ?? 0;
+        ran.set(answer, nth + 1);
+        return typeof answer.throws === "function" ? answer.throws(nth) : answer.throws;
+      };
+      const running = async <T>(result: () => T): Promise<T> => {
+        const thrown = refusal();
+        if (thrown !== undefined) throw thrown;
+        return result();
+      };
       const statement: StubStatement = {
         record,
         bind(...values: unknown[]) {
           record.values = values;
           return statement;
         },
-        all: async () => ({ results: [...(answer?.rows ?? [])] }),
-        first: async () => answer?.first ?? null,
-        run: async () => ({ success: true }),
+        all: () => running(() => ({ results: [...(answer?.rows ?? [])] })),
+        first: () => running(() => answer?.first ?? null),
+        run: () => running(() => ({ success: true })),
       };
       return statement;
     },
