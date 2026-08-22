@@ -18,6 +18,7 @@ import {
   type TranscriptionDetails,
 } from "../shared/transcription.js";
 import { createDisclosure } from "./disclosure.js";
+import { createStarPicker, type StarPicker } from "./star-picker.js";
 import { limitTyping } from "./text-entry.js";
 
 export type DetailsPanel = {
@@ -132,6 +133,33 @@ export function createField(options: FieldOptions, onInput: () => void): Field {
   };
 }
 
+/**
+ * The difficulty, as a row of the details like the three text boxes: the
+ * same label style, and the star picker where a box would be.
+ *
+ * Exported for the details modal, which wants the same row.
+ */
+export function difficultyRow(
+  value: number | undefined,
+  onChange: (value: number | undefined) => void,
+): HTMLElement & { picker: StarPicker } {
+  const row = document.createElement("div") as HTMLDivElement & { picker: StarPicker };
+  row.className = "details-field details-difficulty";
+
+  const label = document.createElement("span");
+  label.className = "setup-link-label details-label";
+  label.textContent = "Difficulty";
+
+  const head = document.createElement("div");
+  head.className = "details-head";
+  head.append(label);
+
+  const picker = createStarPicker({ value, onChange });
+  row.append(head, picker.element);
+  row.picker = picker;
+  return row;
+}
+
 export function createDetailsPanel(
   onChange: (details: TranscriptionDetails) => void,
 ): DetailsPanel {
@@ -155,11 +183,13 @@ export function createDetailsPanel(
   panel.className = "key-panel details-panel";
   panel.hidden = true;
 
+  let difficulty: number | undefined;
   const report = () =>
     onChange({
       title: title.input.value,
       subtitle: subtitle.input.value,
       instructions: instructions.input.value,
+      difficulty,
     });
 
   const title = createField(
@@ -185,7 +215,12 @@ export function createDetailsPanel(
     report,
   );
 
-  panel.append(title.row, subtitle.row, instructions.row);
+  const stars = difficultyRow(undefined, (next) => {
+    difficulty = next;
+    report();
+  });
+
+  panel.append(title.row, subtitle.row, instructions.row, stars);
 
   const disclosure = createDisclosure({
     root: element,
@@ -216,6 +251,8 @@ export function createDetailsPanel(
       title.show(details.title);
       subtitle.show(details.subtitle ?? "");
       instructions.show(details.instructions ?? "");
+      difficulty = details.difficulty;
+      stars.picker.set(difficulty);
 
       const named = details.title.trim() !== "";
       value.textContent = named ? details.title.trim() : "Untitled";

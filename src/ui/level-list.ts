@@ -21,7 +21,7 @@ import {
   type PlayProgress,
   type ProgressStore,
 } from "../puzzle/progress.js";
-import type { UserSummary } from "../shared/session.js";
+import { ANONYMOUS, type UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { editDetails } from "./details-modal.js";
 import { googleButton } from "./google-button.js";
@@ -165,6 +165,11 @@ export function createLevelList(options: LevelListOptions): LevelList {
         }),
       );
     }
+    // On the author's own page, while their name is one the site picked:
+    // every card here says it, so this is where to say it was picked.
+    if (page === "mine" && user !== undefined && !user.choseUsername) {
+      parts.push(pickedNameLine(user));
+    }
     note.replaceChildren(...parts);
   }
 
@@ -232,6 +237,18 @@ export function createLevelList(options: LevelListOptions): LevelList {
       );
       console.error(error);
     }
+  }
+
+  /** One line, once: the name on these cards was picked, and where to change it. */
+  function pickedNameLine(who: UserSummary): HTMLElement {
+    const line = document.createElement("span");
+    line.className = "note-handoff";
+    const choose = document.createElement("a");
+    choose.href = "/account";
+    choose.className = "note-action";
+    choose.textContent = "Choose your own";
+    line.append(`Your levels say by ${who.username ?? ANONYMOUS}, a name picked for you. `, choose);
+    return line;
   }
 
   /** The standing line's first way out: the records go to the account, and the list is read again. */
@@ -362,7 +379,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
         title: "Publish this level?",
         body: [
           `“${level.title}” goes into the list for everybody to play.`,
-          "The music and the timing marks freeze. Only the title, subtitle and instructions can change afterwards; unpublishing takes it back.",
+          "The music and the timing marks freeze. Only the title, subtitle, instructions and difficulty can change afterwards; unpublishing takes it back.",
         ],
         confirm: "Publish",
         cancel: "Not yet",

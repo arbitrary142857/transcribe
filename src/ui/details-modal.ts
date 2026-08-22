@@ -15,7 +15,7 @@ import {
   type TranscriptionDetails,
   type TranscriptionSummary,
 } from "../shared/transcription.js";
-import { createField } from "./details-panel.js";
+import { createField, difficultyRow } from "./details-panel.js";
 import { openFormModal } from "./modal.js";
 
 /**
@@ -31,6 +31,7 @@ export async function editDetails(level: TranscriptionSummary): Promise<boolean>
     title: level.title,
     subtitle: level.subtitle ?? "",
     instructions: level.instructions ?? "",
+    difficulty: level.authorDifficulty,
   };
 
   const agreed = await openFormModal({
@@ -44,11 +45,13 @@ export async function editDetails(level: TranscriptionSummary): Promise<boolean>
       problem.className = "modal-body details-modal-problem";
       problem.setAttribute("role", "status");
 
+      let difficulty = details.difficulty;
       const report = () => {
         details = {
           title: title.input.value,
           subtitle: subtitle.input.value,
           instructions: instructions.input.value,
+          difficulty,
         };
         const wrong = detailsProblem(details);
         problem.textContent = wrong ?? "";
@@ -76,7 +79,12 @@ export async function editDetails(level: TranscriptionSummary): Promise<boolean>
       subtitle.show(details.subtitle ?? "");
       instructions.show(details.instructions ?? "");
 
-      return [title.row, subtitle.row, instructions.row, problem];
+      const stars = difficultyRow(difficulty, (next) => {
+        difficulty = next;
+        report();
+      });
+
+      return [title.row, subtitle.row, instructions.row, stars, problem];
     },
   });
   if (!agreed) return false;

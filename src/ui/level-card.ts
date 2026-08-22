@@ -8,8 +8,10 @@
  */
 
 import { beatsPerMinute, tempoMapOf } from "../playback/tempo-map.js";
-import type { UserSummary } from "../shared/session.js";
+import { displayedDifficulty } from "../shared/difficulty.js";
+import { authorLabel, type UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
+import { createDifficulty } from "./difficulty.js";
 import { pencilIcon, trashIcon } from "./icons.js";
 import { keyLabelOfFifths } from "./key-label.js";
 import { THUMBNAIL_SIZE, sharpenThumbnail, thumbnailUrl } from "./youtube.js";
@@ -199,10 +201,17 @@ export type LevelCardOptions = {
  * innerHTML.
  *
  * A card carries the least that distinguishes one level from another — what it
- * is called, and whether you have finished it. Everything else it used to
- * print in a row of dot-separated facts is in the level's own box now, one
- * press away, where there is room to lay it out and to say what each number
- * means.
+ * is called, who wrote it down, how hard they say it is, and whether you have
+ * finished it. Everything else it used to print in a row of dot-separated
+ * facts is in the level's own box now, one press away, where there is room
+ * to lay it out and to say what each number means.
+ *
+ * Every card has the same shape, whoever is looking: the picture, then a row
+ * with the difficulty at its left and the tools at its right (the tools are
+ * absent for everybody but an author or an admin, and the row keeps its
+ * height without them), then the title, the subtitle, and a byline. The
+ * byline always says somebody — "by Anonymous" when the author has no name
+ * to show — so no card is a different height for having a quieter author.
  *
  * The card opens that box and the pencil opens the editor, and the two are
  * told apart the only way that keeps a keyboard and a screen reader working:
@@ -286,6 +295,13 @@ export function createLevelCard(
     item.append(frame);
   }
 
+  // The row above the title: how hard the author says it is, and what this
+  // viewer may do to it. The difficulty comes through `displayedDifficulty`,
+  // which is the only thing that knows what the figure is made of.
+  const row = document.createElement("div");
+  row.className = "level-row";
+  row.append(createDifficulty(displayedDifficulty(level)));
+
   const head = document.createElement("div");
   head.className = "level-head";
 
@@ -363,14 +379,14 @@ export function createLevelCard(
     tools.append(remove);
   }
 
+  if (tools.childElementCount > 0) row.append(tools);
   head.append(title);
-  if (tools.childElementCount > 0) head.append(tools);
 
   // The words, padded away from the edge — the picture above is not, so the
   // padding belongs to this rather than to the card.
   const body = document.createElement("div");
   body.className = "level-body";
-  body.append(head);
+  body.append(row, head);
 
   // Always drawn, empty or not. The slot is one line tall either way, so a
   // level with no subtitle makes a card exactly as tall as one with a subtitle
@@ -393,6 +409,12 @@ export function createLevelCard(
   } else {
     body.append(subtitle);
   }
+
+  // Who wrote it down, last. Always a line, always somebody.
+  const author = document.createElement("p");
+  author.className = "level-author";
+  author.textContent = authorLabel(level.author);
+  body.append(author);
 
   item.append(body);
   return item;

@@ -103,7 +103,7 @@ export type ListableStorage = Storage & {
  * `fetch` fits it; `page-boot.ts` hands that over as `browserFetch`.
  */
 export type FetchInit = {
-  method: "GET" | "PUT" | "POST";
+  method: "GET" | "PUT" | "POST" | "PATCH" | "DELETE";
   headers: Record<string, string>;
   body?: string;
   keepalive?: boolean;

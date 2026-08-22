@@ -33,6 +33,9 @@ import {
   type LevelStat,
   type LevelStatKind,
 } from "./level-card.js";
+import { displayedDifficulty } from "../shared/difficulty.js";
+import { authorLabel } from "../shared/session.js";
+import { createDifficulty } from "./difficulty.js";
 import { openInfoModal } from "./modal.js";
 
 /**
@@ -104,6 +107,13 @@ export function openLevelModal(options: LevelModalOptions): void {
         subtitle.textContent = level.subtitle;
         parts.push(subtitle);
       }
+
+      // Who wrote it down, and how hard they say it is: the same two facts
+      // the card leads with, since this box is the card opened.
+      const author = document.createElement("p");
+      author.className = "level-modal-author";
+      author.append(authorLabel(level.author), " · ", createDifficulty(displayedDifficulty(level)));
+      parts.push(author);
 
       if (options.solvedIn) {
         const solved = document.createElement("p");

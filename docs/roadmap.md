@@ -13,7 +13,7 @@ update the status table when a phase lands.
 | 1 | Sign in with Google; sessions; `/api/me` | Shipped 2026-08-20 (`dc0528e`) |
 | 2 | Levels have owners; drafts and publishing; `/mine`; sign-in-to-save | Shipped 2026-08-21 (`4b81daf` server, `c1b9c1c` client) |
 | 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Shipped 2026-08-21 (`3b6d72e` server, then client) |
-| 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Server shipped 2026-08-21; client next |
+| 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
 | 5 | Admin tools beyond ownership bypass | Mostly folded into 2; a moderation view remains |
 | 6 | Difficulty from play data (the author's word shipped in 4; honour `share_stats`), thumbs-up, error reports | — |
 
@@ -126,12 +126,23 @@ and `authorDifficulty` (stars, from the halves); difficulty is one of the
 details, so a published level's details box can change it;
 `GET /api/username`, `PATCH /api/me`, `DELETE /api/me`.
 
-Still to build on the client (session B): the card's new row (difficulty at
-the left, tools at the right) and byline; bylines in the level box and the
-play bar; the half-star picker in the editor and the details box; the nav
-corner as the link to `/account`; the `/account` page (name with the live
-check, the two settings, this browser's progress, delete); `/privacy` and a
-footer on every page; the `/mine` nudge while the name is a minted one.
+On the client: every card has the same shape — picture, a row with the
+difficulty at the left (`ui/difficulty.ts`, the one drawing; a "?" star for
+unrated) and the tools at the right, title, subtitle, "by ⟨name⟩" — and the
+level box and the play bar carry the byline too. The half-star picker
+(`ui/star-picker.ts`) sits in the editor's details panel and the details
+box. The nav corner's name is the link to `/account`: the name with a live
+availability check (`ui/name-check.ts`), the two settings as switches, this
+browser's progress with the same hand-off as the catalog, and deletion
+behind a question that lists what goes. `/privacy` is prose in the markup,
+linked from a footer on every page. `/mine` says once, while the name is a
+minted one, that it was picked.
+
+Known rough edges carried forward: the privacy page is a draft for Jason to
+review before it is relied on; an account from before names were minted
+shows its email in the corner until its next sign-in; `chose_username` is
+set by any save on the account page, so keeping the minted name by saving
+it counts as choosing it.
 
 ## How the work is done
 

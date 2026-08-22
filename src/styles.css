@@ -1264,7 +1264,9 @@ main {
   background: #f5efe4;
 }
 
-.modal-confirm {
+/* The committing button, in a box or on the account page. */
+.modal-confirm,
+.account-button {
   padding: 0.5rem 1rem;
   font: inherit;
   font-size: 0.88rem;
@@ -1277,7 +1279,8 @@ main {
   -webkit-appearance: none;
 }
 
-.modal-confirm:hover {
+.modal-confirm:hover,
+.account-button:hover {
   background: #9c3925;
 }
 
@@ -1873,9 +1876,15 @@ main {
   display: contents;
 }
 
-/* The name is a fact, not a door: link-grey, but nothing happens on hover. */
+/* The name is the door to the account's page: a link like the ones beside
+   it, drawn the same grey. */
 .session-name {
   color: #6c6459;
+  text-decoration: none;
+}
+
+.session-name:hover {
+  text-decoration: underline;
 }
 
 /* A button dressed as the links beside it, because it belongs to the nav,
@@ -2149,7 +2158,8 @@ textarea.details-input {
 
 /* The confirm in the one dialog had no disabled state, having never needed
    one; it does now that a dialog can be waiting on a field. */
-.modal-confirm:disabled {
+.modal-confirm:disabled,
+.account-button:disabled {
   color: #8d8378;
   background: #ebe5da;
   border-color: var(--rule);
@@ -2443,12 +2453,126 @@ main.page {
   text-underline-offset: 2px;
 }
 
-/* The title takes the room and the pencil keeps its corner. */
+/* The row above the title: the difficulty at the left, the tools at the
+   right, and one line's height whether or not there are tools, so a card with
+   a pencil is no taller than one without. */
+.level-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-height: 1.9rem;
+  margin-bottom: 0.15rem;
+}
+
 .level-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.6rem;
+}
+
+/* ---- Difficulty, wherever it is drawn ----
+
+   Five star glyphs and a number. A half is the hollow star with a lit one
+   clipped to its left half laid over it. The unrated mark is one hollow star
+   and a question mark, which cannot be read as the lowest rating. */
+.difficulty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.05rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #d9a441;
+  white-space: nowrap;
+}
+
+.star {
+  position: relative;
+  display: inline-block;
+}
+
+.star-empty {
+  color: #cfc7b8;
+}
+
+.star-half {
+  color: #cfc7b8;
+}
+
+.star-half-lit {
+  position: absolute;
+  inset: 0;
+  width: 50%;
+  overflow: hidden;
+  color: #d9a441;
+}
+
+.difficulty-text,
+.difficulty-unrated {
+  margin-left: 0.3rem;
+  font-size: 0.82rem;
+  color: #6c6459;
+}
+
+.difficulty.is-unrated {
+  color: #cfc7b8;
+}
+
+/* The author's word, chosen on the details panel: ten halves laid over five
+   drawn stars, each half a button with no look of its own. */
+.star-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.star-picker-stars {
+  position: relative;
+  display: inline-flex;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.star-picker-drawn {
+  display: inline-flex;
+  color: #d9a441;
+}
+
+.star-pick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Each half sits over its own half of its own star: the nth pair over the
+   nth star. */
+.star-pick:nth-child(2) { left: 0%; }
+.star-pick:nth-child(3) { left: 10%; }
+.star-pick:nth-child(4) { left: 20%; }
+.star-pick:nth-child(5) { left: 30%; }
+.star-pick:nth-child(6) { left: 40%; }
+.star-pick:nth-child(7) { left: 50%; }
+.star-pick:nth-child(8) { left: 60%; }
+.star-pick:nth-child(9) { left: 70%; }
+.star-pick:nth-child(10) { left: 80%; }
+.star-pick:nth-child(11) { left: 90%; }
+
+.star-pick:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
+.star-picker-text {
+  font-size: 0.82rem;
+  color: #6c6459;
 }
 
 /* Two lines' worth, always: capped at two so a long title cannot grow the card,
@@ -2549,6 +2673,129 @@ main.page {
   font-size: 0.9rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+/* ---- The footer every page shares ----
+
+   One quiet line at the bottom. `body` is a flex column, so `margin-top: auto`
+   puts it at the foot of a short page and after the content of a long one. */
+.site-foot {
+  margin-top: auto;
+  padding: 2rem 1.5rem 1.25rem;
+  text-align: center;
+  font-size: 0.82rem;
+  color: #8d8378;
+}
+
+.site-foot a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.site-foot a:hover,
+.site-foot a[aria-current="page"] {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* ---- The account's own page ---- */
+
+.account-page .page-lede {
+  margin-bottom: 1.25rem;
+}
+
+.account-panel {
+  margin: 0 0 1rem;
+  padding: 1.1rem 1.25rem 1.2rem;
+  max-width: 40rem;
+}
+
+.account-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.account-note {
+  margin: 0.35rem 0 0;
+  color: #6c6459;
+  font-size: 0.92rem;
+}
+
+.account-verdict {
+  margin: 0.3rem 0 0;
+  min-height: 1.3em;
+  font-size: 0.88rem;
+  color: #8d8378;
+}
+
+.account-verdict.is-good {
+  color: #2f7a3d;
+}
+
+.account-verdict.is-wrong {
+  color: var(--note-selected);
+}
+
+/* The name box and its Save side by side, the box taking the room. */
+.account-name-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.account-name-row .details-field {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.account-save {
+  flex: 0 0 auto;
+}
+
+.account-delete {
+  margin-top: 0.75rem;
+}
+
+/* ---- A page of prose: the privacy page ---- */
+
+.prose-page {
+  max-width: 42rem;
+}
+
+.prose-page h2 {
+  margin: 1.6rem 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.prose-page p,
+.prose-page li {
+  color: #4a443c;
+  line-height: 1.55;
+}
+
+.prose-page ul {
+  padding-left: 1.2rem;
+}
+
+.prose-page li {
+  margin: 0.35rem 0;
+}
+
+.prose-page code {
+  font-size: 0.9em;
+}
+
+/* The byline, last, and always one line: every card says somebody. */
+.level-author {
+  margin: 0.35rem 0 0;
+  height: calc(0.82rem * 1.45);
+  color: #8d8378;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .level-facts {
@@ -3419,6 +3666,16 @@ main.page {
   margin: -0.25rem 0 0;
   font-size: 0.95rem;
   color: #6c6459;
+}
+
+/* Who wrote it down, and how hard they say it is, under the names. */
+.level-modal-author {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.1rem 0 0;
+  font-size: 0.88rem;
+  color: #8d8378;
 }
 
 .level-modal-solved {

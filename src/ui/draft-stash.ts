@@ -22,6 +22,7 @@ import { parseMelodyJson, type MelodyJson } from "../editor/codec.js";
 import type { TimeSignature } from "../music/types.js";
 import type { Marks } from "../playback/tempo-map.js";
 import type { Storage } from "../puzzle/progress.js";
+import { isStars } from "../shared/difficulty.js";
 import {
   isTranscriptionId,
   type Clef,
@@ -91,10 +92,13 @@ function readValue(value: unknown, now: number): Draft | undefined {
   }
   const subtitle = value.details.subtitle;
   const instructions = value.details.instructions;
+  const difficulty = value.details.difficulty;
   if (subtitle !== undefined && typeof subtitle !== "string") return undefined;
   if (instructions !== undefined && typeof instructions !== "string") {
     return undefined;
   }
+  // A rating that is not one is dropped rather than the whole stash: the
+  // words are the work, and the stars are a word about it.
 
   const setup = value.setup;
   if (!isObject(setup) || !isObject(setup.marks) || !isObject(setup.meter)) {
@@ -126,6 +130,9 @@ function readValue(value: unknown, now: number): Draft | undefined {
       title: value.details.title,
       subtitle: textOrNothing(subtitle),
       instructions: textOrNothing(instructions),
+      // Left out rather than set to nothing, so a stash from before there
+      // were stars reads back exactly as it was written.
+      ...(isStars(difficulty) ? { difficulty } : {}),
     },
     setup: {
       clef,

@@ -13,7 +13,8 @@
  * flashed into a name would be the nav changing its mind in front of you. The
  * answer is handed back to the page as well as drawn, because the page has
  * its own uses for it — whether Save will work, whose cards carry tools — and
- * asking twice would be one request too many.
+ * asking twice would be one request too many. The name in the corner is the
+ * link to the account's own page, where it can be changed.
  *
  * Signing in keeps you where you are: the link carries this page's address
  * back. A page with work in hand can give the nav something to do on the way
@@ -25,6 +26,14 @@ import { readMe, type UserSummary } from "../shared/session.js";
 import { googleButton } from "./google-button.js";
 
 export type NavLink = { href: string; label: string; current: boolean };
+
+/**
+ * What the corner calls you: the username, chosen or minted alike, and the
+ * email only for an account from before names were minted that has not
+ * signed in since.
+ */
+export const cornerLabel = (user: UserSummary): string =>
+  user.username ?? user.email;
 
 /** The nav's own pages, and whether this is one of them. */
 export function planNav(pathname: string, signedIn: boolean): NavLink[] {
@@ -100,10 +109,15 @@ async function hydrate(
     return undefined;
   }
 
-  // The name is a fact, not a door: same grey as the links, nothing to press.
-  const name = document.createElement("span");
+  // The name is the way to the account's own page: the same grey as the
+  // links, and the one place on every page that says usernames exist.
+  const name = document.createElement("a");
   name.className = "session-name";
-  name.textContent = user.username ?? user.email;
+  name.href = "/account";
+  name.textContent = cornerLabel(user);
+  if (window.location.pathname.replace(/\/$/u, "") === "/account") {
+    name.setAttribute("aria-current", "page");
+  }
 
   const out = document.createElement("button");
   out.type = "button";

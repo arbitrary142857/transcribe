@@ -18,6 +18,7 @@
 
 import type { KeySignature } from "../music/key-signature.js";
 import { formatElapsed } from "../puzzle/stopwatch.js";
+import { authorLabel } from "../shared/session.js";
 import { attemptsLabel } from "../puzzle/verdicts.js";
 import { chip, REDO_KEY, UNDO_KEY } from "./chip.js";
 import { keyLabel } from "./key-label.js";
@@ -25,6 +26,8 @@ import { keyLabel } from "./key-label.js";
 export type PlayBarState = {
   title: string;
   subtitle: string | undefined;
+  /** The author's name as shown, or nothing for Anonymous; see `authorLabel`. */
+  author: string | undefined;
   key: KeySignature;
   canUndo: boolean;
   canRedo: boolean;
@@ -161,8 +164,10 @@ export function createPlayBar(
     update(state) {
       titleText.textContent = state.title;
       solvedMark.hidden = !state.solved;
-      subtitle.textContent = state.subtitle ?? "";
-      subtitle.hidden = state.subtitle === undefined;
+      // "Laufey · by jason", or the byline alone: every level says somebody.
+      subtitle.textContent = [state.subtitle, authorLabel(state.author)]
+        .filter((part) => part !== undefined)
+        .join(" · ");
 
       keyValue.textContent = keyLabel(state.key);
 

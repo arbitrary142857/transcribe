@@ -42,8 +42,9 @@ export default defineConfig({
   environments: {
     client: {
       build: {
-        // Each entry becomes a page: `/`, `/edit`, `/play`, `/mine`, and the
-        // 404 the asset host reaches for when a path names no file. Vite finds
+        // Each entry becomes a page: `/`, `/edit`, `/play`, `/mine`,
+        // `/account`, `/privacy`, and the 404 the asset host reaches for when
+        // a path names no file. Vite finds
         // only `index.html` by itself, so the rest are named.
         //
         // Named under `client` rather than at the top level, and that is not
@@ -56,6 +57,8 @@ export default defineConfig({
             edit: from("./src/edit/index.html"),
             play: from("./src/play/index.html"),
             mine: from("./src/mine/index.html"),
+            account: from("./src/account/index.html"),
+            privacy: from("./src/privacy/index.html"),
             notFound: from("./src/404.html"),
           },
         },

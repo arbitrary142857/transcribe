@@ -2,9 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!-- A document rather than a control surface, like the front page. -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>My transcriptions · Transcribe</title>
+    <title>Your account · Transcribe</title>
     <link rel="stylesheet" href="../styles.css" />
   </head>
   <body>
@@ -16,17 +15,14 @@
       </div>
     </nav>
 
-    <main class="page">
-      <h1 class="page-title">My transcriptions</h1>
+    <main class="page account-page">
+      <h1 class="page-title">Your account</h1>
       <p class="page-lede">
-        Drafts nobody else can see, and what you have published.
+        Your name, how you are shown, and what is yours to take away.
       </p>
 
-      <!-- Filled in by main.ts, like the front page's. -->
-      <div id="levels-controls" class="level-controls"></div>
-
-      <ul id="levels" class="level-list"></ul>
-      <p id="levels-note" class="page-note" role="status">Loading…</p>
+      <!-- Filled in by main.ts once /api/me has said who is here. -->
+      <div id="account"></div>
     </main>
 
     <footer class="site-foot"><a href="/privacy">Privacy</a></footer>

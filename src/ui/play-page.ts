@@ -225,6 +225,7 @@ export function createPlayPage(
     bar?.update({
       title: record.title,
       subtitle: record.subtitle,
+      author: record.author,
       key: melody.keySignature,
       canUndo: history.canUndo(),
       canRedo: history.canRedo(),

@@ -271,6 +271,7 @@ export function createEditorPage(
       title: record.title,
       subtitle: record.subtitle ?? "",
       instructions: record.instructions ?? "",
+      difficulty: record.authorDifficulty,
     };
     markSaved();
     mount();
@@ -311,6 +312,7 @@ export function createEditorPage(
       title: draft.details.title,
       subtitle: draft.details.subtitle ?? "",
       instructions: draft.details.instructions ?? "",
+      difficulty: draft.details.difficulty,
     };
     mount();
     // Only when Save is what the visitor pressed: a sign-in from the corner
