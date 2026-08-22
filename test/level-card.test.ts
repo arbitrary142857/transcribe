@@ -153,11 +153,11 @@ describe("cardPlan()", () => {
     }
   });
 
-  it("gives an admin on the front page the pencil to the details box and the trash, and never Publish", () => {
+  it("gives an admin on the front page the pencil to the details box, Unpublish and the trash", () => {
     assert.deepEqual(cardPlan(level(), admin(), "home"), {
       draft: false,
       edit: "details",
-      publish: undefined,
+      publish: "unpublish",
       delete: true,
     });
   });

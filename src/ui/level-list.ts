@@ -2,11 +2,12 @@
  * A list of levels, drawn as cards, with everything that can be done to one.
  *
  * Two pages hold one: the front page, which lists what is published and
- * offers nothing to anybody but an admin, and "my transcriptions", which lists
- * one author's drafts and published levels and offers the pencil, the move
- * across the line between the two, and the trash. Everything but which of
- * those a card carries is the same on both, so it lives here once, and the
- * page says only which page it is.
+ * offers nothing to anybody but an admin (for whom every card carries the
+ * pencil, Unpublish and the trash — the site's moderation, such as it is),
+ * and "my transcriptions", which lists one author's drafts and published
+ * levels and offers the pencil, the move across the line between the two,
+ * and the trash. Everything but which of those a card carries is the same on
+ * both, so it lives here once, and the page says only which page it is.
  *
  * Everything shown comes out of columns rather than out of a melody: neither
  * listing route reads that one, so the pitches are not merely absent from

@@ -129,9 +129,12 @@ export type CardPage = "home" | "mine";
  * Drawing, not permission: the server refuses a stranger's edit whatever a
  * card offered, so this decides only what is worth offering. On the front
  * page that is nothing, except to an admin, for whom it is the way to tidy
- * up. On your own page it is the pencil — into the editor while a level is a
- * draft, into the details box once it is published and its music is frozen —
- * the way across that line, and the trash.
+ * up: the pencil to the details box, Unpublish — the author's own Unpublish,
+ * handing the level back to them as a draft under a new id — and the trash.
+ * Never Publish there, because the front page lists nothing that is not
+ * published already. On your own page it is the pencil — into the editor
+ * while a level is a draft, into the details box once it is published and
+ * its music is frozen — the way across that line, and the trash.
  */
 export type CardPlan = {
   /** Say so on the card: this is nobody's but the author's yet. */
@@ -153,7 +156,7 @@ export function cardPlan(
   const theirs = viewer.isAdmin || viewer.id === level.ownerId;
   if (page === "home") {
     return viewer.isAdmin
-      ? { draft, edit: "details", publish: undefined, delete: true }
+      ? { draft, edit: "details", publish: "unpublish", delete: true }
       : nothing;
   }
   if (!theirs) return nothing;

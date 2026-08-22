@@ -14,8 +14,8 @@ update the status table when a phase lands.
 | 2 | Levels have owners; drafts and publishing; `/mine`; sign-in-to-save | Shipped 2026-08-21 (`4b81daf` server, `c1b9c1c` client) |
 | 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Shipped 2026-08-21 (`3b6d72e` server, then client) |
 | 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
-| 5 | Admin tools beyond ownership bypass | Mostly folded into 2; a moderation view remains |
-| 6 | Difficulty from play data (the author's word shipped in 4; honour `share_stats`), thumbs-up, error reports | — |
+| 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of `/` | Shipped 2026-08-22; no admin page, by decision |
+| 6 | Difficulty from play data (the author's word shipped in 4; honour `share_stats`), thumbs-up, error reports | Next |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
@@ -51,7 +51,8 @@ nothing rather than the wrong answer. Authorization answers: 401 signed out
 stranger on a draft. Published levels are playable by anybody with no
 session lookup; the lookup happens only once a row turns out to be a draft.
 
-**The pages.** `/` is the public catalog (tools for admins only); `/mine` is
+**The pages.** `/` is the public catalog (for an admin only, every card
+carries the details pencil, Unpublish and the trash); `/mine` is
 the author's list (Draft badge; pencil to the editor for a draft, to a
 details box for a published level; Publish/Unpublish as a worded button on
 the card; trash). Save stays in the editor and gives a new transcription its
@@ -143,6 +144,31 @@ review before it is relied on; an account from before names were minted
 shows its email in the corner until its next sign-in; `chose_username` is
 set by any save on the account page, so keeping the minted name by saving
 it counts as choosing it.
+
+## Phase 5, as built
+
+The moderation view this phase once promised was dropped, by decision: the
+site's moderation is the catalog itself. An admin on `/` has, on every
+card, the three tools the author has on `/mine` for a published level — the
+pencil to the details box, Unpublish and the trash — and nothing else
+anywhere. `cardPlan` in `src/ui/level-card.ts` is the one place that says
+so; the server needed nothing, since an admin already passed every
+ownership check (`ownerOrAdmin` in `worker/routes.ts`), and the list module
+already wired each tool to its route on whichever page it draws.
+
+An admin's Unpublish is the author's Unpublish: the level leaves the catalog
+and returns to its author as a draft under a new id, every player's
+progress on it is deleted, and the author may republish it. Delete is the
+only tool that sticks. The catalog's byline honours `anonymous_author` for
+an admin as for anyone, so tidying the catalog does not see through
+Anonymous; the database does, by hand, which is where admin lives anyway.
+
+Deliberately not built, and not planned: an `/admin` page, a route listing
+everybody's drafts (the comment on `/api/mine` still says there is no call
+for one), a takedown that an author cannot republish past, a users list. If
+a moderation view is ever wanted, the seams are `createLevelList`'s `page`
+switch, a new page input in `vite.config.ts`, a `planNav` handed the user
+rather than a boolean, and an admin-only route beside `/api/mine`.
 
 ## How the work is done
 
