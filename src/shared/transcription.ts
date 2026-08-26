@@ -39,7 +39,7 @@ export type TranscriptionDetails = {
   title: string;
   subtitle?: string;
   instructions?: string;
-  /** How hard the author says it is: half a star to five, in halves, or unsaid. */
+  /** How hard the author says it is: half a pepper to five, in halves, or unsaid. */
   difficulty?: number;
 };
 
@@ -106,6 +106,15 @@ export type TranscriptionSummary = {
   author?: string;
   /** The author's word on how hard it is, in stars; nothing if unsaid. */
   authorDifficulty?: number;
+  /**
+   * The solvers' words: how many ratings the level has from accounts that
+   * share their statistics, and their sum as half-peppers. Aggregated by the
+   * listing query at read time and stored nowhere; these are inputs to
+   * `displayedDifficulty` and nothing shows them raw except the level box's
+   * "from N ratings". Absent (not zero) when nobody has rated.
+   */
+  ratingCount?: number;
+  ratingHalves?: number;
   status: LevelStatus;
   /** The moment it went public, or nothing while it is a draft. */
   publishedAt: number | undefined;
@@ -452,7 +461,7 @@ export function detailsProblem(
   }
 
   if (raw.difficulty !== undefined && !isStars(raw.difficulty)) {
-    return "The difficulty is half a star to five stars, in halves.";
+    return "The difficulty is half a pepper to five peppers, in halves.";
   }
 
   return undefined;

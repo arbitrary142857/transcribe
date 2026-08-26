@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About · Transcribe</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <nav class="site-nav">
+      <a class="site-name" href="/">Transcribe</a>
+      <div id="site-nav" class="site-links">
+        <!-- Filled in by site-nav.ts, as on every page. -->
+      </div>
+    </nav>
+
+    <!-- Prose, written out rather than drawn by a script, like /privacy.
+         This page is meant to be written in by hand: a section is an <h2>
+         and some <p> paragraphs, nothing more. Add sections, reorder them,
+         rewrite them — no script needs to know. The one section that should
+         stay truthful to the code is "The difficulty rating", which
+         describes how the peppers are worked out; change it when the model
+         changes. -->
+    <main class="page prose-page">
+      <h1 class="page-title">About</h1>
+      <p class="page-lede">
+        What this site is, and how some of its numbers are arrived at.
+      </p>
+
+      <h2>This site</h2>
+      <p>
+        <!-- Yours to write: what Transcribe is, why it exists, whatever you
+             want said. This paragraph is a placeholder. -->
+        Transcribe is a small site for writing down music by ear: somebody
+        transcribes a passage from a video and publishes it as a level, and
+        everybody else tries to hear it note by note.
+      </p>
+
+      <h2>The difficulty rating</h2>
+      <p>
+        Every level shows its difficulty as five chili peppers, from half a
+        pepper to five. The figure starts as the author's own rating, which
+        counts as if a few players had voted it. Each player who solves the
+        level can then rate it, one vote each, changeable at any time — and
+        the figure shown is the average of all the votes, rounded to the
+        nearest half.
+      </p>
+      <p>
+        Whose votes count is decided fresh every time the figure is read,
+        never stored. If you turn off <em>“Count my play in public
+        statistics”</em> on your account page, your ratings leave every
+        figure at once — past ratings included — and deleting your account
+        does the same. Unpublishing a level erases all of its ratings: if it
+        is published again, it starts over from the author's word, since the
+        music may have changed.
+      </p>
+
+      <h2>Questions</h2>
+      <p>
+        This site is run by one person. Write to
+        <a href="mailto:jmao142857@gmail.com">jmao142857@gmail.com</a>.
+      </p>
+    </main>
+
+    <footer class="site-foot"><a href="/about" aria-current="page">About</a> · <a href="/privacy">Privacy</a></footer>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

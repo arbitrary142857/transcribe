@@ -34,10 +34,14 @@ import {
   type LevelCardOptions,
 } from "./level-card.js";
 import { readCompact, writeCompact } from "./level-density.js";
+import { createHeatRange } from "./heat-range.js";
 import {
   FILTERS,
-  emptyFilterSentence,
+  WHOLE_SCALE,
+  emptySentence,
+  filterByHeat,
   filterLevels,
+  type HeatRange,
   type ProgressFilter,
 } from "./level-filter.js";
 import { openLevelModal } from "./level-modal.js";
@@ -48,6 +52,7 @@ import {
 } from "./merge-offer.js";
 import { openModal } from "./modal.js";
 import { browserFetch } from "./page-boot.js";
+import { maybeRatingPrompt } from "./rating-prompt.js";
 import { createSegmented } from "./segmented.js";
 import { createSwitch } from "./switch.js";
 
@@ -98,6 +103,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
   let showing: { level: TranscriptionSummary; progress?: PlayProgress }[] = [];
   let compact = readCompact(storage);
   let filter: ProgressFilter = "all";
+  let heat: HeatRange = { ...WHOLE_SCALE };
   let user: UserSummary | undefined;
 
   /**
@@ -109,18 +115,19 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
   function render(): void {
     list.classList.toggle("is-compact", compact);
-    const shown = filterLevels(showing, filter);
+    // The two cuts AND: inside the range, and where the visitor got to.
+    const shown = filterByHeat(filterLevels(showing, filter), heat);
     list.replaceChildren(
       ...shown.map((each) => cardFor(each.level, each.progress)),
     );
     if (showing.length === 0) {
       sayEmpty();
     } else {
-      say(shown.length === 0 ? (emptyFilterSentence(filter) ?? "") : "");
+      say(shown.length === 0 ? (emptySentence(filter, heat) ?? "") : "");
     }
   }
 
-  // The filter is the front page's: "my transcriptions" is a list of work,
+  // The filters are the front page's: "my transcriptions" is a list of work,
   // not of puzzles, and solved-ness means little there.
   if (page === "home") {
     const which = createSegmented({
@@ -134,6 +141,16 @@ export function createLevelList(options: LevelListOptions): LevelList {
     });
     which.element.classList.add("level-filter");
     controls.append(which.element);
+
+    controls.append(
+      createHeatRange({
+        value: heat,
+        onChange(next) {
+          heat = next;
+          render();
+        },
+      }).element,
+    );
   }
 
   controls.append(
@@ -296,9 +313,16 @@ export function createLevelList(options: LevelListOptions): LevelList {
         ? {
             label: "Publish",
             run: () => void publishLevel(level),
-            // A level still missing pitches cannot be published; the server
-            // says so too, but the button may as well say it first.
-            blocked: level.unpitchedCount > 0 ? countLeft(level) : undefined,
+            // A level still missing pitches or a difficulty cannot be
+            // published; the server says so too, but the button may as well
+            // say it first. Only a draft from before the stepper defaulted
+            // the difficulty can lack one.
+            blocked:
+              level.unpitchedCount > 0
+                ? countLeft(level)
+                : level.authorDifficulty === undefined
+                  ? "Set a difficulty in the details first."
+                  : undefined,
           }
         : plan.publish === "unpublish"
           ? { label: "Unpublish", run: () => void unpublishLevel(level) }
@@ -321,6 +345,13 @@ export function createLevelList(options: LevelListOptions): LevelList {
                   elapsedMs: progress.elapsedMs,
                   checkCount: progress.checkCount,
                 },
+          // Rating a level is revisitable from its box; the prompt decides
+          // for itself whether this viewer may.
+          rating: maybeRatingPrompt({
+            level,
+            viewer: user,
+            solved: solvedAt !== undefined,
+          }),
         }),
       edit,
       publish,

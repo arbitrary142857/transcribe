@@ -15,7 +15,7 @@ update the status table when a phase lands.
 | 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Shipped 2026-08-21 (`3b6d72e` server, then client) |
 | 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
 | 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of `/` | Shipped 2026-08-22; no admin page, by decision |
-| 6 | Difficulty from play data (the author's word shipped in 4; honour `share_stats`), thumbs-up, error reports | Next |
+| 6 | Difficulty from solvers' ratings blended with the author's word (`share_stats` honoured at read time), peppers and the stepper, the range filter, `/about` | Difficulty built 2026-08-25; thumbs-up and error reports remain |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
@@ -78,9 +78,17 @@ has the same shape; `src/shared/difficulty.ts` is the one function that
 decides what is shown, and phase 6 changes only its body.
 
 **Still open** (decide when the phase needs it): whether a daily level
-mechanic is coming (streaks presuppose one); whether ratings reset on
-republish (the new id implies yes); dark mode is a per-machine preference,
-not an account one.
+mechanic is coming (streaks presuppose one); dark mode is a per-machine
+preference, not an account one. Wanted eventually, recorded 2026-08-25:
+the solved box grows an actions row — a way back to the level list, and
+the thumbs-up phase 6 still owes; the catalog loads its first N levels and
+fetches more on scroll with a loading mark, which moves or re-scopes the
+client-side filters (they are pure functions so they can); per-level play
+figures — the median time of a flawless solve (`check_count = 1`) and of a
+non-flawless one — from `progress` under the same `share_stats` rule, with
+a small-count floor so one player's time is never published as a median.
+(Ratings resetting on republish, once open here, was settled by mechanism:
+the new id starts from zero.)
 
 ## Phase 3, as built
 
@@ -169,6 +177,49 @@ for one), a takedown that an author cannot republish past, a users list. If
 a moderation view is ever wanted, the seams are `createLevelList`'s `page`
 switch, a new page input in `vite.config.ts`, a `planNav` handed the user
 rather than a boolean, and an admin-only route beside `/api/mine`.
+
+## Phase 6, as built (the difficulty part)
+
+`difficulty.md` is the reference. The "from play data" sketch above was
+revisited in planning, on purpose: no regression, no implicit play-stat
+term — at this site's scale a model fitted to a handful of plays is noise
+wearing a formula. What shipped is one weighted average, explainable on
+`/about` in three sentences: the author's word counts as four votes
+(`DIFFICULTY.authorVotes`), each rating from a solver counts as one, and
+the shown figure is the average rounded to the nearest half. A play-data
+term can join later as more pseudo-votes in the same average, once there
+are enough solves for a median to mean anything.
+
+**Nothing derived is stored** — the decision the rest follows from. The
+tables hold raw facts only: `difficulty_half` (the author) and `ratings`
+(migration 0006, one row per player per level, shaped like `progress` for
+0004's reasons). The listing aggregates a count and sum per level in
+correlated subselects joining `users` on `share_stats = 1`, so an opt-out
+leaves every figure at the next read (retroactively), deletion cascades,
+and unpublish deletes the rows in its batch — the FK, with no ON UPDATE
+CASCADE, refusing the id move as the backstop. Republish is a new id and
+zero ratings, which settled "do ratings reset" by mechanism.
+
+Who may rate is the route's whole design: signed in, sharing statistics,
+on a published level they solved and did not write — the author's word is
+the anchor, so an author rating their own level would be counted twice.
+One rating each, changed by rating again. Publishing now *requires* the
+author's word, and the "?" unrated drawing left the codebase with it; 0006
+gave 2.5 to anything published before the rule, and the editor starts
+every new level there, so only a stale local draft can still lack one.
+
+On the client: the stars became chili peppers (Phosphor's `pepper`,
+outline and fill weights of one silhouette, MIT, inlined in `icons.ts`),
+the border always visible and the fill clipped to none, half or full.
+Entering a difficulty became a +/− stepper in half steps — by decision,
+never clicking on the pepper row — used by the details panel, the details
+box and the solver's prompt alike; there is no way to clear it. The prompt
+lives in the level's box, which the solving check now opens a beat after
+the burst; the box also says "from N ratings", the one place the count
+shows. The catalog gained a from–to range filter over the *blended*
+figure, client-side like the progress filter, ANDed with it. `/about`
+explains the model in prose Jason can write over; `/privacy`'s "Public
+figures" section was rewritten to describe what actually shipped.
 
 ## How the work is done
 

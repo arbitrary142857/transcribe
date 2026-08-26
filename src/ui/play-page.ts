@@ -37,8 +37,10 @@ import {
   firstSoundingNote,
   type TranscriptionRecord,
 } from "../shared/transcription.js";
+import type { UserSummary } from "../shared/session.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
 import { keepingScroll } from "./score-overlay.js";
+import { maybeRatingPrompt } from "./rating-prompt.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
 import { openLevelModal } from "./level-modal.js";
 import { createPlayBar, type PlayBar } from "./play-bar.js";
@@ -72,6 +74,7 @@ export function createPlayPage(
   level: { id: string; record: TranscriptionRecord },
   store: ProgressStore,
   restored: PlayProgress | undefined,
+  viewer: UserSummary | undefined,
 ): void {
   const { record } = level;
   /**
@@ -387,6 +390,13 @@ export function createPlayPage(
         burst: [...settled.correct].filter((index) => !alreadyFound.has(index)),
       });
 
+      if (answered.solved) {
+        // The solved box, once the burst has had its moment. Only on the
+        // check that solved it: reopening an already-solved level restores
+        // `solved` quietly, and this branch is never reached again.
+        setTimeout(() => openAbout(), EFFECT_MS + 500);
+      }
+
       save();
     } catch (error) {
       checking = false;
@@ -419,20 +429,26 @@ export function createPlayPage(
 
   // ---- the bar -----------------------------------------------------------
 
+  /**
+   * The same box the level list opens, minus the way in: you are already
+   * here, so a Play button would offer the page you are standing on. Once
+   * solved it carries the rating prompt, and the solving check opens it
+   * unasked — the solved box is this box.
+   */
+  function openAbout(): void {
+    openLevelModal({
+      level: record,
+      instructions: record.instructions,
+      solvedIn: solved ? { elapsedMs: elapsed(), checkCount } : undefined,
+      rating: maybeRatingPrompt({ level: record, viewer, solved }),
+    });
+  }
+
   bar = createPlayBar(elements.bar, {
     onUndo: () => step(history.undo()),
     onRedo: () => step(history.redo()),
     onCheck: () => void check(),
-    // The same box the level list opens, minus the way in: you are already
-    // here, so a Play button would offer the page you are standing on.
-    onAbout: () =>
-      openLevelModal({
-        level: record,
-        instructions: record.instructions,
-        solvedIn: solved
-          ? { elapsedMs: elapsed(), checkCount }
-          : undefined,
-      }),
+    onAbout: () => openAbout(),
   });
 
   /**

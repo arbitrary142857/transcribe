@@ -2241,6 +2241,26 @@ main.page {
   margin-right: auto;
 }
 
+/* The difficulty cut beside the progress filter: a word and two small
+   selects. The selects are the browser's own; ten numbers need nothing
+   fancier. */
+.heat-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: #6c6459;
+}
+
+.heat-range-pick {
+  padding: 0.15rem 0.2rem;
+  border: 1px solid #cfc7b8;
+  border-radius: 6px;
+  background: #fffdf8;
+  color: inherit;
+  font: inherit;
+}
+
 /* The line about records still in this browser, under whatever the note
    says; and a way out drawn as words in a sentence, like the sign-out. */
 .note-handoff {
@@ -2388,7 +2408,9 @@ main.page {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  padding: 0.95rem 1.15rem 1.1rem;
+  /* Shallow at the top on purpose: the difficulty row is the first thing in
+     the box and was sitting a whole line below the picture. */
+  padding: 0.5rem 1.15rem 1.1rem;
 }
 
 /* Clamped on the thing that actually holds the text.
@@ -2474,105 +2496,102 @@ main.page {
 
 /* ---- Difficulty, wherever it is drawn ----
 
-   Five star glyphs and a number. A half is the hollow star with a lit one
-   clipped to its left half laid over it. The unrated mark is one hollow star
-   and a question mark, which cannot be read as the lowest rating. */
+   Five chili peppers and nothing else. Every pepper keeps its red border; a
+   full one has the fill silhouette laid under the border, a half has it
+   clipped to its left half. The border sits above the fill (the outline svg
+   is raised) so the red edge is visible whatever the fill. */
 .difficulty {
   display: inline-flex;
   align-items: center;
-  gap: 0.05rem;
-  font-size: 0.95rem;
+  gap: 0.08rem;
+  font-size: 1.05rem;
   line-height: 1;
-  color: #d9a441;
+  color: #b23a2a;
   white-space: nowrap;
 }
 
-.star {
+.pepper {
   position: relative;
   display: inline-block;
 }
 
-.star-empty {
-  color: #cfc7b8;
+.pepper svg {
+  display: block;
+  width: 1em;
+  height: 1em;
 }
 
-.star-half {
-  color: #cfc7b8;
+/* The pepper's own svg is the outline, and only it is raised: the fill svg
+   inside .pepper-lit matches `.pepper svg` too, and raising both would put
+   the fill back over the border it exists to sit under. */
+.pepper > svg {
+  position: relative;
+  z-index: 1;
 }
 
-.star-half-lit {
+.pepper-lit {
   position: absolute;
   inset: 0;
-  width: 50%;
-  overflow: hidden;
-  color: #d9a441;
+  color: #e2543a;
 }
 
-.difficulty-text,
-.difficulty-unrated {
-  margin-left: 0.3rem;
-  font-size: 0.82rem;
-  color: #6c6459;
+.pepper-half .pepper-lit {
+  clip-path: inset(0 50% 0 0);
 }
 
-.difficulty.is-unrated {
-  color: #cfc7b8;
-}
-
-/* The author's word, chosen on the details panel: ten halves laid over five
-   drawn stars, each half a button with no look of its own. */
-.star-picker {
+/* The difficulty as anybody enters it: a minus, the peppers with their
+   number, a plus. The figure between the buttons is the keyboard's stop. */
+.difficulty-stepper {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.45rem;
 }
 
-.star-picker-stars {
-  position: relative;
+.stepper-button {
   display: inline-flex;
-  font-size: 1.35rem;
-  line-height: 1;
-}
-
-.star-picker-drawn {
-  display: inline-flex;
-  color: #d9a441;
-}
-
-.star-pick {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 10%;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
   padding: 0;
-  border: 0;
+  border: 1px solid #cfc7b8;
+  border-radius: 50%;
   background: none;
+  color: #6c6459;
+  font-size: 1.05rem;
+  line-height: 1;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
 }
 
-/* Each half sits over its own half of its own star: the nth pair over the
-   nth star. */
-.star-pick:nth-child(2) { left: 0%; }
-.star-pick:nth-child(3) { left: 10%; }
-.star-pick:nth-child(4) { left: 20%; }
-.star-pick:nth-child(5) { left: 30%; }
-.star-pick:nth-child(6) { left: 40%; }
-.star-pick:nth-child(7) { left: 50%; }
-.star-pick:nth-child(8) { left: 60%; }
-.star-pick:nth-child(9) { left: 70%; }
-.star-pick:nth-child(10) { left: 80%; }
-.star-pick:nth-child(11) { left: 90%; }
+.stepper-button:hover:not(:disabled) {
+  border-color: #b23a2a;
+  color: #b23a2a;
+}
 
-.star-pick:focus-visible {
+.stepper-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.stepper-button:focus-visible,
+.stepper-figure:focus-visible {
   outline: 2px solid var(--note-selected);
   outline-offset: 1px;
 }
 
-.star-picker-text {
-  font-size: 0.82rem;
-  color: #6c6459;
+.stepper-figure {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.08rem;
+  font-size: 1.35rem;
+  line-height: 1;
+  color: #b23a2a;
+}
+
+/* Shown but not yet said: the middle of the scale, before a first press
+   makes it anybody's word. */
+.difficulty-stepper.is-provisional .stepper-figure {
+  opacity: 0.45;
 }
 
 /* Two lines' worth, always: capped at two so a long title cannot grow the card,
@@ -2603,6 +2622,8 @@ main.page {
   display: flex;
   align-items: center;
   gap: 0.15rem;
+  /* Pushed right even when a draft shows no difficulty at the row's left. */
+  margin-left: auto;
 }
 
 /* Raised above the title's stretched `::after`, which covers the whole card:
@@ -3683,6 +3704,46 @@ main.page {
   font-size: 0.82rem;
   font-variant-numeric: tabular-nums;
   color: var(--note-correct);
+}
+
+/* How much of the figure is the solvers': quiet, beside the peppers. */
+.level-modal-ratings {
+  color: #8d8378;
+}
+
+/* The solver's own word, under the solved line. A little column on purpose:
+   the actions this box will grow later — back to the levels, a thumbs-up —
+   belong under the stepper. */
+.rating-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: 0.7rem 0 0;
+  padding-top: 0.6rem;
+  border-top: 1px solid #e4ddd0;
+}
+
+.rating-prompt-lead {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #6c6459;
+}
+
+.rating-prompt-status {
+  margin: 0;
+  min-height: 1em;
+  font-size: 0.8rem;
+  color: #a04434;
+}
+
+.rating-prompt-status:empty {
+  display: none;
+}
+
+.rating-prompt-how {
+  font-size: 0.78rem;
+  color: #8d8378;
 }
 
 /* ---- What the music is ---- */

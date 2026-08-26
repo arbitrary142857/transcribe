@@ -58,6 +58,7 @@ export default defineConfig({
             play: from("./src/play/index.html"),
             mine: from("./src/mine/index.html"),
             account: from("./src/account/index.html"),
+            about: from("./src/about/index.html"),
             privacy: from("./src/privacy/index.html"),
             notFound: from("./src/404.html"),
           },

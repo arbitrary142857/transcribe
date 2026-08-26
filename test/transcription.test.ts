@@ -197,7 +197,7 @@ describe("detailsProblem()", () => {
     assert.equal(detailsProblem({ title: "Clair de lune" }), undefined);
   });
 
-  it("takes a difficulty of half a star to five, in halves, and refuses any other", () => {
+  it("takes a difficulty of half a pepper to five, in halves, and refuses any other", () => {
     for (const difficulty of [0.5, 2.5, 5]) {
       assert.equal(detailsProblem({ title: "x", difficulty }), undefined, `refused ${difficulty}`);
     }

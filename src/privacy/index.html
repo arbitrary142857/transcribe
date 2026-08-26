@@ -100,12 +100,22 @@
 
       <h2>Public figures</h2>
       <p>
-        In a coming version, each level will show figures worked out from
-        how people play it — how many checks a solve usually takes, how long
-        it usually takes — alongside the author's own rating. Those figures
-        will be computed from the progress of signed-in players, in
-        aggregate, with nobody named. Your account page has a switch to leave
-        your play out of them.
+        Each level shows a difficulty, blended from the author's own rating
+        and the ratings of players who solved it — one vote each, with
+        nobody named. <a href="/about">The about page</a> explains how the
+        blend works. Your account page has a switch,
+        <em>“Count my play in public statistics”</em>, that keeps you out of
+        it: while it is off you are not asked to rate, and any ratings you
+        gave before are left out of every figure. The figures are worked out
+        fresh from the stored ratings each time they are shown, so turning
+        the switch off takes effect at once, and nothing derived from your
+        play is kept anywhere.
+      </p>
+      <p>
+        A coming version may add figures worked out from how people play —
+        how many checks a solve usually takes, how long it usually takes —
+        computed from the progress of signed-in players, in aggregate, with
+        nobody named. The same switch will keep your play out of those too.
       </p>
 
       <h2>Who can see what</h2>
@@ -136,7 +146,7 @@
       </p>
     </main>
 
-    <footer class="site-foot"><a href="/privacy" aria-current="page">Privacy</a></footer>
+    <footer class="site-foot"><a href="/about">About</a> · <a href="/privacy" aria-current="page">Privacy</a></footer>
 
     <script type="module" src="./main.ts"></script>
   </body>

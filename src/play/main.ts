@@ -73,7 +73,12 @@ async function readLevel(): Promise<
  */
 async function readProgress(
   viewer: Promise<UserSummary | undefined>,
-): Promise<{ store: ProgressStore; restored: PlayProgress | undefined }> {
+): Promise<{
+  store: ProgressStore;
+  restored: PlayProgress | undefined;
+  /** Who is looking, for the page's rating prompt to size them up. */
+  user: UserSummary | undefined;
+}> {
   const user = await viewer;
   const trouble = await offerMergeOnArrival({
     user,
@@ -90,13 +95,14 @@ async function readProgress(
   return {
     store,
     restored: asked === undefined ? undefined : await store.read(asked),
+    user,
   };
 }
 
 try {
   const { viewer } = mountSiteNav(required("site-nav"));
 
-  const [level, { store, restored }] = await Promise.all([
+  const [level, { store, restored, user }] = await Promise.all([
     readLevel(),
     readProgress(viewer),
     loadScoreFonts(),
@@ -126,6 +132,7 @@ try {
       level,
       store,
       restored,
+      user,
     );
   }
 } catch (error) {

@@ -17,8 +17,8 @@ import {
   LIMITS,
   type TranscriptionDetails,
 } from "../shared/transcription.js";
+import { createDifficultyStepper, type DifficultyStepper } from "./difficulty-stepper.js";
 import { createDisclosure } from "./disclosure.js";
-import { createStarPicker, type StarPicker } from "./star-picker.js";
 import { limitTyping } from "./text-entry.js";
 
 export type DetailsPanel = {
@@ -135,15 +135,15 @@ export function createField(options: FieldOptions, onInput: () => void): Field {
 
 /**
  * The difficulty, as a row of the details like the three text boxes: the
- * same label style, and the star picker where a box would be.
+ * same label style, and the pepper stepper where a box would be.
  *
  * Exported for the details modal, which wants the same row.
  */
 export function difficultyRow(
   value: number | undefined,
-  onChange: (value: number | undefined) => void,
-): HTMLElement & { picker: StarPicker } {
-  const row = document.createElement("div") as HTMLDivElement & { picker: StarPicker };
+  onChange: (value: number) => void,
+): HTMLElement & { picker: DifficultyStepper } {
+  const row = document.createElement("div") as HTMLDivElement & { picker: DifficultyStepper };
   row.className = "details-field details-difficulty";
 
   const label = document.createElement("span");
@@ -154,7 +154,7 @@ export function difficultyRow(
   head.className = "details-head";
   head.append(label);
 
-  const picker = createStarPicker({ value, onChange });
+  const picker = createDifficultyStepper({ value, onChange });
   row.append(head, picker.element);
   row.picker = picker;
   return row;

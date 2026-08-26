@@ -42,6 +42,13 @@ const ROW = {
   key_mode: "major",
   note_count: 41,
   unpitched_count: 0,
+  // A published row always has the author's word now: publishing requires
+  // it, and 0006 gave the middle of the scale to any published before.
+  difficulty_half: 5,
+  // What the two rating subselects answer for a level nobody has rated:
+  // SUM over no rows is NULL.
+  rating_count: 0,
+  rating_halves: null,
   owner_id: "7k2m9x4p3qwt",
   status: "published",
   published_at: 1_754_500_000_000,
@@ -186,6 +193,7 @@ describe("GET /api/levels", () => {
         keyMode: "major",
         noteCount: 41,
         unpitchedCount: 0,
+        authorDifficulty: 2.5,
         ownerId: "7k2m9x4p3qwt",
         status: "published",
         publishedAt: 1_754_500_000_000,
@@ -242,6 +250,30 @@ describe("GET /api/levels", () => {
     const unrated = await get("/api/levels", [list([{ ...ROW, difficulty_half: null }])]);
     const [plain] = (await unrated.response.json()) as Record<string, unknown>[];
     assert.equal("authorDifficulty" in plain!, false);
+  });
+
+  it("counts solvers' ratings beside every level, reading only accounts that share their play", async () => {
+    const { response, asked } = await get("/api/levels", [
+      list([{ ...ROW, rating_count: 3, rating_halves: 13 }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal(level!.ratingCount, 3);
+    assert.equal(level!.ratingHalves, 13);
+    // The figures are aggregated at read time, honouring share_stats there:
+    // nothing derived is stored, so an opt-out changes every figure at once.
+    assert.match(asked[0]!.sql, /FROM ratings/i);
+    assert.match(asked[0]!.sql, /share_stats = 1/i);
+  });
+
+  it("leaves the rating figures out of a level nobody has rated, rather than sending zeroes", async () => {
+    const { response } = await get("/api/levels", [
+      list([{ ...ROW, rating_count: 0, rating_halves: null }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal("ratingCount" in level!, false);
+    assert.equal("ratingHalves" in level!, false);
   });
 
   it("asks for no more than a page of them, newest first", async () => {
@@ -873,7 +905,7 @@ describe("PUT /api/levels/:id", () => {
       const { response, asked } = await send(
         "/api/levels/k3m9x2p7qw4t",
         "PUT",
-        { details: { title: "Clair de lune", subtitle: "Debussy" }, melody: sameMelody },
+        { details: { title: "Clair de lune", subtitle: "Debussy", difficulty: 2.5 }, melody: sameMelody },
         [asOwner(), one(published)], SIGNED_IN,
       );
 
@@ -894,7 +926,7 @@ describe("PUT /api/levels/:id", () => {
       const { response, asked } = await send(
         "/api/levels/k3m9x2p7qw4t",
         "PUT",
-        { details: { title: "Renamed", subtitle: "Debussy" } },
+        { details: { title: "Renamed", subtitle: "Debussy", difficulty: 2.5 } },
         [asOwner(), one(published)], SIGNED_IN,
       );
 
@@ -927,7 +959,7 @@ describe("PUT /api/levels/:id", () => {
       const { response } = await send(
         "/api/levels/k3m9x2p7qw4t",
         "PUT",
-        { details: { title: "Renamed" }, melody: reordered },
+        { details: { title: "Renamed", difficulty: 2.5 }, melody: reordered },
         [asOwner(), one(published)], SIGNED_IN,
       );
 
@@ -966,11 +998,24 @@ describe("PUT /api/levels/:id", () => {
       const { response } = await send(
         "/api/levels/k3m9x2p7qw4t",
         "PUT",
-        { details: { title: "Clair de lune" }, melody: sameMelody },
+        { details: { title: "Clair de lune", difficulty: 2.5 }, melody: sameMelody },
         [asOwner(), one(published)], SIGNED_IN,
       );
 
       assert.equal(response.status, 200);
+    });
+
+    it("refuses to clear the difficulty of a published level", async () => {
+      const { response, asked } = await send(
+        "/api/levels/k3m9x2p7qw4t",
+        "PUT",
+        { details: { title: "Clair de lune" }, melody: sameMelody },
+        [asOwner(), one(published)], SIGNED_IN,
+      );
+
+      assert.equal(response.status, 409);
+      assert.match(await errorOf(response), /difficulty/i);
+      assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
     });
   });
 });
@@ -1088,6 +1133,17 @@ describe("POST /api/levels/:id/publish", () => {
     assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
   });
 
+  it("refuses to publish a draft nobody has rated, and says why", async () => {
+    const { response, asked } = await publish(
+      [asOwner(), one({ ...draft, difficulty_half: null })],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 409);
+    assert.match(await errorOf(response), /difficulty/i);
+    assert.equal(asked.some((statement) => /update/i.test(statement.sql)), false);
+  });
+
   it("refuses a level that is already published", async () => {
     const { response, asked } = await publish([asOwner(), one(ROW)], SIGNED_IN);
 
@@ -1157,24 +1213,33 @@ describe("POST /api/levels/:id/unpublish", () => {
     assert.equal((await unpublish([one(ROW)])).response.status, 401);
   });
 
-  it("forgets every player's progress before moving the id, in one batch with the delete first", async () => {
+  it("forgets every player's progress before moving the id, in one batch with the deletes first", async () => {
     const { response, asked, batches } = await unpublishBatched([asOwner(), one(ROW)], SIGNED_IN);
 
     assert.equal(response.status, 200);
     assert.equal(batches.length, 1);
-    const [forget, update] = batches[0]!;
+    const [forget, , update] = batches[0]!;
     assert.match(forget!.sql, /DELETE FROM progress/i);
     assert.match(update!.sql, /UPDATE transcriptions/i);
-    // Nothing outside the batch touches either table.
-    assert.equal(asked.filter((each) => /progress|UPDATE/i.test(each.sql)).length, 2);
+    // Nothing outside the batch touches any of the three tables.
+    assert.equal(asked.filter((each) => /progress|ratings|UPDATE/i.test(each.sql)).length, 3);
   });
 
-  it("binds the old id to the delete and splices nothing", async () => {
+  it("forgets every rating with the progress, in the same batch", async () => {
     const { batches } = await unpublishBatched([asOwner(), one(ROW)], SIGNED_IN);
 
-    const forget = batches[0]![0]!;
-    assert.equal(forget.sql.includes("k3m9x2p7qw4t"), false);
-    assert.deepEqual(forget.values, ["k3m9x2p7qw4t"]);
+    const forgot = batches[0]!.at(1)!;
+    assert.match(forgot.sql, /DELETE FROM ratings/i);
+    assert.deepEqual(forgot.values, ["k3m9x2p7qw4t"]);
+  });
+
+  it("binds the old id to the deletes and splices nothing", async () => {
+    const { batches } = await unpublishBatched([asOwner(), one(ROW)], SIGNED_IN);
+
+    for (const forget of batches[0]!.slice(0, 2)) {
+      assert.equal(forget.sql.includes("k3m9x2p7qw4t"), false);
+      assert.deepEqual(forget.values, ["k3m9x2p7qw4t"]);
+    }
   });
 
   it("batches nothing when it refuses", async () => {

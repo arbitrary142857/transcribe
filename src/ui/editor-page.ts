@@ -73,6 +73,10 @@ const EMPTY_DETAILS: TranscriptionDetails = {
   title: "",
   subtitle: "",
   instructions: "",
+  // The middle of the scale from the first moment, so a level is never
+  // saved unrated and publishing never has to refuse for it. The author
+  // adjusts it in the details panel; the stepper cannot say "none".
+  difficulty: 2.5,
 };
 
 /**
@@ -271,7 +275,9 @@ export function createEditorPage(
       title: record.title,
       subtitle: record.subtitle ?? "",
       instructions: record.instructions ?? "",
-      difficulty: record.authorDifficulty,
+      // A draft from before difficulty was defaulted opens at the middle,
+      // and its next save carries it: the quiet backfill for local drafts.
+      difficulty: record.authorDifficulty ?? 2.5,
     };
     markSaved();
     mount();
@@ -312,7 +318,7 @@ export function createEditorPage(
       title: draft.details.title,
       subtitle: draft.details.subtitle ?? "",
       instructions: draft.details.instructions ?? "",
-      difficulty: draft.details.difficulty,
+      difficulty: draft.details.difficulty ?? 2.5,
     };
     mount();
     // Only when Save is what the visitor pressed: a sign-in from the corner

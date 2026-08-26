@@ -78,6 +78,11 @@ export type LevelModalOptions = {
    * solved, or solved, and the way in should say which.
    */
   started?: boolean;
+  /**
+   * The solver's chance to rate it, when the caller decided they have one.
+   * Built by `maybeRatingPrompt`; the box stays dumb about who may rate.
+   */
+  rating?: HTMLElement;
 };
 
 /** What the way in offers, given how far this level has got. */
@@ -108,11 +113,27 @@ export function openLevelModal(options: LevelModalOptions): void {
         parts.push(subtitle);
       }
 
-      // Who wrote it down, and how hard they say it is: the same two facts
-      // the card leads with, since this box is the card opened.
+      // Who wrote it down, and how hard it is: the same two facts the card
+      // leads with, since this box is the card opened. A draft without a
+      // difficulty shows the byline alone, as its card does.
       const author = document.createElement("p");
       author.className = "level-modal-author";
-      author.append(authorLabel(level.author), " · ", createDifficulty(displayedDifficulty(level)));
+      author.append(authorLabel(level.author));
+      const displayed = displayedDifficulty(level);
+      if (displayed !== undefined) {
+        author.append(" · ", createDifficulty(displayed));
+        if (level.ratingCount !== undefined) {
+          // How much of the figure is the solvers': the one place the count
+          // of ratings is shown.
+          const count = document.createElement("span");
+          count.className = "level-modal-ratings";
+          count.textContent =
+            level.ratingCount === 1
+              ? " · from 1 rating"
+              : ` · from ${level.ratingCount} ratings`;
+          author.append(count);
+        }
+      }
       parts.push(author);
 
       if (options.solvedIn) {
@@ -124,6 +145,10 @@ export function openLevelModal(options: LevelModalOptions): void {
             : `in ${options.solvedIn.checkCount} attempts`;
         solved.textContent = `Solved ${attempts} · ${formatElapsed(options.solvedIn.elapsedMs)}`;
         parts.push(solved);
+      }
+
+      if (options.rating) {
+        parts.push(options.rating);
       }
 
       // ---- the two signatures, drawn rather than named -------------------

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
-import { PROGRESS_SQL } from "../dist-worker/worker/routes.js";
+import { LEVEL_COLUMNS, PROGRESS_SQL, RATING_SQL } from "../dist-worker/worker/routes.js";
 
 /**
  * The migration files themselves, run against the SQLite that ships with
@@ -245,6 +245,7 @@ describe("migration 0003", () => {
 
 const PROGRESS_MIGRATION = "0004_keep_progress_per_account.sql";
 const NAMES_MIGRATION = "0005_name_the_author.sql";
+const RATINGS_MIGRATION = "0006_keep_ratings_per_account.sql";
 
 /** The database as every migration leaves it, with whatever `seed` puts in it. */
 function current(seed: (db: DatabaseSync) => void = () => {}): DatabaseSync {
@@ -252,6 +253,7 @@ function current(seed: (db: DatabaseSync) => void = () => {}): DatabaseSync {
   db.exec(sqlOf(MIGRATION));
   db.exec(sqlOf(PROGRESS_MIGRATION));
   db.exec(sqlOf(NAMES_MIGRATION));
+  db.exec(sqlOf(RATINGS_MIGRATION));
   seed(db);
   return db;
 }
@@ -673,5 +675,279 @@ describe("migration 0005", () => {
     assert.doesNotThrow(() => db.prepare(`DELETE FROM users WHERE id = ?`).run(JASON));
     assert.deepEqual(rows(db, `SELECT * FROM progress`), []);
     assert.deepEqual(rows(db, `SELECT * FROM sessions`), []);
+  });
+});
+
+// ---- 0006 -----------------------------------------------------------------
+
+const addRating = (
+  db: DatabaseSync,
+  user: string,
+  level: string,
+  over: { half?: number; created_at?: number; updated_at?: number } = {},
+): void => {
+  db.prepare(
+    `INSERT INTO ratings (user_id, level_id, half, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(user, level, over.half ?? 6, over.created_at ?? 1, over.updated_at ?? 1);
+};
+
+const ratingRows = (db: DatabaseSync): Row[] =>
+  rows(db, `SELECT * FROM ratings ORDER BY user_id, level_id`);
+
+describe("migration 0006", () => {
+  it("creates ratings keyed by player and level, with an index on the level and nothing else", () => {
+    const db = current();
+
+    const made = rows(
+      db,
+      `SELECT name, type FROM sqlite_master
+        WHERE tbl_name = 'ratings' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name`,
+    );
+    assert.deepEqual(made, [
+      { name: "idx_ratings_level", type: "index" },
+      { name: "ratings", type: "table" },
+    ]);
+    assert.deepEqual(
+      rows(db, `PRAGMA table_info(ratings)`).map((column) => column.name),
+      ["user_id", "level_id", "half", "created_at", "updated_at"],
+    );
+  });
+
+  it("is at peace with a database that has every earlier migration and no rows", () => {
+    const db = current();
+
+    assert.deepEqual(ratingRows(db), []);
+    assert.deepEqual(rows(db, `PRAGMA foreign_key_check`), []);
+  });
+
+  it("gives every already-published level the middle word, and touches nobody who already gave one", () => {
+    // The upgrade path: levels published before difficulty existed meet 0006.
+    const db = before();
+    db.exec(sqlOf(MIGRATION));
+    db.exec(sqlOf(PROGRESS_MIGRATION));
+    db.exec(sqlOf(NAMES_MIGRATION));
+    addUser(db, JASON, 1);
+    addOwnedLevel(db, LEVEL, JASON); // published, unrated: the one 0006 rates
+    addOwnedLevel(db, OTHER_LEVEL, JASON, "draft"); // unrated, but only a draft
+    addOwnedLevel(db, "dddddddddddd", JASON); // published, and the author spoke
+    db.prepare(`UPDATE transcriptions SET difficulty_half = ? WHERE id = ?`).run(8, "dddddddddddd");
+
+    db.exec(sqlOf(RATINGS_MIGRATION));
+
+    assert.deepEqual(
+      rows(db, `SELECT id, difficulty_half FROM transcriptions ORDER BY id`),
+      [
+        { id: LEVEL, difficulty_half: 5 },
+        { id: OTHER_LEVEL, difficulty_half: null },
+        { id: "dddddddddddd", difficulty_half: 8 },
+      ],
+    );
+  });
+
+  it("holds half a pepper to five, in halves, and nothing else", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addOwnedLevel(db, LEVEL, JASON);
+    });
+
+    for (const half of [1, 5, 10]) {
+      assert.doesNotThrow(() => addRating(db, JASON, LEVEL, { half, updated_at: half }), `refused ${half}`);
+      db.prepare(`DELETE FROM ratings WHERE user_id = ?`).run(JASON);
+    }
+    assert.throws(() => addRating(db, JASON, LEVEL, { half: 0 }), /CHECK/);
+    assert.throws(() => addRating(db, JASON, LEVEL, { half: 11 }), /CHECK/);
+  });
+
+  it("will not hold a rating from nobody, nor of a level that is not there", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addOwnedLevel(db, LEVEL, JASON);
+    });
+
+    assert.throws(() => addRating(db, "nobody000000", LEVEL), /FOREIGN KEY/);
+    assert.throws(() => addRating(db, JASON, "nolevel00000"), /FOREIGN KEY/);
+    assert.doesNotThrow(() => addRating(db, JASON, LEVEL));
+  });
+
+  it("holds one rating per player per level, which is what makes the upsert an upsert", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addOwnedLevel(db, LEVEL, JASON);
+      addOwnedLevel(db, OTHER_LEVEL, JASON);
+      addRating(db, JASON, LEVEL);
+    });
+
+    assert.throws(() => addRating(db, JASON, LEVEL), /UNIQUE|PRIMARY KEY/);
+    assert.doesNotThrow(() => addRating(db, JASON, OTHER_LEVEL));
+    assert.doesNotThrow(() => addRating(db, SOMEBODY, LEVEL));
+  });
+
+  it("lets a player's ratings go with their account, and every rating go with the level", () => {
+    // JASON owns the levels and cannot be deleted while he does (0005 proves
+    // the refusal); it is the solvers' accounts and the levels that go.
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addUser(db, "3c5e7g9i1k2m", 3);
+      addOwnedLevel(db, LEVEL, JASON);
+      addOwnedLevel(db, OTHER_LEVEL, JASON);
+      addRating(db, "3c5e7g9i1k2m", LEVEL);
+      addRating(db, SOMEBODY, LEVEL);
+      addRating(db, SOMEBODY, OTHER_LEVEL);
+    });
+
+    db.prepare(`DELETE FROM users WHERE id = ?`).run("3c5e7g9i1k2m");
+    assert.deepEqual(
+      ratingRows(db).map((row) => row.user_id),
+      [SOMEBODY, SOMEBODY],
+    );
+
+    db.prepare(`DELETE FROM transcriptions WHERE id = ?`).run(LEVEL);
+    assert.deepEqual(
+      ratingRows(db).map((row) => [row.user_id, row.level_id]),
+      [[SOMEBODY, OTHER_LEVEL]],
+    );
+  });
+
+  it("refuses to move a level's id while ratings point at it, and allows it once they are forgotten", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addOwnedLevel(db, LEVEL, JASON);
+      addRating(db, SOMEBODY, LEVEL);
+    });
+
+    // The backstop: an unpublish that forgot to erase the ratings would be
+    // stopped here rather than leaving votes about music the author is about
+    // to change note by note.
+    assert.throws(() => rotateId(db, LEVEL, "cccccccccccc"), /FOREIGN KEY/);
+
+    db.prepare(RATING_SQL.forget).run(LEVEL);
+    assert.doesNotThrow(() => rotateId(db, LEVEL, "cccccccccccc"));
+
+    assert.deepEqual(ratingRows(db), []);
+  });
+});
+
+/**
+ * The rating statements the routes run, run for real, in the PROGRESS_SQL
+ * spirit: the stand-in database never parses a statement, so the upsert's
+ * ON CONFLICT clause is proved here or nowhere.
+ */
+describe("the rating statements the routes run", () => {
+  const solvedBy = (): DatabaseSync =>
+    current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addOwnedLevel(db, LEVEL, JASON);
+      addOwnedLevel(db, OTHER_LEVEL, JASON);
+    });
+
+  const one = (db: DatabaseSync, user = SOMEBODY, level = LEVEL): Row =>
+    ({ ...(db.prepare(`SELECT * FROM ratings WHERE user_id = ? AND level_id = ?`).get(user, level) as Row) });
+
+  it("begins a rating, then changes its mind without minting a second row", () => {
+    const db = solvedBy();
+    const rate = db.prepare(RATING_SQL.rate);
+
+    rate.run(SOMEBODY, LEVEL, 6, 10, 10);
+    assert.deepEqual(one(db), {
+      user_id: SOMEBODY,
+      level_id: LEVEL,
+      half: 6,
+      created_at: 10,
+      updated_at: 10,
+    });
+
+    rate.run(SOMEBODY, LEVEL, 9, 20, 20);
+    assert.deepEqual(one(db), {
+      user_id: SOMEBODY,
+      level_id: LEVEL,
+      half: 9,
+      created_at: 10, // the birth stays; only the mind changed
+      updated_at: 20,
+    });
+    assert.equal(ratingRows(db).length, 1);
+  });
+
+  it("reads the caller's own rating and nobody else's", () => {
+    const db = solvedBy();
+    db.prepare(RATING_SQL.rate).run(SOMEBODY, LEVEL, 6, 10, 10);
+
+    assert.deepEqual({ ...(db.prepare(RATING_SQL.read).get(SOMEBODY, LEVEL) as Row) }, { half: 6 });
+    assert.equal(db.prepare(RATING_SQL.read).get(JASON, LEVEL), undefined);
+  });
+
+  it("clears one player's rating and nobody else's", () => {
+    const db = solvedBy();
+    db.prepare(RATING_SQL.rate).run(SOMEBODY, LEVEL, 6, 10, 10);
+    db.prepare(RATING_SQL.rate).run(JASON, LEVEL, 2, 10, 10);
+
+    db.prepare(RATING_SQL.clear).run(SOMEBODY, LEVEL);
+
+    assert.deepEqual(
+      ratingRows(db).map((row) => row.user_id),
+      [JASON],
+    );
+  });
+
+  it("forgets every rating of one level and no other's", () => {
+    const db = solvedBy();
+    db.prepare(RATING_SQL.rate).run(SOMEBODY, LEVEL, 6, 10, 10);
+    db.prepare(RATING_SQL.rate).run(JASON, LEVEL, 2, 10, 10);
+    db.prepare(RATING_SQL.rate).run(SOMEBODY, OTHER_LEVEL, 4, 10, 10);
+
+    db.prepare(RATING_SQL.forget).run(LEVEL);
+
+    assert.deepEqual(
+      ratingRows(db).map((row) => [row.user_id, row.level_id]),
+      [[SOMEBODY, OTHER_LEVEL]],
+    );
+  });
+});
+
+/**
+ * The listing's columns, spliced and run for real: the two rating subselects
+ * are the statement with the next-most syntax in it after the upserts, and
+ * the share_stats join is a promise the privacy page makes.
+ */
+describe("the level columns the listings splice", () => {
+  const listed = (db: DatabaseSync): Row[] =>
+    rows(db, `SELECT ${LEVEL_COLUMNS} FROM transcriptions ORDER BY id`);
+
+  it("counts and sums only the ratings of accounts that share their play", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addUser(db, "3c5e7g9i1k2m", 3);
+      addOwnedLevel(db, LEVEL, JASON);
+      addRating(db, SOMEBODY, LEVEL, { half: 6 });
+      addRating(db, "3c5e7g9i1k2m", LEVEL, { half: 9 });
+    });
+
+    const [before] = listed(db);
+    assert.equal(before!.rating_count, 2);
+    assert.equal(before!.rating_halves, 15);
+
+    // The opt-out is retroactive because nothing derived is stored: the next
+    // read simply no longer sees the rows.
+    db.prepare(`UPDATE users SET share_stats = 0 WHERE id = ?`).run("3c5e7g9i1k2m");
+    const [after] = listed(db);
+    assert.equal(after!.rating_count, 1);
+    assert.equal(after!.rating_halves, 6);
+  });
+
+  it("answers zero and NULL for a level nobody has rated", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addOwnedLevel(db, LEVEL, JASON);
+    });
+
+    const [row] = listed(db);
+    assert.equal(row!.rating_count, 0);
+    assert.equal(row!.rating_halves, null);
   });
 });

@@ -298,12 +298,16 @@ export function createLevelCard(
     item.append(frame);
   }
 
-  // The row above the title: how hard the author says it is, and what this
-  // viewer may do to it. The difficulty comes through `displayedDifficulty`,
-  // which is the only thing that knows what the figure is made of.
+  // The row above the title: how hard the level is, and what this viewer may
+  // do to it. The difficulty comes through `displayedDifficulty`, which is
+  // the only thing that knows what the figure is made of. Nothing is drawn
+  // for a draft without one; the row's min-height keeps the card's shape.
   const row = document.createElement("div");
   row.className = "level-row";
-  row.append(createDifficulty(displayedDifficulty(level)));
+  const displayed = displayedDifficulty(level);
+  if (displayed !== undefined) {
+    row.append(createDifficulty(displayed));
+  }
 
   const head = document.createElement("div");
   head.className = "level-head";

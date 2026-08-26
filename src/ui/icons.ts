@@ -460,6 +460,43 @@ export function lengthIcon(): string {
 }
 
 /**
+ * A chili pepper, in outline and in silhouette: the difficulty glyph.
+ *
+ * The second icon here that is not this site's own drawing. Both paths are
+ * Phosphor Icons' `pepper` (phosphoricons.com), the `regular` and `fill`
+ * weights of one silhouette, which is what lets the display lay the filled
+ * pepper over the outlined one and clip it to a half. Phosphor Icons is MIT
+ * licensed, Copyright (c) 2023 Phosphor Icons; this notice is the
+ * attribution the licence asks to travel with the paths. Their viewBox, too
+ * (256, not 24); the CSS sizes it in ems.
+ */
+const PEPPER_VIEW = `<svg xmlns="${NS}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false">`;
+
+/** The outline weight: the border of every pepper, always visible. */
+export function pepperIcon(): string {
+  return (
+    PEPPER_VIEW +
+    `<path d="M167.27,40.42A40.06,40.06,0,0,0,128,8a8,8,0,0,0,0,16,24,24,0,0,1,22.85,16.66A64.08,64.08,0,0,0,96,104c0,46.75-25.75,78-76.53,93a16,16,0,0,0,1.77,31.13A264.8,264.8,0,0,0,66.75,232c40.78,0,86.16-9.15,117.53-35.46C210.64,174.44,224,143.3,224,104h0A64.07,64.07,0,0,0,167.27,40.42ZM160,56a48.07,48.07,0,0,1,45.37,32.37L192,95,163.58,80.83a8,8,0,0,0-7.16,0L128,95l-13.37-6.68A48.08,48.08,0,0,1,160,56Zm14,128.3c-18,15.07-43.6,25.26-74.12,29.47A254.08,254.08,0,0,1,24,212.37h0v0c57.23-16.87,87.63-54,88-107.42l12.44,6.22a8,8,0,0,0,7.16,0L160,96.93l28.42,14.21a8,8,0,0,0,7.16,0l12.41-6.2C207.78,138.84,196.35,165.54,174,184.29Z"/>` +
+    `</svg>`
+  );
+}
+
+/**
+ * The fill weight: what a full pepper is filled with, and a half half.
+ *
+ * Phosphor's fill weight as shipped: the cap — the dome above the zigzag
+ * calyx — stays a cut-out, by decision (a solid-cap variant was tried and
+ * turned down; dropping the second subpath is what fills it).
+ */
+export function pepperFillIcon(): string {
+  return (
+    PEPPER_VIEW +
+    `<path d="M167.27,40.42A40.06,40.06,0,0,0,128,8a8,8,0,0,0,0,16,24,24,0,0,1,22.85,16.66A64.08,64.08,0,0,0,96,104c0,46.75-25.75,78-76.53,93a16,16,0,0,0,1.77,31.13A264.8,264.8,0,0,0,66.75,232c40.78,0,86.16-9.15,117.53-35.46C210.64,174.44,224,143.3,224,104h0A64.07,64.07,0,0,0,167.27,40.42ZM192,95,163.58,80.83a8,8,0,0,0-7.16,0L128,95l-13.37-6.68a48,48,0,0,1,90.74,0Z"/>` +
+    `</svg>`
+  );
+}
+
+/**
  * Google's "G", in Google's four colours, as Google draws it.
  *
  * The one icon here that is not this site's own. Google's branding rules for

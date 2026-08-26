@@ -1,28 +1,36 @@
 /**
  * The one place a difficulty is drawn.
  *
- * Five stars and a number, lit to what `displayedDifficulty` says — and that
+ * Five chili peppers, filled to what `displayedDifficulty` says — and that
  * function is the only thing this asks. It does not know whether the figure
- * is the author's word or a blend with play data, and it draws a figure that
- * is not in halves (a 2.37, one day) by rounding to the nearest half, with
- * the exact number printed beside. A level nobody has rated draws one hollow
- * star with a question mark and says so, because five hollow stars would
- * read as the worst rating there is rather than as no rating at all.
+ * is the author's word alone or a blend with solvers' ratings, and it draws
+ * a figure that is not in halves (a 3.29) by rounding to the nearest half.
+ * The peppers are the whole drawing: no number beside them, by decision —
+ * the figure in words lives only in the accessible label and the title.
  *
- * The card, the level's box, the play bar and the picker all draw their stars
- * through `starGlyphs`, so the shape of a star is decided once. Changing the
- * graphic is changing this file.
+ * Every pepper keeps its red border; what varies is the fill. A half is the
+ * outlined pepper with a filled one laid under it and clipped to its left
+ * half — two glyphs, one `clip-path` — so no half-pepper ever has to be
+ * drawn. The glyphs are Phosphor's, inlined in `icons.ts`, the outline and
+ * fill weights of one silhouette, which is what makes the overlay line up.
+ *
+ * The card, the level's box and the stepper all draw their peppers through
+ * `pepperGlyphs`, so the shape of a pepper is decided once. Changing the
+ * graphic is changing this file. There is no unrated drawing: a published
+ * level always has a difficulty now, and a draft without one simply shows
+ * nothing where the peppers would be.
  */
 
 import {
   DIFFICULTY,
   type DisplayedDifficulty,
 } from "../shared/difficulty.js";
+import { pepperFillIcon, pepperIcon } from "./icons.js";
 
-export type StarFill = "full" | "half" | "empty";
+export type PepperFill = "full" | "half" | "empty";
 
-/** Which of the five stars to light, for this many. */
-export function starsToDraw(stars: number): StarFill[] {
+/** Which of the five peppers to fill, for this many. */
+export function peppersToDraw(stars: number): PepperFill[] {
   const halves = Math.round(stars * 2);
   return Array.from({ length: DIFFICULTY.stars }, (_unused, at) => {
     const lit = halves - at * 2;
@@ -31,61 +39,38 @@ export function starsToDraw(stars: number): StarFill[] {
 }
 
 /** The rating in words, for a title and for whoever is not looking. */
-export function difficultyLabel(displayed: DisplayedDifficulty | undefined): string {
-  return displayed === undefined
-    ? "Not rated yet"
-    : `Difficulty ${displayed.text} of ${DIFFICULTY.stars} stars`;
+export function difficultyLabel(displayed: DisplayedDifficulty): string {
+  return `Difficulty ${displayed.text} of ${DIFFICULTY.stars} peppers`;
 }
 
-/**
- * One star, in one of its three states.
- *
- * A half is the hollow star with a lit one clipped to its left half laid
- * over it — two glyphs, one `width: 50%; overflow: hidden` — so that no font
- * has to have a half-star glyph.
- */
-export function starGlyph(fill: StarFill): HTMLElement {
-  const star = document.createElement("span");
-  star.className = `star star-${fill}`;
-  star.setAttribute("aria-hidden", "true");
-  star.textContent = "★";
-  if (fill === "half") {
+/** One pepper, in one of its three states. */
+export function pepperGlyph(fill: PepperFill): HTMLElement {
+  const pepper = document.createElement("span");
+  pepper.className = `pepper pepper-${fill}`;
+  pepper.setAttribute("aria-hidden", "true");
+  pepper.innerHTML = pepperIcon();
+  if (fill !== "empty") {
     const lit = document.createElement("span");
-    lit.className = "star-half-lit";
-    lit.textContent = "★";
-    star.append(lit);
+    lit.className = "pepper-lit";
+    lit.innerHTML = pepperFillIcon();
+    pepper.append(lit);
   }
-  return star;
+  return pepper;
 }
 
-/** The five stars, lit to `stars`. */
-export function starGlyphs(stars: number): HTMLElement[] {
-  return starsToDraw(stars).map(starGlyph);
+/** The five peppers, filled to `stars`. */
+export function pepperGlyphs(stars: number): HTMLElement[] {
+  return peppersToDraw(stars).map(pepperGlyph);
 }
 
-/** The rating as a card, a box or a bar shows it. */
-export function createDifficulty(displayed: DisplayedDifficulty | undefined): HTMLElement {
+/** The rating as a card or a box shows it: the peppers alone. */
+export function createDifficulty(displayed: DisplayedDifficulty): HTMLElement {
   const element = document.createElement("span");
   element.className = "difficulty";
   element.setAttribute("role", "img");
   const label = difficultyLabel(displayed);
   element.setAttribute("aria-label", label);
   element.title = label;
-
-  if (displayed === undefined) {
-    element.classList.add("is-unrated");
-    const mark = document.createElement("span");
-    mark.className = "difficulty-unrated";
-    mark.setAttribute("aria-hidden", "true");
-    mark.textContent = "?";
-    element.append(starGlyph("empty"), mark);
-    return element;
-  }
-
-  const text = document.createElement("span");
-  text.className = "difficulty-text";
-  text.setAttribute("aria-hidden", "true");
-  text.textContent = displayed.text;
-  element.append(...starGlyphs(displayed.stars), text);
+  element.append(...pepperGlyphs(displayed.stars));
   return element;
 }

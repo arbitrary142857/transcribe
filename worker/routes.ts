@@ -20,7 +20,7 @@ import type { Mode, TimeSignature } from "../src/music/types.js";
 import { beatsPerBarOf } from "../src/playback/tempo-map.js";
 import { MEASURES_MAX, timingProblem } from "../src/playback/timing-fields.js";
 import { mergeProgress, regradeProgress } from "../src/puzzle/merge.js";
-import { halfOfStars, starsOfHalf } from "../src/shared/difficulty.js";
+import { halfOfStars, isStars, starsOfHalf } from "../src/shared/difficulty.js";
 import { readProgress, type PlayProgress } from "../src/puzzle/progress.js";
 import type { UserSummary } from "../src/shared/session.js";
 import {
@@ -115,20 +115,32 @@ const LEVELS_PAGE = 100;
  * reaches it from a request, and it is the only thing in this file ever
  * spliced into a statement. Every value goes through `bind`.
  *
- * The last column reads the users table: the author's name, as they would
- * have it shown, or nothing when they have asked to be Anonymous. A
- * correlated subselect rather than a JOIN, so that every statement this is
- * spliced into stays `FROM transcriptions` and `id` keeps meaning the
- * level's. A rename in users renames every byline, which is the point of
- * the name living there.
+ * The last columns read other tables: the author's name, as they would have
+ * it shown, or nothing when they have asked to be Anonymous; and the two
+ * figures the displayed difficulty is blended from, a count and a sum of
+ * the level's ratings. Correlated subselects rather than JOINs, so that
+ * every statement this is spliced into stays `FROM transcriptions` and `id`
+ * keeps meaning the level's. A rename in users renames every byline, which
+ * is the point of the name living there.
+ *
+ * The rating subselects join users to ask share_stats *at read time*, and
+ * that is the whole of how the setting is honoured: no figure derived from
+ * ratings is ever stored, so an account that stops sharing is out of every
+ * average on the next read, and one that resumes is back in. Deletion is
+ * the cascade's; unpublish deletes the rows itself. Exported for
+ * test/migrations.test.ts, which runs this against the real schema.
  */
-const LEVEL_COLUMNS = `
+export const LEVEL_COLUMNS = `
   id, title, subtitle, instructions, video_id, mark_start, mark_end,
   measures, clef, meter_beats, meter_unit,
   key_fifths, key_mode, note_count, unpitched_count, difficulty_half,
   owner_id, status, published_at, updated_at, created_at,
   (SELECT CASE WHEN u.anonymous_author = 1 THEN NULL ELSE u.username END
-     FROM users u WHERE u.id = transcriptions.owner_id) AS author
+     FROM users u WHERE u.id = transcriptions.owner_id) AS author,
+  (SELECT COUNT(r.user_id) FROM ratings r JOIN users u ON u.id = r.user_id
+    WHERE r.level_id = transcriptions.id AND u.share_stats = 1) AS rating_count,
+  (SELECT SUM(r.half) FROM ratings r JOIN users u ON u.id = r.user_id
+    WHERE r.level_id = transcriptions.id AND u.share_stats = 1) AS rating_halves
 `;
 
 /**
@@ -164,6 +176,9 @@ type LevelRow = {
   difficulty_half: number | null;
   owner_id: string;
   author: string | null;
+  /** How many shared ratings the level has; SUM over none is NULL. */
+  rating_count: number;
+  rating_halves: number | null;
   status: LevelStatus;
   published_at: number | null;
   updated_at: number;
@@ -202,6 +217,10 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
     row.difficulty_half === null || row.difficulty_half === undefined
       ? undefined
       : starsOfHalf(row.difficulty_half),
+  // Absent rather than zero when nobody has rated, in the subtitle's
+  // spirit; displayedDifficulty treats the two the same.
+  ratingCount: row.rating_count ? row.rating_count : undefined,
+  ratingHalves: row.rating_count ? (row.rating_halves ?? undefined) : undefined,
   status: row.status,
   publishedAt: row.published_at ?? undefined,
   updatedAt: row.updated_at,
@@ -718,6 +737,15 @@ api.put("/api/levels/:id", async (c) => {
       }
     }
 
+    // Publishing required the author's word, so a published level keeps one:
+    // an edit may move it, never take it away.
+    if (words.details.difficulty === undefined) {
+      return c.json(
+        { error: "A published level keeps a difficulty; change it rather than clearing it." },
+        409,
+      );
+    }
+
     await c.env.DB.prepare(
       `UPDATE transcriptions
           SET title = ?, subtitle = ?, instructions = ?, difficulty_half = ?,
@@ -728,7 +756,7 @@ api.put("/api/levels/:id", async (c) => {
         words.details.title,
         words.details.subtitle ?? null,
         words.details.instructions ?? null,
-        halfOrNull(words.details.difficulty),
+        halfOfStars(words.details.difficulty),
         Date.now(),
         id,
       )
@@ -833,6 +861,8 @@ const ALREADY_PUBLISHED = "That level is already published.";
 const NOT_PUBLISHED = "That level is not published.";
 const PUBLISH_UNFINISHED =
   "Every note needs a pitch before the level can be published.";
+const PUBLISH_UNRATED =
+  "The level needs a difficulty before it can be published.";
 
 /**
  * Make a draft everybody's.
@@ -846,11 +876,10 @@ const PUBLISH_UNFINISHED =
  */
 api.post("/api/levels/:id/publish", async (c) => {
   const id = c.req.param("id");
-  const owned = await readOwnedRow<{ unpitched_count: number }>(
-    c,
-    id,
-    "unpitched_count",
-  );
+  const owned = await readOwnedRow<{
+    unpitched_count: number;
+    difficulty_half: number | null;
+  }>(c, id, "unpitched_count, difficulty_half");
   if ("problem" in owned) {
     return c.json({ error: owned.problem }, owned.status);
   }
@@ -859,6 +888,14 @@ api.post("/api/levels/:id/publish", async (c) => {
   }
   if (owned.row.unpitched_count > 0) {
     return c.json({ error: PUBLISH_UNFINISHED }, 409);
+  }
+  // The author's word is the anchor every displayed difficulty leans on, so
+  // a level without one does not leave the drafts. Route-enforced only: the
+  // CHECK tying status to published_at predates this rule, and a migration
+  // cannot add one without rebuilding the table for a sentence's worth of
+  // gain.
+  if (owned.row.difficulty_half === null || owned.row.difficulty_half === undefined) {
+    return c.json({ error: PUBLISH_UNRATED }, 409);
   }
 
   const now = Date.now();
@@ -889,12 +926,15 @@ api.post("/api/levels/:id/publish", async (c) => {
  * anything: the draft is reached by the id this answers with, and whoever
  * bookmarked the old one finds a level that is not there, which is the truth.
  *
- * The progress table references this id, and deliberately does not follow it
- * (no ON UPDATE CASCADE), for the reason above. So every player's progress on
- * the level is deleted first -- in the same batch as the move, so neither
- * happens without the other -- and the database would refuse the move
- * otherwise, which is the backstop for this route forgetting. A browser's
- * copy, for anybody signed out, is out of reach and meets nothing instead.
+ * The progress and ratings tables reference this id, and deliberately do not
+ * follow it (no ON UPDATE CASCADE), for the reason above. So every player's
+ * progress on the level, and every solver's rating of it, is deleted first --
+ * in the same batch as the move, so none of it happens without the rest --
+ * and the database would refuse the move otherwise, which is the backstop for
+ * this route forgetting. A browser's copy, for anybody signed out, is out of
+ * reach and meets nothing instead. Republished, the level starts from zero
+ * ratings under its new id: the author's word alone, which is the truth about
+ * music the author may just have changed.
  *
  * `published_at = NULL` is statement text, not a bound null, which is the
  * shape the codebase prefers.
@@ -912,6 +952,7 @@ api.post("/api/levels/:id/unpublish", async (c) => {
   const fresh = newTranscriptionId();
   await c.env.DB.batch([
     c.env.DB.prepare(PROGRESS_SQL.forget).bind(id),
+    c.env.DB.prepare(RATING_SQL.forget).bind(id),
     c.env.DB.prepare(
       `UPDATE transcriptions
           SET id = ?, status = ?, published_at = NULL, updated_at = ?
@@ -1588,6 +1629,171 @@ api.post("/api/progress/merge", async (c) => {
   }
 
   return c.json({ taken });
+});
+
+// ---- ratings ------------------------------------------------------------
+//
+// What solvers say a level's difficulty is. One row per (player, level),
+// written only by its own account, aggregated only by the listing's
+// subselects in LEVEL_COLUMNS, and never rolled up into anything stored --
+// docs/difficulty.md is the reference.
+
+/**
+ * Every statement that reads or writes ratings, in one place and exported
+ * for the same one reader as PROGRESS_SQL: test/migrations.test.ts, which
+ * runs these against the real schema. The upsert is the one with syntax in
+ * it -- a changed mind moves `half` and `updated_at` and keeps `created_at`,
+ * the row's birth.
+ *
+ * `forget` is the unpublish route's, in its batch beside the progress
+ * forget: the ratings FK follows the level id and deliberately does not
+ * cascade on update, so the database would refuse the id move while any
+ * rating still points at the old one.
+ *
+ * Every statement names the ratings table, which is what the stub-database
+ * tests key their answers on -- `DELETE FROM ratings` and `DELETE FROM
+ * progress` differ only there.
+ */
+export const RATING_SQL = {
+  // bind: user_id, level_id, half, created_at, updated_at
+  rate: `INSERT INTO ratings (user_id, level_id, half, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (user_id, level_id) DO UPDATE SET
+           half       = excluded.half,
+           updated_at = excluded.updated_at`,
+
+  // bind: user_id, level_id
+  read: `SELECT half FROM ratings WHERE user_id = ? AND level_id = ?`,
+
+  // bind: user_id, level_id
+  clear: `DELETE FROM ratings WHERE user_id = ? AND level_id = ?`,
+
+  // bind: level_id
+  forget: `DELETE FROM ratings WHERE level_id = ?`,
+} as const;
+
+const SIGN_IN_TO_RATE = "Sign in to rate a level.";
+const NOT_A_RATING = "A rating is half a pepper to five peppers, in halves.";
+
+/** More bytes than `{ "stars": 2.5 }` will ever need. */
+const MAX_RATING_BYTES = 1024;
+
+/**
+ * A solver's word on a level's difficulty.
+ *
+ * Who may speak is the whole of this route: somebody signed in, whose
+ * account shares its statistics, on a published level they have solved and
+ * do not own. The author's word is the model's anchor and arrives through
+ * the details box, so an author rating their own level would be counted
+ * twice; and a rating from an account with share_stats off would be written
+ * only to be ignored by every read, so it is refused with the reason rather
+ * than stored as a lie.
+ *
+ * The refusals are ordered like the play routes': the id's shape before any
+ * lookup, the session before the body is read, the body before the level,
+ * and the level's answers in `readVisibleLevel`'s words -- a stranger asking
+ * about a draft learns only that there is no level.
+ */
+api.put("/api/levels/:id/rating", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_RATE }, 401);
+  }
+
+  const text = await c.req.raw.text();
+  if (text.length > MAX_RATING_BYTES) {
+    return c.json({ error: "That is too much to be a rating." }, 413);
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return c.json({ error: "The request was not JSON." }, 400);
+  }
+  const stars = isObject(body) ? body.stars : undefined;
+  if (!isStars(stars)) {
+    return c.json({ error: NOT_A_RATING }, 400);
+  }
+
+  const row = await readVisibleLevel(c, user, id);
+  if (row === undefined) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+  if (row.status !== "published") {
+    return c.json({ error: NOT_PUBLISHED }, 409);
+  }
+  if (row.owner_id === user.id) {
+    return c.json(
+      { error: "The author's word is already counted; only solvers rate." },
+      403,
+    );
+  }
+  if (!user.shareStats) {
+    return c.json(
+      { error: "Ratings count only for players who share their play statistics." },
+      403,
+    );
+  }
+
+  const played = (await c.env.DB.prepare(PROGRESS_SQL.read)
+    .bind(user.id, id)
+    .first()) as ProgressRow | null;
+  if (played === null || played.solved_at === null) {
+    return c.json({ error: "Rate a level once you have solved it." }, 403);
+  }
+
+  const now = Date.now();
+  await c.env.DB.prepare(RATING_SQL.rate)
+    .bind(user.id, id, halfOfStars(stars), now, now)
+    .run();
+
+  return c.body(null, 204);
+});
+
+// Taking a rating back. The caller's own row and nothing else, so no level
+// lookup: deleting what may not be there reveals nothing and is not an error.
+api.delete("/api/levels/:id/rating", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_RATE }, 401);
+  }
+
+  await c.env.DB.prepare(RATING_SQL.clear).bind(user.id, id).run();
+
+  return c.body(null, 204);
+});
+
+// The caller's own rating, for the prompt opening with it. 204 is "nothing
+// yet", as the progress read answers; no visibility lookup for the same
+// reason as the DELETE above.
+api.get("/api/levels/:id/rating", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_RATE }, 401);
+  }
+
+  const row = (await c.env.DB.prepare(RATING_SQL.read)
+    .bind(user.id, id)
+    .first()) as { half: number } | null;
+  if (row === null) {
+    return c.body(null, 204);
+  }
+  return c.json({ stars: starsOfHalf(row.half) });
 });
 
 // A path under /api naming nothing is answered as data, never as a page:
