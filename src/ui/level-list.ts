@@ -52,7 +52,8 @@ import {
 } from "./merge-offer.js";
 import { openModal } from "./modal.js";
 import { browserFetch } from "./page-boot.js";
-import { maybeRatingPrompt } from "./rating-prompt.js";
+import { solvedContribution } from "./rating-prompt.js";
+import { upvoteLine } from "./upvote-line.js";
 import { createSegmented } from "./segmented.js";
 import { createSwitch } from "./switch.js";
 
@@ -345,9 +346,17 @@ export function createLevelList(options: LevelListOptions): LevelList {
                   elapsedMs: progress.elapsedMs,
                   checkCount: progress.checkCount,
                 },
-          // Rating a level is revisitable from its box; the prompt decides
-          // for itself whether this viewer may.
-          rating: maybeRatingPrompt({
+          // Rating and hearting a level are revisitable from its box; the
+          // builders decide for themselves what this viewer may do.
+          contribute: solvedContribution({
+            level,
+            viewer: user,
+            solved: solvedAt !== undefined,
+            // The author's door: the same details box the pencil opens,
+            // with the same refresh behind it.
+            onEditDetails: () => void retitle(level),
+          }),
+          upvote: upvoteLine({
             level,
             viewer: user,
             solved: solvedAt !== undefined,

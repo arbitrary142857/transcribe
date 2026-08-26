@@ -38,9 +38,11 @@ import {
   type TranscriptionRecord,
 } from "../shared/transcription.js";
 import type { UserSummary } from "../shared/session.js";
+import { editDetails } from "./details-modal.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
 import { keepingScroll } from "./score-overlay.js";
-import { maybeRatingPrompt } from "./rating-prompt.js";
+import { solvedContribution } from "./rating-prompt.js";
+import { upvoteLine } from "./upvote-line.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
 import { openLevelModal } from "./level-modal.js";
 import { createPlayBar, type PlayBar } from "./play-bar.js";
@@ -394,7 +396,7 @@ export function createPlayPage(
         // The solved box, once the burst has had its moment. Only on the
         // check that solved it: reopening an already-solved level restores
         // `solved` quietly, and this branch is never reached again.
-        setTimeout(() => openAbout(), EFFECT_MS + 500);
+        setTimeout(() => openAbout(true), EFFECT_MS + 500);
       }
 
       save();
@@ -430,17 +432,27 @@ export function createPlayPage(
   // ---- the bar -----------------------------------------------------------
 
   /**
-   * The same box the level list opens, minus the way in: you are already
-   * here, so a Play button would offer the page you are standing on. Once
-   * solved it carries the rating prompt, and the solving check opens it
-   * unasked — the solved box is this box.
+   * The same box the level list opens, with the ways onward instead of the
+   * way in: you are already here, so a Play button would offer the page you
+   * are standing on. Once solved it carries the viewer's part — the rating
+   * prompt and the heart, or the author's note — and the solving check
+   * opens it unasked, celebrating; the info button reopens it quietly.
    */
-  function openAbout(): void {
+  function openAbout(celebrate = false): void {
     openLevelModal({
       level: record,
       instructions: record.instructions,
+      celebrate,
+      wayOut: true,
       solvedIn: solved ? { elapsedMs: elapsed(), checkCount } : undefined,
-      rating: maybeRatingPrompt({ level: record, viewer, solved }),
+      contribute: solvedContribution({
+        level: record,
+        viewer,
+        solved,
+        // No list to refresh here: the box redraws next time it opens.
+        onEditDetails: () => void editDetails(record).catch(console.error),
+      }),
+      upvote: upvoteLine({ level: record, viewer, solved }),
     });
   }
 

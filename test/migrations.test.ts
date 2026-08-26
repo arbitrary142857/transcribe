@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "node:test";
-import { LEVEL_COLUMNS, PROGRESS_SQL, RATING_SQL } from "../dist-worker/worker/routes.js";
+import { LEVEL_COLUMNS, PROGRESS_SQL, RATING_SQL, UPVOTE_SQL } from "../dist-worker/worker/routes.js";
 
 /**
  * The migration files themselves, run against the SQLite that ships with
@@ -246,6 +246,7 @@ describe("migration 0003", () => {
 const PROGRESS_MIGRATION = "0004_keep_progress_per_account.sql";
 const NAMES_MIGRATION = "0005_name_the_author.sql";
 const RATINGS_MIGRATION = "0006_keep_ratings_per_account.sql";
+const UPVOTES_MIGRATION = "0007_keep_upvotes_per_account.sql";
 
 /** The database as every migration leaves it, with whatever `seed` puts in it. */
 function current(seed: (db: DatabaseSync) => void = () => {}): DatabaseSync {
@@ -254,6 +255,7 @@ function current(seed: (db: DatabaseSync) => void = () => {}): DatabaseSync {
   db.exec(sqlOf(PROGRESS_MIGRATION));
   db.exec(sqlOf(NAMES_MIGRATION));
   db.exec(sqlOf(RATINGS_MIGRATION));
+  db.exec(sqlOf(UPVOTES_MIGRATION));
   seed(db);
   return db;
 }
@@ -583,6 +585,31 @@ describe("the progress statements the routes run", () => {
     assert.equal(one(db, JASON, OTHER_LEVEL).check_count, 0);
   });
 
+  it("lists sharing players' solve times for one level, never the author's own", () => {
+    const db = played();
+    const third = "3c5e7g9i1k2m";
+    addUser(db, third, 3);
+    // The author solved their own level; two players solved it, one of whom
+    // keeps their play out of the figures; a fourth row never solved it.
+    db.prepare(PROGRESS_SQL.merge).run(JASON, LEVEL, 40_000, 1, 5, "[]", "[]", 5);
+    db.prepare(PROGRESS_SQL.merge).run(SOMEBODY, LEVEL, 90_000, 2, 6, "[]", "[]", 6);
+    db.prepare(PROGRESS_SQL.merge).run(third, LEVEL, 60_000, 1, 7, "[]", "[]", 7);
+    db.prepare(PROGRESS_SQL.save).run(SOMEBODY, OTHER_LEVEL, 10_000, "[]", "[]", 8);
+
+    const all = (db.prepare(PROGRESS_SQL.solveTimes).all(LEVEL, JASON) as Row[])
+      .map((row) => ({ ...row }));
+    assert.deepEqual(
+      all.sort((a, b) => (a.elapsed_ms as number) - (b.elapsed_ms as number)),
+      [
+        { elapsed_ms: 60_000, check_count: 1 },
+        { elapsed_ms: 90_000, check_count: 2 },
+      ],
+    );
+
+    db.prepare(`UPDATE users SET share_stats = 0 WHERE id = ?`).run(third);
+    assert.equal(db.prepare(PROGRESS_SQL.solveTimes).all(LEVEL, JASON).length, 1);
+  });
+
   it("reads one player's rows and nobody else's, most recently touched first", () => {
     const db = played();
     db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1, "[]", "[]", 10);
@@ -909,6 +936,157 @@ describe("the rating statements the routes run", () => {
   });
 });
 
+// ---- 0007 -----------------------------------------------------------------
+
+const addUpvote = (
+  db: DatabaseSync,
+  user: string,
+  level: string,
+  createdAt = 1,
+): void => {
+  db.prepare(
+    `INSERT INTO upvotes (user_id, level_id, created_at) VALUES (?, ?, ?)`,
+  ).run(user, level, createdAt);
+};
+
+const upvoteRows = (db: DatabaseSync): Row[] =>
+  rows(db, `SELECT * FROM upvotes ORDER BY user_id, level_id`);
+
+describe("migration 0007", () => {
+  it("creates upvotes keyed by player and level, with an index on the level and nothing else", () => {
+    const db = current();
+
+    const made = rows(
+      db,
+      `SELECT name, type FROM sqlite_master
+        WHERE tbl_name = 'upvotes' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name`,
+    );
+    assert.deepEqual(made, [
+      { name: "idx_upvotes_level", type: "index" },
+      { name: "upvotes", type: "table" },
+    ]);
+    assert.deepEqual(
+      rows(db, `PRAGMA table_info(upvotes)`).map((column) => column.name),
+      ["user_id", "level_id", "created_at"],
+    );
+  });
+
+  it("will not hold an upvote from nobody, nor of a level that is not there", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addOwnedLevel(db, LEVEL, JASON);
+    });
+
+    assert.throws(() => addUpvote(db, "nobody000000", LEVEL), /FOREIGN KEY/);
+    assert.throws(() => addUpvote(db, JASON, "nolevel00000"), /FOREIGN KEY/);
+    assert.doesNotThrow(() => addUpvote(db, JASON, LEVEL));
+  });
+
+  it("holds one upvote per player per level, which is what makes the toggle a toggle", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addOwnedLevel(db, LEVEL, JASON);
+      addUpvote(db, JASON, LEVEL);
+    });
+
+    assert.throws(() => addUpvote(db, JASON, LEVEL), /UNIQUE|PRIMARY KEY/);
+    assert.doesNotThrow(() => addUpvote(db, SOMEBODY, LEVEL));
+  });
+
+  it("lets a player's upvotes go with their account, and every upvote go with the level", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addUser(db, "3c5e7g9i1k2m", 3);
+      addOwnedLevel(db, LEVEL, JASON);
+      addOwnedLevel(db, OTHER_LEVEL, JASON);
+      addUpvote(db, "3c5e7g9i1k2m", LEVEL);
+      addUpvote(db, SOMEBODY, LEVEL);
+      addUpvote(db, SOMEBODY, OTHER_LEVEL);
+    });
+
+    db.prepare(`DELETE FROM users WHERE id = ?`).run("3c5e7g9i1k2m");
+    assert.deepEqual(
+      upvoteRows(db).map((row) => row.user_id),
+      [SOMEBODY, SOMEBODY],
+    );
+
+    db.prepare(`DELETE FROM transcriptions WHERE id = ?`).run(LEVEL);
+    assert.deepEqual(
+      upvoteRows(db).map((row) => [row.user_id, row.level_id]),
+      [[SOMEBODY, OTHER_LEVEL]],
+    );
+  });
+
+  it("refuses to move a level's id while upvotes point at it, and allows it once they are forgotten", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addOwnedLevel(db, LEVEL, JASON);
+      addUpvote(db, SOMEBODY, LEVEL);
+    });
+
+    assert.throws(() => rotateId(db, LEVEL, "cccccccccccc"), /FOREIGN KEY/);
+
+    db.prepare(UPVOTE_SQL.forget).run(LEVEL);
+    assert.doesNotThrow(() => rotateId(db, LEVEL, "cccccccccccc"));
+
+    assert.deepEqual(upvoteRows(db), []);
+  });
+});
+
+/** The upvote statements the routes run, run for real, as for the others. */
+describe("the upvote statements the routes run", () => {
+  const played = (): DatabaseSync =>
+    current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addOwnedLevel(db, LEVEL, JASON);
+      addOwnedLevel(db, OTHER_LEVEL, JASON);
+    });
+
+  it("gives once however often it is pressed, keeping the first press's moment", () => {
+    const db = played();
+    const give = db.prepare(UPVOTE_SQL.give);
+
+    give.run(SOMEBODY, LEVEL, 10);
+    give.run(SOMEBODY, LEVEL, 20);
+
+    assert.deepEqual(upvoteRows(db), [
+      { user_id: SOMEBODY, level_id: LEVEL, created_at: 10 },
+    ]);
+  });
+
+  it("answers whether the caller's own upvote stands, and nobody else's", () => {
+    const db = played();
+    db.prepare(UPVOTE_SQL.give).run(SOMEBODY, LEVEL, 10);
+
+    assert.notEqual(db.prepare(UPVOTE_SQL.read).get(SOMEBODY, LEVEL), undefined);
+    assert.equal(db.prepare(UPVOTE_SQL.read).get(JASON, LEVEL), undefined);
+  });
+
+  it("takes back one player's upvote and no other's, and forgets a level's whole", () => {
+    const db = played();
+    db.prepare(UPVOTE_SQL.give).run(SOMEBODY, LEVEL, 10);
+    db.prepare(UPVOTE_SQL.give).run(JASON, LEVEL, 10);
+    db.prepare(UPVOTE_SQL.give).run(SOMEBODY, OTHER_LEVEL, 10);
+
+    db.prepare(UPVOTE_SQL.clear).run(SOMEBODY, LEVEL);
+    assert.deepEqual(
+      upvoteRows(db).map((row) => [row.user_id, row.level_id]),
+      [[SOMEBODY, OTHER_LEVEL], [JASON, LEVEL]],
+    );
+
+    db.prepare(UPVOTE_SQL.forget).run(LEVEL);
+    assert.deepEqual(
+      upvoteRows(db).map((row) => [row.user_id, row.level_id]),
+      [[SOMEBODY, OTHER_LEVEL]],
+    );
+  });
+});
+
 /**
  * The listing's columns, spliced and run for real: the two rating subselects
  * are the statement with the next-most syntax in it after the upserts, and
@@ -949,5 +1127,40 @@ describe("the level columns the listings splice", () => {
     const [row] = listed(db);
     assert.equal(row!.rating_count, 0);
     assert.equal(row!.rating_halves, null);
+    assert.equal(row!.upvote_count, 0);
+    assert.equal(row!.solve_count, 0);
+  });
+
+  it("counts hearts only from accounts that share their play", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addUser(db, "3c5e7g9i1k2m", 3);
+      addOwnedLevel(db, LEVEL, JASON);
+      addUpvote(db, SOMEBODY, LEVEL);
+      addUpvote(db, "3c5e7g9i1k2m", LEVEL);
+    });
+    db.prepare(`UPDATE users SET share_stats = 0 WHERE id = ?`).run("3c5e7g9i1k2m");
+
+    const [row] = listed(db);
+    assert.equal(row!.upvote_count, 1);
+  });
+
+  it("counts solvers who share their play, and never the level's own author", () => {
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      addUser(db, SOMEBODY, 2);
+      addUser(db, "3c5e7g9i1k2m", 3);
+      addOwnedLevel(db, LEVEL, JASON);
+      // The author solved their own level; two players did too, one of whom
+      // keeps their play out of the figures; a fourth row is still unsolved.
+      addProgress(db, JASON, LEVEL, { check_count: 1, solved_at: 5 });
+      addProgress(db, SOMEBODY, LEVEL, { check_count: 2, solved_at: 6 });
+      addProgress(db, "3c5e7g9i1k2m", LEVEL, { check_count: 1, solved_at: 7 });
+    });
+    db.prepare(`UPDATE users SET share_stats = 0 WHERE id = ?`).run("3c5e7g9i1k2m");
+
+    const [row] = listed(db);
+    assert.equal(row!.solve_count, 1);
   });
 });

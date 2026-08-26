@@ -2539,6 +2539,68 @@ main.page {
   clip-path: inset(0 50% 0 0);
 }
 
+.difficulty-text {
+  margin-left: 0.25rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: #6c6459;
+}
+
+/* ---- The received figures: hearts and solvers ----
+
+   Small icon-and-number pairs beside the peppers, on the card and in the
+   level's box. The heart is also a button where the viewer may press it;
+   the figures are quiet either way. */
+.level-figures {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.level-figure,
+.upvote-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #8d8378;
+  white-space: nowrap;
+}
+
+.level-figure-icon svg,
+.upvote-heart svg {
+  display: block;
+  width: 1em;
+  height: 1em;
+  font-size: 1.1em;
+}
+
+button.upvote-line {
+  padding: 0.1rem 0.25rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: #8d8378;
+}
+
+button.upvote-line:hover {
+  color: #b23a2a;
+}
+
+button.upvote-line:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
+.upvote-line.is-upvoted,
+.upvote-line.is-upvoted .upvote-heart {
+  color: #b23a2a;
+}
+
 /* The difficulty as anybody enters it: a minus, the peppers with their
    number, a plus. The figure between the buttons is the keyboard's stop. */
 .difficulty-stepper {
@@ -3711,6 +3773,30 @@ main.page {
   color: #8d8378;
 }
 
+/* The received figures in the box: the heart, the solvers, the medians. */
+.level-modal-figures {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: #8d8378;
+}
+
+.level-modal-median {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The solving moment's own line, above the sober one. */
+.level-modal-cheer {
+  margin: 0.6rem 0 0;
+  font-size: 1.15rem;
+  font-weight: bold;
+  color: var(--note-correct);
+}
+
 /* The solver's own word, under the solved line. A little column on purpose:
    the actions this box will grow later — back to the levels, a thumbs-up —
    belong under the stepper. */
@@ -3730,10 +3816,46 @@ main.page {
   color: #6c6459;
 }
 
+/* What actually reaches the database, said as buttons. */
+.rating-prompt-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.rating-prompt-button {
+  padding: 0.25rem 0.7rem;
+  border: 1px solid #cfc7b8;
+  border-radius: 6px;
+  background: #fffdf8;
+  color: #4c463d;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.rating-prompt-button:hover:not(:disabled) {
+  border-color: #b23a2a;
+  color: #b23a2a;
+}
+
+.rating-prompt-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.rating-prompt-button:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
 .rating-prompt-status {
   margin: 0;
   min-height: 1em;
   font-size: 0.8rem;
+  color: #6c6459;
+}
+
+.rating-prompt-status.is-wrong {
   color: #a04434;
 }
 

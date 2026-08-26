@@ -5,7 +5,7 @@ import { difficultyLabel, peppersToDraw } from "../dist/ui/difficulty.js";
 describe("difficultyLabel()", () => {
   it("reads the peppers out in words, for a screen reader and a title", () => {
     assert.equal(difficultyLabel({ stars: 2.5, text: "2.5" }), "Difficulty 2.5 of 5 peppers");
-    assert.equal(difficultyLabel({ stars: 4, text: "4" }), "Difficulty 4 of 5 peppers");
+    assert.equal(difficultyLabel({ stars: 4, text: "4.0" }), "Difficulty 4.0 of 5 peppers");
   });
 });
 

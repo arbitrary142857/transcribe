@@ -460,22 +460,24 @@ export function lengthIcon(): string {
 }
 
 /**
- * A chili pepper, in outline and in silhouette: the difficulty glyph.
+ * The Phosphor glyphs: the chili pepper, the heart, and the solvers' check.
  *
- * The second icon here that is not this site's own drawing. Both paths are
- * Phosphor Icons' `pepper` (phosphoricons.com), the `regular` and `fill`
- * weights of one silhouette, which is what lets the display lay the filled
- * pepper over the outlined one and clip it to a half. Phosphor Icons is MIT
- * licensed, Copyright (c) 2023 Phosphor Icons; this notice is the
- * attribution the licence asks to travel with the paths. Their viewBox, too
- * (256, not 24); the CSS sizes it in ems.
+ * The icons here that are not this site's own drawing. Every path below is
+ * Phosphor Icons' (phosphoricons.com) -- `pepper` and `heart` in their
+ * `regular` and `fill` weights, two weights of one silhouette each, which
+ * is what lets a display lay the filled shape under the outlined one; and
+ * `check-circle` regular for the solved-by figure, which stays legible at
+ * figure size and cannot be read as the card's plain ✓ badge. Phosphor
+ * Icons is MIT licensed, Copyright (c) 2023 Phosphor Icons; this notice is
+ * the attribution the licence asks to travel with the paths. Their
+ * viewBox, too (256, not 24); the CSS sizes them in ems.
  */
-const PEPPER_VIEW = `<svg xmlns="${NS}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false">`;
+const PHOSPHOR_VIEW = `<svg xmlns="${NS}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false">`;
 
 /** The outline weight: the border of every pepper, always visible. */
 export function pepperIcon(): string {
   return (
-    PEPPER_VIEW +
+    PHOSPHOR_VIEW +
     `<path d="M167.27,40.42A40.06,40.06,0,0,0,128,8a8,8,0,0,0,0,16,24,24,0,0,1,22.85,16.66A64.08,64.08,0,0,0,96,104c0,46.75-25.75,78-76.53,93a16,16,0,0,0,1.77,31.13A264.8,264.8,0,0,0,66.75,232c40.78,0,86.16-9.15,117.53-35.46C210.64,174.44,224,143.3,224,104h0A64.07,64.07,0,0,0,167.27,40.42ZM160,56a48.07,48.07,0,0,1,45.37,32.37L192,95,163.58,80.83a8,8,0,0,0-7.16,0L128,95l-13.37-6.68A48.08,48.08,0,0,1,160,56Zm14,128.3c-18,15.07-43.6,25.26-74.12,29.47A254.08,254.08,0,0,1,24,212.37h0v0c57.23-16.87,87.63-54,88-107.42l12.44,6.22a8,8,0,0,0,7.16,0L160,96.93l28.42,14.21a8,8,0,0,0,7.16,0l12.41-6.2C207.78,138.84,196.35,165.54,174,184.29Z"/>` +
     `</svg>`
   );
@@ -490,8 +492,35 @@ export function pepperIcon(): string {
  */
 export function pepperFillIcon(): string {
   return (
-    PEPPER_VIEW +
+    PHOSPHOR_VIEW +
     `<path d="M167.27,40.42A40.06,40.06,0,0,0,128,8a8,8,0,0,0,0,16,24,24,0,0,1,22.85,16.66A64.08,64.08,0,0,0,96,104c0,46.75-25.75,78-76.53,93a16,16,0,0,0,1.77,31.13A264.8,264.8,0,0,0,66.75,232c40.78,0,86.16-9.15,117.53-35.46C210.64,174.44,224,143.3,224,104h0A64.07,64.07,0,0,0,167.27,40.42ZM192,95,163.58,80.83a8,8,0,0,0-7.16,0L128,95l-13.37-6.68a48,48,0,0,1,90.74,0Z"/>` +
+    `</svg>`
+  );
+}
+
+/** The heart's outline: an upvote not yet given, and the figure's glyph. */
+export function heartIcon(): string {
+  return (
+    PHOSPHOR_VIEW +
+    `<path d="M178,40c-20.65,0-38.73,8.88-50,23.89C116.73,48.88,98.65,40,78,40a62.07,62.07,0,0,0-62,62c0,70,103.79,126.66,108.21,129a8,8,0,0,0,7.58,0C136.21,228.66,240,172,240,102A62.07,62.07,0,0,0,178,40ZM128,214.8C109.74,204.16,32,155.69,32,102A46.06,46.06,0,0,1,78,56c19.45,0,35.78,10.36,42.6,27a8,8,0,0,0,14.8,0c6.82-16.67,23.15-27,42.6-27a46.06,46.06,0,0,1,46,46C224,155.61,146.24,204.15,128,214.8Z"/>` +
+    `</svg>`
+  );
+}
+
+/** The heart, standing: the same silhouette, solid. */
+export function heartFillIcon(): string {
+  return (
+    PHOSPHOR_VIEW +
+    `<path d="M240,102c0,70-103.79,126.66-108.21,129a8,8,0,0,1-7.58,0C119.79,228.66,16,172,16,102A62.07,62.07,0,0,1,78,40c20.65,0,38.73,8.88,50,23.89C139.27,48.88,157.35,40,178,40A62.07,62.07,0,0,1,240,102Z"/>` +
+    `</svg>`
+  );
+}
+
+/** A check in a circle: how many players have solved the level. */
+export function solversIcon(): string {
+  return (
+    PHOSPHOR_VIEW +
+    `<path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>` +
     `</svg>`
   );
 }

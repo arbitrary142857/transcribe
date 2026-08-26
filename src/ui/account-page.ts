@@ -198,7 +198,7 @@ export function createAccountPage(options: AccountPageOptions): void {
 
   const counting = panel("Public figures");
   const countingNote = line(
-    "Every level's difficulty blends its author's rating with ratings from players who solved it. Turn this off to be left out: you will not be asked to rate, and any ratings you gave stop counting until you turn it back on.",
+    "Every level shows figures worked out from players like you: a difficulty blended from solvers' ratings, hearts, and how many solved it in what time. Turn this off to be left out: you will not be asked to rate or upvote, and your ratings, hearts and playthroughs stop counting until you turn it back on.",
   );
   counting.append(
     createSwitch({

@@ -26,10 +26,13 @@ import {
   lengthIcon,
   metronomeIcon,
   noteIcon,
+  solversIcon,
 } from "./icons.js";
 import {
+  countFigure,
   keyName,
   levelStats,
+  solversSaid,
   type LevelStat,
   type LevelStatKind,
 } from "./level-card.js";
@@ -79,10 +82,24 @@ export type LevelModalOptions = {
    */
   started?: boolean;
   /**
-   * The solver's chance to rate it, when the caller decided they have one.
-   * Built by `maybeRatingPrompt`; the box stays dumb about who may rate.
+   * The viewer's part in the figures: the rating prompt for a solver, the
+   * author's note for the author. Built by `solvedContribution`; the box
+   * stays dumb about who may say what.
    */
-  rating?: HTMLElement;
+  contribute?: HTMLElement;
+  /**
+   * The heart, counted and — for a solver who may — pressable. Built by
+   * `upvoteLine`, which decides which of the two it is.
+   */
+  upvote?: HTMLElement;
+  /** The solving moment itself: a cheer above the solved line. */
+  celebrate?: boolean;
+  /**
+   * Offer the ways onward — staying here, or the level list. Passed by the
+   * play page, where the box opens over a finished puzzle; the catalog's
+   * box offers Play instead.
+   */
+  wayOut?: boolean;
 };
 
 /** What the way in offers, given how far this level has got. */
@@ -98,7 +115,7 @@ export function openLevelModal(options: LevelModalOptions): void {
     className: "level-modal",
     // Nothing in here closes the box any more; the shell's × does, along with
     // Escape and the backdrop.
-    fill() {
+    fill(close) {
       const parts: Node[] = [];
 
       const heading = document.createElement("h2");
@@ -136,6 +153,53 @@ export function openLevelModal(options: LevelModalOptions): void {
       }
       parts.push(author);
 
+      // ---- how it has been received --------------------------------------
+      //
+      // The heart (counted, and pressable for a solver who may), the
+      // solvers, and the two medians. The medians arrive after the box has
+      // drawn, from /stats; until then — and whenever there are too few
+      // qualifying solves to publish one — they are a dash.
+      if (level.status === "published") {
+        const figures = document.createElement("p");
+        figures.className = "level-modal-figures";
+
+        const solvers = level.solveCount ?? 0;
+        figures.append(
+          ...(options.upvote ? [options.upvote, " · "] : []),
+          countFigure(solversIcon(), solvers, solversSaid(solvers)),
+        );
+
+        const median = medianFigure("Median completion time", "median");
+        const flawless = medianFigure("Median flawless completion time", "flawless");
+        figures.append(" · ", median.element, " · ", flawless.element);
+        parts.push(figures);
+
+        void (async () => {
+          try {
+            const response = await fetch(
+              `/api/levels/${encodeURIComponent(level.id)}/stats`,
+              { headers: { accept: "application/json" } },
+            );
+            if (!response.ok) return;
+            const said = (await response.json()) as {
+              medianSolveMs?: number;
+              medianFlawlessMs?: number;
+            };
+            median.show(said.medianSolveMs);
+            flawless.show(said.medianFlawlessMs);
+          } catch {
+            // The dashes stand; they were the truth a moment ago too.
+          }
+        })();
+      }
+
+      if (options.celebrate && options.solvedIn) {
+        const cheer = document.createElement("p");
+        cheer.className = "level-modal-cheer";
+        cheer.textContent = "Solved!";
+        parts.push(cheer);
+      }
+
       if (options.solvedIn) {
         const solved = document.createElement("p");
         solved.className = "level-modal-solved";
@@ -147,8 +211,8 @@ export function openLevelModal(options: LevelModalOptions): void {
         parts.push(solved);
       }
 
-      if (options.rating) {
-        parts.push(options.rating);
+      if (options.contribute) {
+        parts.push(options.contribute);
       }
 
       // ---- the two signatures, drawn rather than named -------------------
@@ -254,9 +318,59 @@ export function openLevelModal(options: LevelModalOptions): void {
         parts.push(buttons);
       }
 
+      // The ways onward from a finished puzzle: staying is closing the box,
+      // and the level list is an address. Only ever instead of Play — the
+      // page you would play on is the one underneath.
+      if (options.wayOut) {
+        const buttons = document.createElement("div");
+        buttons.className = "modal-buttons";
+
+        const stay = document.createElement("button");
+        stay.type = "button";
+        stay.className = "modal-cancel";
+        stay.textContent = "Keep playing";
+        stay.addEventListener("click", () => close());
+
+        const away = document.createElement("a");
+        away.className = "modal-confirm level-modal-play";
+        away.href = "/";
+        away.textContent = "Level select";
+
+        buttons.append(stay, away);
+        parts.push(buttons);
+      }
+
       return parts;
     },
   });
+}
+
+/**
+ * One labelled median, a dash until — and unless — the figure arrives.
+ *
+ * The dash is not a loading state alone: under the privacy floor the server
+ * answers nothing on purpose, and the dash is what nothing looks like.
+ */
+function medianFigure(
+  label: string,
+  word: string,
+): { element: HTMLElement; show(ms: number | undefined): void } {
+  const element = document.createElement("span");
+  element.className = "level-modal-median";
+  element.title = label;
+
+  const time = document.createElement("span");
+  time.className = "level-modal-median-time";
+
+  const draw = (ms: number | undefined): void => {
+    const said = ms === undefined ? "—" : formatElapsed(ms);
+    time.textContent = said;
+    element.setAttribute("aria-label", `${label}: ${said}`);
+  };
+
+  element.append(`${word} `, time);
+  draw(undefined);
+  return { element, show: draw };
 }
 
 /**

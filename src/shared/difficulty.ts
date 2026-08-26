@@ -85,5 +85,7 @@ export function displayedDifficulty(level: {
     (DIFFICULTY.authorVotes * halfOfStars(author) + (level.ratingHalves ?? 0)) /
     (DIFFICULTY.authorVotes + (level.ratingCount ?? 0));
   const stars = Math.round(halves) / 2;
-  return { stars, text: String(stars) };
+  // One decimal always -- "1.5", "4.0" -- so the printed figures line up
+  // from card to card.
+  return { stars, text: stars.toFixed(1) };
 }

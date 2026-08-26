@@ -21,6 +21,7 @@ import { beatsPerBarOf } from "../src/playback/tempo-map.js";
 import { MEASURES_MAX, timingProblem } from "../src/playback/timing-fields.js";
 import { mergeProgress, regradeProgress } from "../src/puzzle/merge.js";
 import { halfOfStars, isStars, starsOfHalf } from "../src/shared/difficulty.js";
+import { medianOf } from "../src/shared/stats.js";
 import { readProgress, type PlayProgress } from "../src/puzzle/progress.js";
 import type { UserSummary } from "../src/shared/session.js";
 import {
@@ -123,12 +124,16 @@ const LEVELS_PAGE = 100;
  * keeps meaning the level's. A rename in users renames every byline, which
  * is the point of the name living there.
  *
- * The rating subselects join users to ask share_stats *at read time*, and
- * that is the whole of how the setting is honoured: no figure derived from
- * ratings is ever stored, so an account that stops sharing is out of every
- * average on the next read, and one that resumes is back in. Deletion is
- * the cascade's; unpublish deletes the rows itself. Exported for
- * test/migrations.test.ts, which runs this against the real schema.
+ * The aggregate subselects -- the rating pair, the heart count and the
+ * solver count -- join users to ask share_stats *at read time*, and that is
+ * the whole of how the setting is honoured: no derived figure is ever
+ * stored, so an account that stops sharing is out of every figure on the
+ * next read, and one that resumes is back in. Deletion is the cascade's;
+ * unpublish deletes the rows itself. The solver count also leaves out the
+ * level's own author, whose solves say nothing about the level (ratings
+ * and upvotes never hold the author's rows -- their routes refuse them).
+ * Exported for test/migrations.test.ts, which runs this against the real
+ * schema.
  */
 export const LEVEL_COLUMNS = `
   id, title, subtitle, instructions, video_id, mark_start, mark_end,
@@ -140,7 +145,12 @@ export const LEVEL_COLUMNS = `
   (SELECT COUNT(r.user_id) FROM ratings r JOIN users u ON u.id = r.user_id
     WHERE r.level_id = transcriptions.id AND u.share_stats = 1) AS rating_count,
   (SELECT SUM(r.half) FROM ratings r JOIN users u ON u.id = r.user_id
-    WHERE r.level_id = transcriptions.id AND u.share_stats = 1) AS rating_halves
+    WHERE r.level_id = transcriptions.id AND u.share_stats = 1) AS rating_halves,
+  (SELECT COUNT(v.user_id) FROM upvotes v JOIN users u ON u.id = v.user_id
+    WHERE v.level_id = transcriptions.id AND u.share_stats = 1) AS upvote_count,
+  (SELECT COUNT(p.user_id) FROM progress p JOIN users u ON u.id = p.user_id
+    WHERE p.level_id = transcriptions.id AND p.solved_at IS NOT NULL
+      AND u.share_stats = 1 AND p.user_id != transcriptions.owner_id) AS solve_count
 `;
 
 /**
@@ -179,6 +189,9 @@ type LevelRow = {
   /** How many shared ratings the level has; SUM over none is NULL. */
   rating_count: number;
   rating_halves: number | null;
+  upvote_count: number;
+  /** Solves by sharing players; the author's own are never counted. */
+  solve_count: number;
   status: LevelStatus;
   published_at: number | null;
   updated_at: number;
@@ -217,10 +230,12 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
     row.difficulty_half === null || row.difficulty_half === undefined
       ? undefined
       : starsOfHalf(row.difficulty_half),
-  // Absent rather than zero when nobody has rated, in the subtitle's
-  // spirit; displayedDifficulty treats the two the same.
+  // Absent rather than zero when nobody has rated, hearted or solved, in
+  // the subtitle's spirit; the drawings print zero for absent.
   ratingCount: row.rating_count ? row.rating_count : undefined,
   ratingHalves: row.rating_count ? (row.rating_halves ?? undefined) : undefined,
+  upvoteCount: row.upvote_count ? row.upvote_count : undefined,
+  solveCount: row.solve_count ? row.solve_count : undefined,
   status: row.status,
   publishedAt: row.published_at ?? undefined,
   updatedAt: row.updated_at,
@@ -926,9 +941,10 @@ api.post("/api/levels/:id/publish", async (c) => {
  * anything: the draft is reached by the id this answers with, and whoever
  * bookmarked the old one finds a level that is not there, which is the truth.
  *
- * The progress and ratings tables reference this id, and deliberately do not
- * follow it (no ON UPDATE CASCADE), for the reason above. So every player's
- * progress on the level, and every solver's rating of it, is deleted first --
+ * The progress, ratings and upvotes tables reference this id, and
+ * deliberately do not follow it (no ON UPDATE CASCADE), for the reason
+ * above. So every player's progress on the level, every solver's rating of
+ * it and every heart on it is deleted first --
  * in the same batch as the move, so none of it happens without the rest --
  * and the database would refuse the move otherwise, which is the backstop for
  * this route forgetting. A browser's copy, for anybody signed out, is out of
@@ -953,6 +969,7 @@ api.post("/api/levels/:id/unpublish", async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(PROGRESS_SQL.forget).bind(id),
     c.env.DB.prepare(RATING_SQL.forget).bind(id),
+    c.env.DB.prepare(UPVOTE_SQL.forget).bind(id),
     c.env.DB.prepare(
       `UPDATE transcriptions
           SET id = ?, status = ?, published_at = NULL, updated_at = ?
@@ -1358,6 +1375,15 @@ export const PROGRESS_SQL = {
 
   // bind: level_id
   forget: `DELETE FROM progress WHERE level_id = ?`,
+
+  // The rows the public medians are worked out from: sharing players'
+  // solves of one level, never the author's own -- the author knows the
+  // answer, so their clock says nothing about the level.
+  // bind: level_id, owner_id
+  solveTimes: `SELECT p.elapsed_ms, p.check_count
+                 FROM progress p JOIN users u ON u.id = p.user_id
+                WHERE p.level_id = ? AND p.solved_at IS NOT NULL
+                  AND u.share_stats = 1 AND p.user_id != ?`,
 } as const;
 
 /** A row of the progress table, as `PROGRESS_SQL.read` reads one. */
@@ -1672,6 +1698,31 @@ export const RATING_SQL = {
   forget: `DELETE FROM ratings WHERE level_id = ?`,
 } as const;
 
+/**
+ * Every statement that reads or writes upvotes, exported for the same one
+ * reader as its siblings above. `give` conflicts into silence -- pressing
+ * the heart twice is one upvote, and the first press's moment is the one
+ * kept -- and taking it back is `clear`, so there is nothing to update and
+ * no updated_at to move. `forget` is the unpublish route's, in its batch,
+ * with the FK as the backstop. Every statement names the upvotes table,
+ * which is what the stub-database tests key their answers on.
+ */
+export const UPVOTE_SQL = {
+  // bind: user_id, level_id, created_at
+  give: `INSERT INTO upvotes (user_id, level_id, created_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT (user_id, level_id) DO NOTHING`,
+
+  // bind: user_id, level_id
+  read: `SELECT created_at FROM upvotes WHERE user_id = ? AND level_id = ?`,
+
+  // bind: user_id, level_id
+  clear: `DELETE FROM upvotes WHERE user_id = ? AND level_id = ?`,
+
+  // bind: level_id
+  forget: `DELETE FROM upvotes WHERE level_id = ?`,
+} as const;
+
 const SIGN_IN_TO_RATE = "Sign in to rate a level.";
 const NOT_A_RATING = "A rating is half a pepper to five peppers, in halves.";
 
@@ -1794,6 +1845,149 @@ api.get("/api/levels/:id/rating", async (c) => {
     return c.body(null, 204);
   }
   return c.json({ stars: starsOfHalf(row.half) });
+});
+
+const SIGN_IN_TO_UPVOTE = "Sign in to upvote a level.";
+
+/**
+ * A solver's heart on a level, or not: a toggle, not a counter.
+ *
+ * Who may press it is the rating route's rule exactly -- signed in, sharing
+ * their statistics, on a published level they solved and do not own -- and
+ * the refusals come in the same order, minus a body, because there is none:
+ * the request itself is the whole of what is being said. Pressing twice is
+ * one upvote (the insert conflicts into silence), and taking it back is the
+ * DELETE below.
+ */
+api.put("/api/levels/:id/upvote", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_UPVOTE }, 401);
+  }
+
+  const row = await readVisibleLevel(c, user, id);
+  if (row === undefined) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+  if (row.status !== "published") {
+    return c.json({ error: NOT_PUBLISHED }, 409);
+  }
+  if (row.owner_id === user.id) {
+    return c.json(
+      { error: "The author does not vote for their own level." },
+      403,
+    );
+  }
+  if (!user.shareStats) {
+    return c.json(
+      { error: "Hearts count only for players who share their play statistics." },
+      403,
+    );
+  }
+
+  const played = (await c.env.DB.prepare(PROGRESS_SQL.read)
+    .bind(user.id, id)
+    .first()) as ProgressRow | null;
+  if (played === null || played.solved_at === null) {
+    return c.json({ error: "Upvote a level once you have solved it." }, 403);
+  }
+
+  await c.env.DB.prepare(UPVOTE_SQL.give).bind(user.id, id, Date.now()).run();
+
+  return c.body(null, 204);
+});
+
+// Taking the heart back: the caller's own row and nothing else, idempotent,
+// for the same reasons as the rating's DELETE.
+api.delete("/api/levels/:id/upvote", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_UPVOTE }, 401);
+  }
+
+  await c.env.DB.prepare(UPVOTE_SQL.clear).bind(user.id, id).run();
+
+  return c.body(null, 204);
+});
+
+// Whether the caller's own heart stands, for the button opening filled or
+// not. A plain yes or no rather than 204: the button has exactly two states
+// and the answer should name one.
+api.get("/api/levels/:id/upvote", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_UPVOTE }, 401);
+  }
+
+  const row = await c.env.DB.prepare(UPVOTE_SQL.read).bind(user.id, id).first();
+
+  return c.json({ upvoted: row !== null });
+});
+
+/**
+ * The play figures the level's box shows: the two median solve times.
+ *
+ * Worked out fresh on every ask, like every other public figure -- from
+ * sharing players' solves only, never the author's own -- and answered as
+ * nothing at all while there are fewer than STATS_FLOOR qualifying solves,
+ * which the page draws as a dash. Flawless means solved in one check, the
+ * count the server froze at the solve.
+ *
+ * Visible exactly as the level is: a published level's figures are
+ * everybody's with no session lookup spent, a draft's are its author's
+ * (they are all zeros, but the id's existence is what a stranger must not
+ * learn -- the `/puzzle` rule).
+ */
+api.get("/api/levels/:id/stats", async (c) => {
+  const id = c.req.param("id");
+  if (!isTranscriptionId(id)) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+
+  const row = (await c.env.DB.prepare(
+    `SELECT owner_id, status FROM transcriptions WHERE id = ?`,
+  )
+    .bind(id)
+    .first()) as Owned | null;
+  if (row === null) {
+    return c.json({ error: NO_LEVEL }, 404);
+  }
+  if (row.status !== "published") {
+    const user = await sessionUserOf(c);
+    if (user === undefined || !ownerOrAdmin(user, row)) {
+      return c.json({ error: NO_LEVEL }, 404);
+    }
+  }
+
+  const { results } = await c.env.DB.prepare(PROGRESS_SQL.solveTimes)
+    .bind(id, row.owner_id)
+    .all();
+  const times = results as { elapsed_ms: number; check_count: number }[];
+
+  // Absent fields fall out of the JSON, and absence is the dash.
+  return c.json({
+    medianSolveMs: medianOf(times.map((each) => each.elapsed_ms)),
+    medianFlawlessMs: medianOf(
+      times
+        .filter((each) => each.check_count === 1)
+        .map((each) => each.elapsed_ms),
+    ),
+  });
 });
 
 // A path under /api naming nothing is answered as data, never as a page:

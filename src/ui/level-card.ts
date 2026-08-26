@@ -12,13 +12,47 @@ import { displayedDifficulty } from "../shared/difficulty.js";
 import { authorLabel, type UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { createDifficulty } from "./difficulty.js";
-import { pencilIcon, trashIcon } from "./icons.js";
+import { heartIcon, pencilIcon, solversIcon, trashIcon } from "./icons.js";
 import { keyLabelOfFifths } from "./key-label.js";
 import { THUMBNAIL_SIZE, sharpenThumbnail, thumbnailUrl } from "./youtube.js";
 
 /** The key written the way it is spoken: `D♭ major`, `A minor`. */
 export const keyName = (level: TranscriptionSummary): string =>
   keyLabelOfFifths(level.keyFifths, level.keyMode);
+
+/** How to say a count of hearts, for labels wherever hearts are counted. */
+export const heartsSaid = (count: number): string =>
+  count === 1 ? "1 heart" : `${count} hearts`;
+
+/** How to say a count of solvers, likewise. */
+export const solversSaid = (count: number): string =>
+  count === 1 ? "Solved by 1 player" : `Solved by ${count} players`;
+
+/**
+ * A small icon-and-number pair: the hearts on a level, the players who
+ * solved it. Exported because the level's box prints the same figures the
+ * card does, and the two must not drift.
+ */
+export function countFigure(icon: string, count: number, said: string): HTMLElement {
+  const figure = document.createElement("span");
+  figure.className = "level-figure";
+  figure.setAttribute("role", "img");
+  figure.setAttribute("aria-label", said);
+  figure.title = said;
+
+  const glyph = document.createElement("span");
+  glyph.className = "level-figure-icon";
+  glyph.setAttribute("aria-hidden", "true");
+  glyph.innerHTML = icon;
+
+  const number = document.createElement("span");
+  number.className = "level-figure-count";
+  number.setAttribute("aria-hidden", "true");
+  number.textContent = String(count);
+
+  figure.append(glyph, number);
+  return figure;
+}
 
 /** Which fact this is, so the box beside it can pick an icon. */
 export type LevelStatKind = "bars" | "notes" | "tempo" | "length";
@@ -298,15 +332,30 @@ export function createLevelCard(
     item.append(frame);
   }
 
-  // The row above the title: how hard the level is, and what this viewer may
-  // do to it. The difficulty comes through `displayedDifficulty`, which is
-  // the only thing that knows what the figure is made of. Nothing is drawn
-  // for a draft without one; the row's min-height keeps the card's shape.
+  // The row above the title: how hard the level is, how it has been
+  // received, and what this viewer may do to it. The difficulty comes
+  // through `displayedDifficulty`, which is the only thing that knows what
+  // the figure is made of. Nothing is drawn for a draft without one; the
+  // row's min-height keeps the card's shape.
   const row = document.createElement("div");
   row.className = "level-row";
   const displayed = displayedDifficulty(level);
   if (displayed !== undefined) {
     row.append(createDifficulty(displayed));
+  }
+
+  // The hearts and the solvers, zeros included: a fresh level honestly has
+  // none of either. Drafts carry no figures — nobody else can play one.
+  if (level.status === "published") {
+    const figures = document.createElement("span");
+    figures.className = "level-figures";
+    const upvotes = level.upvoteCount ?? 0;
+    const solvers = level.solveCount ?? 0;
+    figures.append(
+      countFigure(heartIcon(), upvotes, heartsSaid(upvotes)),
+      countFigure(solversIcon(), solvers, solversSaid(solvers)),
+    );
+    row.append(figures);
   }
 
   const head = document.createElement("div");

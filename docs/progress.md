@@ -210,12 +210,13 @@ question asked now rather than a way of liking the page.
   those goes too, by the first one (`authentication.md`, "The account's
   own").
 - **`share_stats`**, the account setting "count my play in public
-  statistics", is honoured by the difficulty ratings (`difficulty.md`): the
-  rating route refuses writes while it is off, and the listing's aggregates
-  leave out the ratings of anybody who turned it off, at read time. No
-  figure is yet computed from the *progress* table itself; whenever one is
-  (median solve times are wanted eventually), it must leave out these rows
-  the same way.
+  statistics", is honoured by every public figure (`difficulty.md`): the
+  rating and upvote routes refuse writes while it is off, and every
+  aggregate — the rating blend, the heart count, and the figures computed
+  from *this* table (the solver count in the listing, the median solve
+  times behind `GET /api/levels/:id/stats`) — leaves out the rows of
+  anybody who turned it off, at read time. The play figures also leave out
+  the level's own author, whose solves say nothing about the level.
 
 ## Operating it
 

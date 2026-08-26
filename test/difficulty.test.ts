@@ -39,12 +39,12 @@ describe("isStars()", () => {
 });
 
 describe("displayedDifficulty()", () => {
-  it("shows exactly the author's word while nobody has rated", () => {
+  it("shows exactly the author's word while nobody has rated, with one decimal always", () => {
     assert.deepEqual(displayedDifficulty({ authorDifficulty: 2.5 }), { stars: 2.5, text: "2.5" });
-    assert.deepEqual(displayedDifficulty({ authorDifficulty: 4 }), { stars: 4, text: "4" });
+    assert.deepEqual(displayedDifficulty({ authorDifficulty: 4 }), { stars: 4, text: "4.0" });
     assert.deepEqual(
       displayedDifficulty({ authorDifficulty: 4, ratingCount: 0, ratingHalves: 0 }),
-      { stars: 4, text: "4" },
+      { stars: 4, text: "4.0" },
     );
   });
 

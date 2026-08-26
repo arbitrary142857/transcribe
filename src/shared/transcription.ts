@@ -115,6 +115,13 @@ export type TranscriptionSummary = {
    */
   ratingCount?: number;
   ratingHalves?: number;
+  /**
+   * How many sharing accounts hold a heart on it, and how many sharing
+   * players (never the author) have solved it. Aggregated at read time
+   * like the rating pair, stored nowhere, absent when zero.
+   */
+  upvoteCount?: number;
+  solveCount?: number;
   status: LevelStatus;
   /** The moment it went public, or nothing while it is a draft. */
   publishedAt: number | undefined;

@@ -15,7 +15,7 @@ update the status table when a phase lands.
 | 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Shipped 2026-08-21 (`3b6d72e` server, then client) |
 | 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
 | 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of `/` | Shipped 2026-08-22; no admin page, by decision |
-| 6 | Difficulty from solvers' ratings blended with the author's word (`share_stats` honoured at read time), peppers and the stepper, the range filter, `/about` | Difficulty built 2026-08-25; thumbs-up and error reports remain |
+| 6 | Difficulty from solvers' ratings blended with the author's word (`share_stats` honoured at read time), peppers and the stepper, the range filter, `/about`; hearts, the grown-up solved box, solver counts and median times | Difficulty committed 2026-08-25 (`177c17b`); hearts and play figures built 2026-08-25; error reports remain |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
@@ -80,15 +80,12 @@ decides what is shown, and phase 6 changes only its body.
 **Still open** (decide when the phase needs it): whether a daily level
 mechanic is coming (streaks presuppose one); dark mode is a per-machine
 preference, not an account one. Wanted eventually, recorded 2026-08-25:
-the solved box grows an actions row — a way back to the level list, and
-the thumbs-up phase 6 still owes; the catalog loads its first N levels and
-fetches more on scroll with a loading mark, which moves or re-scopes the
-client-side filters (they are pure functions so they can); per-level play
-figures — the median time of a flawless solve (`check_count = 1`) and of a
-non-flawless one — from `progress` under the same `share_stats` rule, with
-a small-count floor so one player's time is never published as a median.
-(Ratings resetting on republish, once open here, was settled by mechanism:
-the new id starts from zero.)
+the catalog loads its first N levels and fetches more on scroll with a
+loading mark, which moves or re-scopes the client-side filters (they are
+pure functions so they can). (Also once listed here, since built: the
+solved box's actions row and thumbs-up, and the median play figures with
+their small-count floor — see "Phase 6, as built". Ratings resetting on
+republish was settled by mechanism: the new id starts from zero.)
 
 ## Phase 3, as built
 
@@ -178,7 +175,7 @@ a moderation view is ever wanted, the seams are `createLevelList`'s `page`
 switch, a new page input in `vite.config.ts`, a `planNav` handed the user
 rather than a boolean, and an admin-only route beside `/api/mine`.
 
-## Phase 6, as built (the difficulty part)
+## Phase 6, as built (all but error reports)
 
 `difficulty.md` is the reference. The "from play data" sketch above was
 revisited in planning, on purpose: no regression, no implicit play-stat
@@ -220,6 +217,24 @@ shows. The catalog gained a from–to range filter over the *blended*
 figure, client-side like the progress filter, ANDed with it. `/about`
 explains the model in prose Jason can write over; `/privacy`'s "Public
 figures" section was rewritten to describe what actually shipped.
+
+The second slice (2026-08-25, same conversation) grew the rest, error
+reports aside. Hearts: an `upvotes` table (0007, ratings' shape minus the
+word), the same refusal ladder minus a body, a toggle whose filling heart
+is its own feedback, and Phosphor's `heart`/`heart-fill` and
+`check-circle` joining the borrowed glyphs. The solved box became a real
+one: a cheer on the solving open, the difficulty proposal now behind
+explicit Save/Remove buttons (the stepper alone sends nothing), the heart
+beside the figures, Keep playing / Level select as the ways onward — and
+for the author, no player pathway at all but a note and the Edit details
+door, since their word is the anchor and is set there. Cards' difficulty
+row gained the figure back beside the peppers ("1.5", "4.0"; the stepper
+stays number-free so its buttons hold still), the heart count and the
+solver count, zeros included. The box adds the two medians from
+`GET /api/levels/:id/stats` — sharing players' solves only, never the
+author's own, each figure absent (a dash) under `STATS_FLOOR = 3` — with
+`medianOf` in `src/shared/stats.ts` and the rows from
+`PROGRESS_SQL.solveTimes`. `difficulty.md` covers all the figures now.
 
 ## How the work is done
 

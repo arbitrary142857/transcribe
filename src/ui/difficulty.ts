@@ -5,8 +5,9 @@
  * function is the only thing this asks. It does not know whether the figure
  * is the author's word alone or a blend with solvers' ratings, and it draws
  * a figure that is not in halves (a 3.29) by rounding to the nearest half.
- * The peppers are the whole drawing: no number beside them, by decision —
- * the figure in words lives only in the accessible label and the title.
+ * The rounded figure is printed beside the peppers, one decimal always
+ * ("1.5", "4.0"); the *stepper* stays number-free, so its buttons never
+ * move as the figure changes.
  *
  * Every pepper keeps its red border; what varies is the fill. A half is the
  * outlined pepper with a filled one laid under it and clipped to its left
@@ -63,7 +64,7 @@ export function pepperGlyphs(stars: number): HTMLElement[] {
   return peppersToDraw(stars).map(pepperGlyph);
 }
 
-/** The rating as a card or a box shows it: the peppers alone. */
+/** The rating as a card or a box shows it: the peppers and their figure. */
 export function createDifficulty(displayed: DisplayedDifficulty): HTMLElement {
   const element = document.createElement("span");
   element.className = "difficulty";
@@ -71,6 +72,11 @@ export function createDifficulty(displayed: DisplayedDifficulty): HTMLElement {
   const label = difficultyLabel(displayed);
   element.setAttribute("aria-label", label);
   element.title = label;
-  element.append(...pepperGlyphs(displayed.stars));
+
+  const text = document.createElement("span");
+  text.className = "difficulty-text";
+  text.setAttribute("aria-hidden", "true");
+  text.textContent = displayed.text;
+  element.append(...pepperGlyphs(displayed.stars), text);
   return element;
 }

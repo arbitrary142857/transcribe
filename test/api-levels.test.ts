@@ -45,10 +45,12 @@ const ROW = {
   // A published row always has the author's word now: publishing requires
   // it, and 0006 gave the middle of the scale to any published before.
   difficulty_half: 5,
-  // What the two rating subselects answer for a level nobody has rated:
-  // SUM over no rows is NULL.
+  // What the aggregate subselects answer for a level nobody has rated,
+  // hearted or solved: SUM over no rows is NULL, the COUNTs zero.
   rating_count: 0,
   rating_halves: null,
+  upvote_count: 0,
+  solve_count: 0,
   owner_id: "7k2m9x4p3qwt",
   status: "published",
   published_at: 1_754_500_000_000,
@@ -274,6 +276,31 @@ describe("GET /api/levels", () => {
     const [level] = (await response.json()) as Record<string, unknown>[];
     assert.equal("ratingCount" in level!, false);
     assert.equal("ratingHalves" in level!, false);
+  });
+
+  it("counts hearts and solvers beside every level, from accounts that share their play", async () => {
+    const { response, asked } = await get("/api/levels", [
+      list([{ ...ROW, upvote_count: 4, solve_count: 9 }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal(level!.upvoteCount, 4);
+    assert.equal(level!.solveCount, 9);
+    assert.match(asked[0]!.sql, /FROM upvotes/i);
+    assert.match(asked[0]!.sql, /FROM progress/i);
+    // The author's own solves say nothing about the level, so the count
+    // leaves them out; hearts and ratings never held the author's anyway.
+    assert.match(asked[0]!.sql, /!= transcriptions\.owner_id/i);
+  });
+
+  it("leaves the hearts and solvers out of an unplayed level, rather than sending zeroes", async () => {
+    const { response } = await get("/api/levels", [
+      list([{ ...ROW, upvote_count: 0, solve_count: 0 }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal("upvoteCount" in level!, false);
+    assert.equal("solveCount" in level!, false);
   });
 
   it("asks for no more than a page of them, newest first", async () => {
@@ -1218,25 +1245,27 @@ describe("POST /api/levels/:id/unpublish", () => {
 
     assert.equal(response.status, 200);
     assert.equal(batches.length, 1);
-    const [forget, , update] = batches[0]!;
+    const [forget, , , update] = batches[0]!;
     assert.match(forget!.sql, /DELETE FROM progress/i);
     assert.match(update!.sql, /UPDATE transcriptions/i);
-    // Nothing outside the batch touches any of the three tables.
-    assert.equal(asked.filter((each) => /progress|ratings|UPDATE/i.test(each.sql)).length, 3);
+    // Nothing outside the batch touches any of the four tables.
+    assert.equal(
+      asked.filter((each) => /progress|ratings|upvotes|UPDATE/i.test(each.sql)).length,
+      4,
+    );
   });
 
-  it("forgets every rating with the progress, in the same batch", async () => {
+  it("forgets every rating and every upvote with the progress, in the same batch", async () => {
     const { batches } = await unpublishBatched([asOwner(), one(ROW)], SIGNED_IN);
 
-    const forgot = batches[0]!.at(1)!;
-    assert.match(forgot.sql, /DELETE FROM ratings/i);
-    assert.deepEqual(forgot.values, ["k3m9x2p7qw4t"]);
+    assert.match(batches[0]!.at(1)!.sql, /DELETE FROM ratings/i);
+    assert.match(batches[0]!.at(2)!.sql, /DELETE FROM upvotes/i);
   });
 
   it("binds the old id to the deletes and splices nothing", async () => {
     const { batches } = await unpublishBatched([asOwner(), one(ROW)], SIGNED_IN);
 
-    for (const forget of batches[0]!.slice(0, 2)) {
+    for (const forget of batches[0]!.slice(0, 3)) {
       assert.equal(forget.sql.includes("k3m9x2p7qw4t"), false);
       assert.deepEqual(forget.values, ["k3m9x2p7qw4t"]);
     }
