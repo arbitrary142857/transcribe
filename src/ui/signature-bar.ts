@@ -5,6 +5,7 @@ import { createDetailsPanel } from "./details-panel.js";
 import { createDisclosure } from "./disclosure.js";
 import { keyLabel } from "./key-label.js";
 import { renderKeyPanel } from "./key-panel.js";
+import { createNavReveal } from "./site-nav.js";
 
 export type SignatureBarState = {
   key: KeySignature;
@@ -81,23 +82,32 @@ export function createSignatureBar(
   keyPanel.className = "key-panel";
   keyPanel.hidden = true;
 
+  // Drawn on opening rather than up front — fifteen staves is real work, and
+  // most sessions never change key at all — and drawn again on every pick:
+  // the panel stays open, so the ring has to move to the key just chosen.
+  // Staying open is the point of it: keys are tried against the music, and a
+  // panel that dismissed itself made every comparison two clicks longer.
+  function drawKeyPanel(): void {
+    if (!shown) return;
+    renderKeyPanel(keyPanel, {
+      clef: shown.clef,
+      current: shown.key,
+      onPick: (key) => {
+        // Takes effect synchronously — the page rebuilds and hands back the
+        // new state through update() — so the redraw below sees the new key.
+        handlers.onKey(key);
+        drawKeyPanel();
+      },
+    });
+  }
+
   const keyDisclosure = createDisclosure({
     root: keyGroup,
     onChange(open) {
       keyPanel.hidden = !open;
       keyToggle.setAttribute("aria-expanded", String(open));
       keyToggle.classList.toggle("is-on", open);
-      if (!open || !shown) return;
-      // Drawn on opening rather than up front: fifteen staves is real work, and
-      // most sessions never change key at all.
-      renderKeyPanel(keyPanel, {
-        clef: shown.clef,
-        current: shown.key,
-        onPick: (key) => {
-          keyDisclosure.close();
-          handlers.onKey(key);
-        },
-      });
+      if (open) drawKeyPanel();
     },
   });
 
@@ -159,7 +169,7 @@ export function createSignatureBar(
   submitGroup.className = "submit-group";
   submitGroup.append(submit, submitNote);
 
-  element.append(keyGroup, details.element, mode, history, submitGroup);
+  element.append(keyGroup, details.element, mode, history, submitGroup, createNavReveal());
 
   return {
     update(state) {

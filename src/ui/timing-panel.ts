@@ -1,5 +1,3 @@
-import type { Hearing } from "../playback/playalong.js";
-import { createHearingSwitch } from "./hearing-switch.js";
 import type { TimingField, TimingState } from "../playback/timing-fields.js";
 import {
   lockClosedIcon,
@@ -10,6 +8,7 @@ import {
 } from "./icons.js";
 import { createSpeedRow } from "./speed-row.js";
 import { createTimeField, type TimeField } from "./time-field.js";
+import { createVolumeRow } from "./volume-row.js";
 
 /**
  * The timing box on the setup page: two marks, a bar count, and the tempo
@@ -27,9 +26,9 @@ export type TimingPanelState = {
   timing: TimingState;
   /** The derived tempo, already formatted, or undefined for "—". */
   bpmText: string | undefined;
+  /** How loud the video speaks; only where there is a volume row to say it. */
+  volume?: number;
   metronomeOn: boolean;
-  /** What the section is heard as; absent where there is nothing to play. */
-  hearing?: Hearing;
   /** Whether the metronome and the lock have a tempo to work with. */
   timed: boolean;
 };
@@ -42,9 +41,15 @@ export type TimingPanelHandlers = {
   onTypeMeasures(count: number | undefined): void;
   onTypeBpm(bpm: number): void;
   onToggleLock(): void;
+  /**
+   * How loud the video should speak.
+   *
+   * Only in the editor, where the panel is the way to the player. The setup
+   * page shows the embed with its own controls and its own volume button, so
+   * a second one there would be two controls for one thing.
+   */
+  onVolume?(volume: number): void;
   onMetronome(on: boolean): void;
-  /** Absent on the setup page, which has no melody to sound. */
-  onHearing?(hearing: Hearing): void;
   /** A letter key pressed inside one of the time boxes. */
   onLetter(letter: string, shift: boolean): boolean;
 };
@@ -65,11 +70,22 @@ export type TimingPanelOptions = {
    * underneath goes on reporting the count anyway.
    */
   measures?: "editable" | "fixed";
+  /**
+   * Which page's shape to take.
+   *
+   * The setup page is a box of its own with the speed on top and the shortcut
+   * keys printed on the mark buttons, as it always was. In the editor the
+   * panel stands inside the shell `playback.ts` builds — sharing one enclosure
+   * and one mode switch with the playback panel — so it draws no box, names
+   * its rows the way that panel does, puts the speed last, and wears its keys
+   * as stickers the reveal button shows.
+   */
+  layout?: "setup" | "editor";
 };
 
-function labelled(text: string): HTMLElement {
+function labelled(text: string, className = "playback-label"): HTMLElement {
   const label = document.createElement("span");
-  label.className = "playback-label";
+  label.className = className;
   label.textContent = text;
   return label;
 }
@@ -79,6 +95,7 @@ function markButton(
   icon: string,
   title: string,
   shortcut: string,
+  keyClass: string,
   run: () => void,
 ): HTMLButtonElement {
   const button = document.createElement("button");
@@ -86,7 +103,7 @@ function markButton(
   button.className = "playback-mark-button";
   button.title = title;
   button.setAttribute("aria-label", title);
-  button.innerHTML = `<kbd class="cell-key">${shortcut.toUpperCase()}</kbd>${icon}`;
+  button.innerHTML = `<kbd class="${keyClass}">${shortcut.toUpperCase()}</kbd>${icon}`;
   button.addEventListener("click", run);
   return button;
 }
@@ -98,13 +115,19 @@ export function createTimingPanel(
 ): TimingPanel {
   element.replaceChildren();
   const editableMeasures = (options.measures ?? "editable") === "editable";
+  const inEditor = (options.layout ?? "setup") === "editor";
 
   const panel = document.createElement("section");
-  panel.className = "panel playback-panel timing-panel";
+  panel.className = inEditor
+    ? "playback-panel timing-panel"
+    : "panel playback-panel timing-panel";
 
   // ---- speed -----------------------------------------------------------
 
   const speed = createSpeedRow(handlers.onRate);
+  const volume = handlers.onVolume
+    ? createVolumeRow(handlers.onVolume)
+    : undefined;
 
   // ---- the two marks ---------------------------------------------------
 
@@ -121,25 +144,43 @@ export function createTimingPanel(
     onLetter: handlers.onLetter,
   });
 
+  const keyClass = inEditor ? "key-sticker" : "cell-key";
   const startButton = markButton(
     markStartIcon(),
-    "Mark start",
+    "Mark start at the playhead",
     "i",
+    keyClass,
     () => handlers.onMark("start"),
   );
   const endButton = markButton(
     markEndIcon(),
-    "Mark end",
+    "Mark end at the playhead",
     "o",
+    keyClass,
     () => handlers.onMark("end"),
   );
 
   const startRow = document.createElement("div");
   startRow.className = "playback-mark";
-  startRow.append(startButton, startField.element);
   const endRow = document.createElement("div");
   endRow.className = "playback-mark";
-  endRow.append(endButton, endField.element);
+  if (inEditor) {
+    // The word, the box, the button that writes into it — the playback
+    // panel's own row, so the switch above swaps icons rather than layouts.
+    startRow.append(
+      labelled("Start", "playback-label playback-mark-name"),
+      startField.element,
+      startButton,
+    );
+    endRow.append(
+      labelled("End", "playback-label playback-mark-name"),
+      endField.element,
+      endButton,
+    );
+  } else {
+    startRow.append(startButton, startField.element);
+    endRow.append(endButton, endField.element);
+  }
 
   // ---- bars ------------------------------------------------------------
 
@@ -199,22 +240,31 @@ export function createTimingPanel(
 
   tempoRow.append(metronome, labelled("BPM"), bpm, lock);
 
-  // Only where there is a melody to play: the setup page has settled nothing
-  // yet, so there is nothing for the notes to be.
-  const hearing = handlers.onHearing
-    ? createHearingSwitch(handlers.onHearing)
-    : undefined;
-
-  // Row for row the playback panel's order, which is what keeps the two exactly
-  // as tall as each other when the switch above them is pressed.
-  panel.append(
-    speed.element,
-    ...(hearing ? [hearing.element] : []),
-    startRow,
-    endRow,
-    ...(editableMeasures ? [measuresRow] : []),
-    tempoRow,
-  );
+  if (inEditor) {
+    // The marks and the tempo they describe, then the speed on its own below —
+    // the playback panel's two bands, so the mode switch swaps contents rather
+    // than shapes.
+    const marks = document.createElement("div");
+    marks.className = "playback-section";
+    marks.append(
+      startRow,
+      endRow,
+      ...(editableMeasures ? [measuresRow] : []),
+      tempoRow,
+    );
+    const settings = document.createElement("div");
+    settings.className = "playback-section";
+    settings.append(speed.element, ...(volume ? [volume.element] : []));
+    panel.append(marks, settings);
+  } else {
+    panel.append(
+      speed.element,
+      startRow,
+      endRow,
+      ...(editableMeasures ? [measuresRow] : []),
+      tempoRow,
+    );
+  }
   element.append(panel);
 
   /** Write into a box, unless it is the one being typed in. */
@@ -233,6 +283,7 @@ export function createTimingPanel(
   return {
     update(state) {
       speed.update(state.rates, state.rate, state.ready);
+      volume?.update(state.volume ?? 100, state.ready);
 
       startButton.disabled = !state.ready;
       endButton.disabled = !state.ready;
@@ -267,7 +318,6 @@ export function createTimingPanel(
       metronome.disabled = !state.timed;
       metronome.setAttribute("aria-pressed", String(state.metronomeOn));
       metronome.classList.toggle("is-on", state.metronomeOn);
-      hearing?.update(state.hearing ?? "video", state.timed);
     },
 
     flash(fields) {

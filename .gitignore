@@ -5,3 +5,6 @@ dist-worker/
 node_modules/
 .wrangler/
 .dev.vars
+.playwright-cli/
+.playwright/
+.claude/

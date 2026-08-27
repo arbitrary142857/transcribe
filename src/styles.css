@@ -29,12 +29,27 @@
 
 :root {
   color-scheme: light;
+  /* The side panel's column width, shared by the frame beside it. */
+  --side-w: clamp(20rem, 24vw, 23rem);
   /* Named once, so changing the page's typeface is changing this line.
      Everything else says `font: inherit` — the one other place a face is
      spelled out is the tuplet number in `icons.ts`, which is drawn into an svg
      and cannot inherit, and which quotes this stack verbatim. */
   --font-ui: "Jost", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --page-bg: #f7f5f1;
+  /* Three surfaces, and the line between them.
+
+     The tool bands are toned, the score is all but white, and the frame rule
+     that parts one region from another is a good deal darker than the --rule
+     the boxes inside them are drawn with: a region boundary is a bigger fact
+     than a button's edge and should not be the same line. */
+  --band: #f0ebe0;
+  /* The fill every tool box shares: the palettes, the playback panel and the
+     box it sits in, the reveal button, the piano's bed. One tone, so the
+     tools read as one family laid on the bands. */
+  --tool-box: #fcfaf5;
+  --sheet: #fffffc;
+  --frame-rule: #98907f;
+  --page-bg: #ece7dc;
   --ink: #1c1a17;
   --rule: #cfc8bd;
   /* The app's accent: buttons, focus rings, the halo around a selected note. */
@@ -111,29 +126,100 @@ main {
   padding: 0 1.5rem 1.5rem;
 }
 
-/* The editor's own column. Everything inside lines up with it, and with the
-   keyboard below, rather than each part shrinking to its own contents. */
+/* ---- The working frame ----
+
+   Once a melody is open the page becomes a fixed frame — toolbar, then the
+   side panel beside the score over the keyboard — and stops scrolling; the
+   score's own box is the only thing that does. The nav rolls up out of the
+   frame and comes back at the press of its button in the bar. */
+
+body.is-framed {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.is-framed .site-nav {
+  display: none;
+}
+
+body.is-framed.nav-open .site-nav {
+  display: flex;
+}
+
+/* The two working pages hold a side panel against the window's left edge, so
+   their main runs the full width and the parts space themselves instead. */
+main.editor-main {
+  padding: 0;
+  align-items: stretch;
+  min-height: 0;
+  /* `flex: 1 0 auto` everywhere else, but a frame must be able to shrink to
+     the window rather than insist on its content's height. */
+  flex: 1 1 auto;
+}
+
+#main-body {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The video and its controls: a quiet band down the window's left side, its
+   contents centred in whatever height the frame gives it. `overflow-y` is
+   the last resort for a window genuinely shorter than the video's legal
+   floor plus the controls. */
+#side-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: var(--side-w);
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.2rem 1.6rem;
+  background: var(--band);
+  border-right: 1px solid var(--frame-rule);
+}
+
+/* The score over the keyboard, filling what the side panel leaves. */
+#work-column {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The one scrollable thing on the page — and the paper itself: the whole
+   region is the sheet the music is printed on, near white against the toned
+   bands around it. */
+#score-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--sheet);
+}
+
 #workspace {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  width: 100%;
-  max-width: 1200px;
+  min-width: 0;
+  padding: 1.75rem 2rem 2rem;
 }
 
-/* The rhythm controls, pinned to the top of the window.
-   The band runs the full width and only its contents are held to the page's
-   measure, so it never stops in a hard edge partway across. The lighter fill
-   and the shadow are what make the music read as passing underneath. */
+/* The rhythm controls, the frame's top band. Sticky for the narrow layouts
+   where the page still scrolls; in the frame it is simply the first row.
+   A hairline is the whole of the separation — the bands share one quiet tone
+   and the score's sheet below is the bright thing. */
 #toolbar {
   position: sticky;
   top: 0;
   z-index: 3;
   width: 100%;
-  padding: 0.9rem 1.5rem 0.6rem;
-  background: #faf8f4;
-  border-bottom: 1px solid var(--rule);
-  box-shadow: 0 4px 14px rgb(28 26 23 / 9%);
+  padding: 0.9rem 1.5rem 0.7rem;
+  background: var(--band);
+  border-bottom: 1px solid var(--frame-rule);
 }
 
 #toolbar-inner {
@@ -143,7 +229,6 @@ main {
 }
 
 #score {
-  padding-top: 1rem;
   /* Width comes from the layout, never from the score drawn inside it — the
      renderer justifies bars to this width, so the two must not chase each
      other. Too narrow to hold the widest line, the score scales down to fit
@@ -160,7 +245,6 @@ main {
   border: 1px solid var(--rule);
   border-radius: 8px;
   padding: 0.85rem 1rem 1rem;
-  box-shadow: 0 1px 2px rgb(28 26 23 / 6%);
 }
 
 /* ---- Setup: clef, meter, video and timing, asked once ---- */
@@ -425,6 +509,15 @@ main {
   font-size: 0.95rem;
 }
 
+/* Held to one width — wide enough for the widest name the circle offers — so
+   choosing a new key never resizes the box or shuffles the bar around it.
+   The details toggle shares the class and keeps its own wider clamp. */
+.key-toggle-value:not(.details-title) {
+  display: inline-block;
+  width: 4.8rem;
+  white-space: nowrap;
+}
+
 /* The chooser floats over the page rather than pushing the music down: the
    score must not move while a panel is open above it. */
 .key-panel {
@@ -549,6 +642,37 @@ main {
   margin-left: auto;
 }
 
+/* The way to the rest of the site, on the framed pages where the nav is
+   rolled up: three lines, and pressing them rolls it down. */
+.nav-reveal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0.4rem;
+  font: inherit;
+  color: #6c6459;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.nav-reveal svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.nav-reveal:hover,
+.nav-reveal[aria-expanded="true"] {
+  color: var(--ink);
+  background: #ece5d8;
+}
+
 .chip {
   padding: 0.34rem 0.75rem;
   font: inherit;
@@ -567,24 +691,16 @@ main {
 }
 
 .chip:disabled {
-  opacity: 0.4;
+  color: #c1bab0;
+  border-color: #e2dccd;
   cursor: not-allowed;
 }
 
 /* ---- Controls ---- */
 
-/* The controls and the video share the band above the music. The controls keep
-   the left, lined up with the stave below them; the video follows on, close
-   enough to be read alongside them. Aligned to the top rather than stretched,
-   so the taller of the two does not pull the shorter out of shape.
-
-   The video follows the controls rather than being pushed to the far edge
-   because in pitch-only mode there are no controls, and a video pinned right
-   would leave the whole band empty in front of it. */
-/* Centred, so the tools sit under the middle of the bar rather than starting
-   at its left edge. It matters most on the play page, where the rhythm
-   controls are absent entirely and the video was left hugging one side of a
-   full-width band. */
+/* The band above the music holds only the writing controls now; the video and
+   its panel moved to the side panel. Centred, so the tools sit under the
+   middle of the bar rather than starting at its left edge. */
 #toolbar-body {
   display: flex;
   align-items: flex-start;
@@ -595,60 +711,77 @@ main {
 #controls {
   display: flex;
   flex-wrap: wrap;
-  align-items: stretch;
+  align-items: center;
   gap: 1rem;
   flex: 0 1 auto;
   min-width: 0;
 }
 
 /* A group with nothing in it — pitch-only mode empties all three — should not
-   go on holding its gap open beside the video. */
+   go on holding its gap open beside its neighbours. */
 #controls > div:empty {
   display: none;
 }
 
 /* ---- The video, and the controls that drive it ---- */
 
-/* Set apart from the melody controls by clear space rather than a rule: the
-   two are different jobs — one writes the music down, the other works the
-   video — and the gap says so without drawing a wall. */
-/* The panel is centred against the video rather than lined up with its top:
-   the two are one unit, and the panel is the shorter of them. */
+/* The panel above the player, one column filling the side panel's width and
+   centred in its height: the auto margins are what take up the slack, and
+   they give way safely when a short window leaves none. */
 #playback {
-  flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-left: 1.5rem;
+  flex-direction: column;
+  gap: 1rem;
+  margin: auto 0;
 }
 
-/* Alone in the band — which is the play page, where there are no rhythm
-   controls beside it — there is nothing to be set apart from. */
-/* Pitch-only mode writes no rhythm, so the controls are taken out of the band
-   entirely and the video is all that is left of it. Nothing then sets it apart
-   from anything, so the clear space that did stops too — left in, it pushed the
-   one remaining thing off centre by its own width. */
-#toolbar-body > #controls[hidden] + #playback {
-  margin-left: 0;
-}
-
-/* The player sits at YouTube's own floor of 200px each way rather than as large
-   as it will go: the band is shared with the controls and the staff below needs
-   what is left. */
 #video {
-  flex: 0 0 auto;
-  width: clamp(356px, 28vw, 400px);
-  max-width: 100%;
+  position: relative;
+  width: 100%;
+}
+
+/* The answer to a click on the fenced player, fading in below it — placed
+   into the column's slack absolutely, so nothing else moves for it. */
+.video-note {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  font-size: 0.84rem;
+  color: var(--note-selected);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.video-note.is-shown {
+  animation: video-note 2.4s ease-in;
+}
+
+@keyframes video-note {
+  0%,
+  62% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
 #playback-controls {
-  flex: 0 0 auto;
-  width: 19rem;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
 }
 
 .video-frame {
   position: relative;
   width: 100%;
+  /* The whole of the box the flexed column hands it; where that height is
+     auto — the setup page, the roomy sidebar — the ratio takes over. */
+  height: 100%;
   aspect-ratio: 16 / 9;
   /* YouTube asks that the player be at least 200px each way. Narrower than
      356px and the ratio alone would take it under that, so the frame stops
@@ -669,27 +802,79 @@ main {
   border: 0;
 }
 
+/* Out of the pointer's reach while the panel drives the player — see
+   `applyReach` in playback.ts. Only the pointer: nothing is drawn over the
+   player, and the rig never trusts this fence anyway. */
+.video-frame iframe.is-inert {
+  pointer-events: none;
+}
+
 /* ---- Playback controls ---- */
+
+/* The shell: folder tabs where there are two modes, seated on the boxed body
+   whichever mode fills. The active tab shares the body's fill and erases the
+   border between them, which is what fuses the two into one surface. */
+.playback-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 5px;
+  position: relative;
+  z-index: 1;
+  margin-bottom: -1px;
+}
+
+.panel-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.5rem 0.5rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: #6c6459;
+  text-align: center;
+  background: #e9e2d3;
+  border: 1px solid var(--rule);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.panel-tab:hover {
+  color: var(--ink);
+}
+
+.panel-tab.is-on {
+  background: var(--tool-box);
+  color: var(--ink);
+  border-bottom-color: var(--tool-box);
+}
+
+.playback-shell-body {
+  background: var(--tool-box);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 1rem 1.05rem;
+}
 
 .playback-panel {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.55rem 0.6rem 0.5rem;
+  gap: 1.1rem;
 }
 
-/* The panel's own gap, not one of its own.
-
-   The timing panel puts its rows straight into `.playback-panel` and so spaces
-   them by that; this one wraps three of them, and a different gap in the
-   wrapper made the two panels different heights. They hold the same five rows
-   in the same order at the same sizes, so matching the gaps is what makes them
-   exactly as tall as each other — and the band stops moving when the switch is
-   pressed. The wrapper stays because the narrow-screen fold collapses it. */
-.playback-extra {
+/* The panel's bands — the run, then the settings — parted by a rule. */
+.playback-section {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.85rem;
+}
+
+.playback-section + .playback-section {
+  border-top: 1px solid var(--rule);
+  padding-top: 1.05rem;
 }
 
 .playback-label {
@@ -703,6 +888,12 @@ main {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+/* The two slider rows share a label width, so their tracks start together. */
+.playback-speed > .playback-label,
+.playback-volume > .playback-label {
+  flex: 0 0 3.4rem;
 }
 
 /* The track wears its stops: one dot per speed the video offers, evenly
@@ -747,6 +938,14 @@ main {
   height: 4px;
   border-radius: 50%;
   background: #b3aa9d;
+}
+
+/* Full speed, the stop that means "as written": bigger, and in the accent, so
+   the home position reads off the track at a glance. */
+.playback-speed-dot.is-unit {
+  width: 7px;
+  height: 7px;
+  background: var(--note-selected);
 }
 
 .playback-speed-slider {
@@ -803,11 +1002,84 @@ main {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- The video's loudness ---- */
+
+/* Drawn in the speed row's family — the same pill, the same thumb — but with
+   no dots under it: volume sweeps a dial where speed walks a row of stops. */
+.playback-volume {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.playback-volume-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  height: 1.1rem;
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.playback-volume-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #ebe5da;
+  border: 1px solid var(--rule);
+}
+
+.playback-volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--note-selected);
+  border: 1px solid #7d2d1d;
+}
+
+.playback-volume-slider:disabled {
+  cursor: not-allowed;
+}
+
+.playback-volume-slider:disabled::-webkit-slider-thumb {
+  background: #b3aa9d;
+  border-color: #8d8378;
+}
+
+.playback-volume-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #ebe5da;
+  border: 1px solid var(--rule);
+}
+
+.playback-volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--note-selected);
+  border: 1px solid #7d2d1d;
+}
+
+.playback-volume-slider:disabled::-moz-range-thumb {
+  background: #b3aa9d;
+  border-color: #8d8378;
+}
+
 .playback-marks {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.85rem;
+}
+
+/* The word each mark row starts with, held to one width so the boxes line up. */
+.playback-mark-name {
+  flex: 0 0 2.4rem;
 }
 
 /* Putting one mark back is a small correction, so its button is the narrow
@@ -830,16 +1102,16 @@ main {
 .playback-mark {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .playback-mark-button {
   /* Positioned, so the printed shortcut key has a corner to sit in. */
   position: relative;
   flex: 0 0 auto;
-  width: 2.4rem;
-  height: 2rem;
-  padding: 0.2rem;
+  width: 2.5rem;
+  height: 2.1rem;
+  padding: 0.22rem;
   color: var(--ink);
   background: #fffdf9;
   border: 1px solid var(--rule);
@@ -866,7 +1138,10 @@ main {
    a note selected first. */
 .playback-mark-button:disabled,
 .playback-mark-button[aria-disabled="true"] {
-  opacity: 0.3;
+  /* Dimmed by ink and edge rather than by opacity: opacity fades the whole
+     subtree, and the key sticker riding the button must stay full-strength. */
+  color: #c8c0b1;
+  border-color: #e2dccd;
   cursor: not-allowed;
 }
 
@@ -875,7 +1150,8 @@ main {
 .time-field {
   position: relative;
   flex: 1 1 auto;
-  min-width: 0;
+  /* Never squeezed under a full timecode: "0:00.000" plus the steppers. */
+  min-width: 5.9rem;
 }
 
 /* Typed into as often as it is clicked into place, so it is a proper field
@@ -1035,7 +1311,8 @@ main {
 }
 
 .timing-lock:disabled {
-  opacity: 0.3;
+  color: #c8c0b1;
+  border-color: #e2dccd;
   cursor: not-allowed;
 }
 
@@ -1046,18 +1323,24 @@ main {
 
 /* ---- The melody page's transport ---- */
 
+/* Two buttons sharing the row in halves: play the section, and start it over. */
 .playback-transport {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
 .playback-transport-button {
   position: relative;
-  flex: 0 0 auto;
-  width: 2.4rem;
-  height: 2.2rem;
-  padding: 0.3rem;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  height: 2.6rem;
+  padding: 0.3rem 0.5rem;
+  font: inherit;
   color: var(--ink);
   background: #fffdf9;
   border: 1px solid var(--rule);
@@ -1069,8 +1352,14 @@ main {
 
 .playback-transport-button svg {
   display: block;
-  width: 100%;
-  height: 100%;
+  flex: 0 0 auto;
+  height: 1.05rem;
+  width: auto;
+}
+
+.playback-transport-label {
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .playback-transport-button:hover:not(:disabled) {
@@ -1079,7 +1368,8 @@ main {
 }
 
 .playback-transport-button:disabled {
-  opacity: 0.3;
+  color: #c8c0b1;
+  border-color: #e2dccd;
   cursor: not-allowed;
 }
 
@@ -1096,21 +1386,24 @@ main {
   color: #fffdf9;
 }
 
-/* The one button pressed most, drawn a size up so a thumb finds it. */
-.playback-play {
-  width: 3rem;
+/* The four switches for the run, sharing the row edge to edge: each grows
+   from its icon's own width, so the wide notes-and-speaker one comes out the
+   largest and nothing is left as an awkward gap. */
+.playback-toggle-group {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
 }
 
-/* All icon, and the same shape as the transport buttons it stands among: the
-   picture is the label, the title carries the words. */
+/* All icon: the picture is the label, the title the words. */
 .playback-toggle {
-  flex: 0 0 auto;
-  width: 2.4rem;
-  height: 2.2rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 2.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.25rem;
+  padding: 0.3rem;
   font: inherit;
   color: var(--ink);
   background: #fffdf9;
@@ -1161,14 +1454,9 @@ main {
 }
 
 .playback-toggle:disabled {
-  opacity: 0.3;
+  color: #c8c0b1;
+  border-color: #e2dccd;
   cursor: not-allowed;
-}
-
-/* The chevron that folds the speed and the timings away. Only a narrow screen
-   is short of room, so only a narrow screen is offered the fold. */
-.playback-more {
-  display: none;
 }
 
 /* ---- The one question the page stops for ---- */
@@ -1293,6 +1581,8 @@ main {
   position: relative;
   width: 100%;
   max-width: 1200px;
+  /* Centred in whatever the side panel leaves, rather than pinned against it. */
+  margin: 0 auto;
 }
 
 .playhead {
@@ -1308,46 +1598,51 @@ main {
   will-change: transform;
 }
 
-.rhythm-panel {
-  padding: 0.6rem;
+/* ---- The notation palettes ----
+
+   The duration grid, the tuplets and the note actions share one identity:
+   square-cornered boxes of borderless cells, each cell lighting its own
+   region on hover. The square corners are deliberately theirs alone — the
+   rest of the page keeps its rounding, and the difference is what marks
+   these as palettes of notation rather than buttons. */
+.rhythm-panel,
+.tuplet-panel,
+#actions {
+  background: var(--tool-box);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 0;
 }
 
-.tuplet-panel {
-  padding: 0.45rem;
+.rhythm-panel {
+  padding: 0;
 }
 
 .duration-grid {
   display: grid;
   grid-template-columns: repeat(6, auto);
-  gap: 0.35rem;
+  gap: 0;
 }
 
-/* The four that divide a beat further, in a square, with the duplet alongside
-   and centred against it. */
+/* One row, 3 5 6 7 2, with the duplet last. */
 .tuplet-panel {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-}
-
-.tuplet-grid {
-  display: grid;
-  grid-template-columns: repeat(2, auto);
-  gap: 0.35rem;
+  gap: 0;
 }
 
 .duration-cell {
   position: relative;
-  width: 2.9rem;
-  height: 2.9rem;
+  width: 2.5rem;
+  height: 2.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.42rem;
+  padding: 0.3rem;
   color: var(--ink);
-  background: #fffdf9;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -1362,8 +1657,7 @@ main {
 }
 
 .duration-cell:hover:not(.is-unavailable) {
-  background: #f5efe4;
-  border-color: #b3aa9d;
+  background: #efe6d4;
 }
 
 /* Greyed, not gone, so the grid shows the shape of the room available — and
@@ -1371,12 +1665,11 @@ main {
    it is shown at all. A real `disabled` button receives no mouse events, which
    is why this is a class. */
 .duration-cell.is-unavailable {
-  opacity: 0.26;
+  color: #cfc7b8;
   cursor: not-allowed;
 }
 
-#tuplets,
-#actions {
+#tuplets {
   display: flex;
   flex-wrap: wrap;
   align-content: center;
@@ -1384,16 +1677,33 @@ main {
   gap: 0.4rem;
 }
 
+/* The third palette: the note actions, side by side in their box. */
+#actions {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+#actions .action {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+#actions .action:hover:not(:disabled):not([aria-disabled="true"]) {
+  background: #efe6d4;
+}
+
 /* Smaller than the duration cells on purpose: dividing a beat into tuplets is
    an occasional act, and a control's size should say how often it is wanted. */
 .tuplet {
-  width: 2.2rem;
-  height: 2.2rem;
-  padding: 0.26rem;
+  width: 2.3rem;
+  height: 2.3rem;
+  padding: 0.28rem;
   color: var(--ink);
-  background: #fffdf9;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
@@ -1406,12 +1716,11 @@ main {
 }
 
 .tuplet:hover:not(:disabled) {
-  background: #f5efe4;
-  border-color: #b3aa9d;
+  background: #efe6d4;
 }
 
 .tuplet:disabled {
-  opacity: 0.26;
+  color: #cfc7b8;
   cursor: not-allowed;
 }
 
@@ -1423,8 +1732,16 @@ main {
    way, since the difference is not the reader's business. */
 .action:disabled,
 .action[aria-disabled="true"] {
-  opacity: 0.26;
+  color: #c8c0b1;
+  border-color: #e2dccd;
   cursor: not-allowed;
+}
+
+/* The words follow the button's own dimmed ink instead of keeping their
+   standing grey. */
+.action:disabled .action-label,
+.action[aria-disabled="true"] .action-label {
+  color: inherit;
 }
 
 /* The ratio the selection is already inside. Pressing it again undoes the
@@ -1444,7 +1761,8 @@ main {
 /* ---- Icon actions ---- */
 
 /* Compact, like the tuplets: tying and erasing are touched now and then, and
-   the room saved is room the staff below gets to keep. */
+   the room saved is room the staff below gets to keep. The key rides the top
+   edge as a sticker, so the column is just the icon and its words. */
 .action {
   position: relative;
   display: flex;
@@ -1452,8 +1770,8 @@ main {
   align-items: stretch;
   justify-content: center;
   gap: 0.12rem;
-  min-width: 3.9rem;
-  padding: 0.22rem 0.25rem 0.28rem;
+  min-width: 3.6rem;
+  padding: 0.26rem 0.25rem 0.28rem;
   font: inherit;
   color: var(--ink);
   background: #fffdf9;
@@ -1482,8 +1800,7 @@ main {
   border-color: #9c3925;
 }
 
-.action.is-on .action-label,
-.action.is-on .action-key {
+.action.is-on .action-label {
   color: inherit;
 }
 
@@ -1509,68 +1826,157 @@ main {
   color: #6c6459;
 }
 
-/* Every shortcut hint looks the same, wherever it sits. */
-.cell-key,
-.action-key,
-.chip-key {
+/* ---- Shortcut hints ---- */
+
+/* The setup page's badge, printed on its mark buttons as it always was: that
+   page has no reveal button, so its two hints stay in plain sight. */
+.cell-key {
+  position: absolute;
+  top: 2px;
+  left: 2px;
   font-family: inherit;
   font-size: 0.66rem;
   line-height: 1;
   padding: 1.5px 4px;
   color: #6c6459;
-  /* A little translucent, because `.cell-key` is drawn over the icon it labels
-     rather than beside it — but only a little: at 62% the hints were harder to
-     read than the thing they were getting out of the way of. A stopgap; the
-     icons and these badges are due a rethink together. */
   background: rgb(240 234 224 / 92%);
   border: 1px solid var(--rule);
   border-radius: 4px;
 }
 
-/* The digit that writes this length, in the one corner of the cell no note
-   reaches into: the head sits low and the stem and flags keep to the right. */
-.cell-key {
+/* Every key is a sticker straddling the top of the thing it names, centred
+   on it — one placement everywhere, so a key is always found in the same
+   place relative to its icon. Out of the layout, so nothing resizes when the
+   keys appear, and hidden until the reveal button is held (keys-button.ts). */
+.key-sticker {
+  display: none;
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: -0.7em;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  font-family: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 3px 6px;
+  color: #f7f5f0;
+  white-space: nowrap;
+  /* A keycap: dark like a keyboard's, its legend in white, standing off the
+     page on a slightly angled solid shadow. */
+  background: #423d36;
+  border: 1px solid #26221c;
+  border-radius: 4px;
+  /* The key's own body rather than a shadow behind it: copies laid at half-
+     pixel steps run together into the solid trail a cap would leave if it
+     were dragged down and to the right, so the badge reads as a thing with
+     depth instead of a square with a duplicate underneath. */
+  box-shadow:
+    0.6px 0.75px 0 #2b2620,
+    1.2px 1.5px 0 #2b2620,
+    1.8px 2.25px 0 #2b2620,
+    2.4px 3px 0 #2b2620;
+}
+
+body.show-keys .key-sticker {
+  display: inline-block;
+}
+
+/* ---- The playback region is square ----
+
+   Its boxes and its controls alike: the panel, the tabs seated on it, the
+   reveal button above, the player's frame, and every button and field
+   inside. The sliders keep their pills — a track and its handle are not
+   boxes, and squared they read as broken controls rather than as chosen
+   corners. */
+#side-panel .keys-button,
+#side-panel .playback-shell-body,
+#side-panel .panel-tab,
+#side-panel .video-frame,
+#side-panel .playback-transport-button,
+#side-panel .playback-mark-button,
+#side-panel .playback-toggle,
+#side-panel .time-field-input,
+#side-panel .time-field-step,
+#side-panel .timing-lock,
+#side-panel .timing-bpm-input,
+#side-panel .timing-measures-input {
+  border-radius: 0;
+}
+
+/* The keyboard band's boxes are square too: the piano's bed, the keys in it,
+   and the switch and the button standing beside them. */
+.key-white,
+.key-black,
+#pitch-actions .switch,
+#pitch-actions .action {
+  border-radius: 0;
 }
 
 /* Hints are labels, never targets: a press anywhere on the control is a press
    on the control. */
 .cell-key,
-.action-key,
-.chip-key {
+.key-sticker {
   pointer-events: none;
 }
 
 .chip {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
 }
 
-/* The key that does the same thing, printed on the control itself.
-
-   Laid out in the column rather than floated over it: an overlaid badge has to
-   be kept clear of the icon by hand, and the icons are not all the same width,
-   so one of them always ends up underneath it. */
-.action-key {
-  align-self: flex-end;
-  margin-bottom: 0.1rem;
+/* The button that shows the stickers, held rather than pressed: its own box
+   above the panel, with the K keycap — always visible, in the stickers' own
+   dress — and the words beside it. While it is held the box fills and sinks,
+   and the cap goes down with it: the button teaching how it is used. */
+.keys-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  font: inherit;
+  color: #6c6459;
+  background: var(--tool-box);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-/* Buttons without a shortcut still keep the row, so a row of them lines up. */
-.action-key:empty {
-  visibility: hidden;
+.keys-button:hover {
+  background: #f3eee2;
+  color: var(--ink);
 }
 
-.action:disabled .cell-key,
-.action:disabled .action-key,
-.action[aria-disabled="true"] .cell-key,
-.action[aria-disabled="true"] .action-key,
-.duration-cell.is-unavailable .cell-key,
-.chip:disabled .chip-key {
-  opacity: 0.55;
+body.show-keys .keys-button {
+  background: #e5decf;
+  color: var(--ink);
+  box-shadow: inset 0 2px 6px rgb(28 26 23 / 22%);
+}
+
+.keys-button-k {
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 3.5px 7px;
+  color: #f7f5f0;
+  background: #423d36;
+  border: 1px solid #26221c;
+  border-radius: 5px;
+  box-shadow:
+    0.6px 0.75px 0 #2b2620,
+    1.2px 1.5px 0 #2b2620,
+    1.8px 2.25px 0 #2b2620,
+    2.4px 3px 0 #2b2620;
+}
+
+.keys-button-words {
+  font-size: 0.8rem;
 }
 
 /* Bigger than the rhythm actions: it sits beside a whole keyboard, and at the
@@ -1615,17 +2021,16 @@ main {
   gap: 0.6rem;
   width: 100%;
   padding: 0.6rem 1.5rem;
-  background: #faf8f4;
-  border-top: 1px solid var(--rule);
-  box-shadow: 0 -4px 14px rgb(28 26 23 / 9%);
+  background: var(--band);
+  border-top: 1px solid var(--frame-rule);
 }
 
 #keyboard {
   flex: 1 1 auto;
   min-width: 0;
   border: 1px solid var(--rule);
-  border-radius: 4px;
-  background: #efeae2;
+  border-radius: 0;
+  background: var(--tool-box);
   overflow: hidden;
 }
 
@@ -1995,7 +2400,7 @@ main {
 
 .panel-switch {
   width: 100%;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.45rem;
   /* Tighter than a mode switch in open country: this is the height of the speed
      row beside it, near enough, and the two rows read as one family because of
      it. The last couple of pixels would have to come out of the text. */
@@ -2008,22 +2413,6 @@ main {
   font-size: 0.7rem;
   line-height: 1.15;
   text-align: center;
-}
-
-/* What the section is heard as: under the speed, above the marks. Both are
-   settings for the run about to be made rather than the run itself, and the
-   marks and the transport below them are the run. No margin of its own — the
-   panel's gap spaces every row here, and an extra one would make the two
-   panels different heights. */
-.hearing-switch {
-  margin: 0;
-}
-
-/* Nothing to play until the marks describe a tempo, and a position that cannot
-   be taken says so rather than answering with silence. */
-.hearing-switch .mode-option:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 /* The bar count is the melody's own length here and cannot be typed over, so
@@ -2088,9 +2477,11 @@ main {
   cursor: pointer;
 }
 
+/* "(Required)", in the app's red, a step quieter than the label it follows. */
 .details-required {
-  margin-left: 0.15rem;
+  margin-left: 0.35rem;
   color: var(--note-selected);
+  font-size: 0.66rem;
 }
 
 .details-count {
@@ -2936,8 +3327,141 @@ button.upvote-line:focus-visible {
    worked on, and an editor whose controls leave nothing to look at is no
    editor at all. */
 
+/* A short window: the side panel's column is the tallest fixed thing on the
+   page, so its air is the first thing given up. Past this the panel scrolls
+   inside itself — the video, at YouTube's 200px floor, cannot give more. */
+/* A short window: the panel's air is the first thing given up, so the column
+   still fits whole. Past this it scrolls inside itself — the video, at
+   YouTube's 200px floor, cannot give more. */
+@media (max-height: 800px) {
+  #side-panel {
+    padding: 0.7rem 1rem;
+  }
+
+  .playback-shell-body {
+    padding: 0.6rem 0.7rem;
+  }
+
+  #playback-controls {
+    gap: 0.55rem;
+  }
+
+  .keys-button {
+    padding: 0.35rem 0.6rem;
+  }
+
+  .playback-panel {
+    gap: 0.6rem;
+  }
+
+  .playback-section,
+  .playback-marks {
+    gap: 0.5rem;
+  }
+
+  .playback-section + .playback-section {
+    padding-top: 0.55rem;
+  }
+
+  .playback-transport-button {
+    height: 2.1rem;
+  }
+
+  .playback-mark-button {
+    height: 1.8rem;
+  }
+
+  .playback-toggle {
+    height: 1.8rem;
+  }
+
+  .time-field-input {
+    padding-top: 0.24rem;
+    padding-bottom: 0.24rem;
+  }
+
+  .panel-switch {
+    margin-bottom: 0.2rem;
+  }
+
+  #playback {
+    gap: 0.5rem;
+  }
+}
+
+/* No room for a column beside the score: the frame gives way to an ordinary
+   scrolling page — the panel becomes a band above the score, and only here
+   does the document itself scroll again. */
+@media (max-width: 960px) {
+  body.is-framed {
+    height: auto;
+    overflow: visible;
+  }
+
+  /* The nav comes back into the flow: a page that scrolls can afford it. */
+  body.is-framed .site-nav {
+    display: flex;
+  }
+
+  main.editor-main {
+    flex: 1 0 auto;
+  }
+
+  #main-body {
+    flex-direction: column;
+  }
+
+  #side-panel {
+    width: 100%;
+    overflow-y: visible;
+    padding: 0.6rem 0.75rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--frame-rule);
+  }
+
+  #score-scroll {
+    overflow-y: visible;
+  }
+
+  #playback {
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+  }
+
+  #playback-controls,
+  #video {
+    width: 100%;
+    max-width: 26rem;
+  }
+
+  #workspace {
+    padding: 0.75rem 0.75rem 1rem;
+  }
+
+  .nav-reveal {
+    display: none;
+  }
+}
+
+/* Nothing to hold a key over: the reveal button asks for a pointer that can
+   hover and a keyboard to reveal, and a touch screen has neither. */
+@media (hover: none) {
+  .keys-button {
+    display: none;
+  }
+}
+
 @media (max-width: 700px) {
   main {
+    padding: 0 0.75rem 1rem;
+  }
+
+  main.editor-main {
+    padding: 0;
+  }
+
+  #workspace {
     padding: 0 0.75rem 1rem;
   }
 
@@ -3019,42 +3543,17 @@ button.upvote-line:focus-visible {
     margin-left: 0;
   }
 
-  /* Nothing like enough width for two columns, so the two stack — and the
-     video goes on top, since it is the thing being listened to and the
-     controls read perfectly well underneath it. */
-  #toolbar-body {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-
-  /* Stacked, and set apart by space alone, as on the wide screen. */
-  #playback {
-    order: -1;
-    flex-direction: column;
-    gap: 0.35rem;
-    margin-left: 0;
-    padding: 0 0 0.5rem;
-  }
-
-  /* The video back on top: it is the thing being listened to. */
-  #video {
-    order: -1;
-    width: 100%;
-    max-width: 26rem;
-    margin: 0 auto;
-  }
-
-  #playback-controls {
-    width: 100%;
-    max-width: 26rem;
-    margin: 0 auto;
-  }
-
   /* Every border and every millimetre of padding here is a millimetre the staff
      does not get, and the staff is the thing being worked on. */
-  .playback-panel {
+  .playback-shell-body {
     padding: 0.4rem 0.45rem;
+  }
+
+  .playback-panel {
+    gap: 0.35rem;
+  }
+
+  .playback-section {
     gap: 0.35rem;
   }
 
@@ -3067,90 +3566,36 @@ button.upvote-line:focus-visible {
     height: 1.05rem;
   }
 
-  /* The band has to hold a player, two sets of controls and still leave a staff
-     worth reading, so the speed and the two timings fold away behind a chevron.
-     The two toggles stay out, being what is reached for while the video runs.
-     The player itself is never folded — it must stay whole and visible. */
-  .playback-extra {
-    display: none;
-  }
-
-  .playback-panel.is-open .playback-extra {
-    display: flex;
-  }
-
-  .playback-more {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    width: 2rem;
-    font: inherit;
-    font-size: 0.9rem;
-    line-height: 1;
-    color: #6c6459;
-    background: #fffdf9;
-    border: 1px solid var(--rule);
-    border-radius: 6px;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-  }
-
-  .playback-panel.is-open .playback-more {
-    transform: scaleY(-1);
-  }
-
   #controls {
     gap: 0.45rem;
   }
 
-  /* The tuplets and the actions share the line under the rhythm panel. */
-  #tuplets,
-  #actions {
+  #tuplets {
     gap: 0.3rem;
   }
 
-  .rhythm-panel {
-    padding: 0.5rem 0.55rem;
-  }
-
-  .duration-grid {
-    gap: 0.25rem;
-    margin-top: 0;
-  }
-
   .duration-cell {
-    width: 2.3rem;
-    height: 2.3rem;
-    padding: 0.3rem;
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0.26rem;
   }
 
-  /* Nothing to press them on, so every shortcut hint goes — showing some and
-     not others would only look like an oversight. */
+  /* Nothing to press them on, so every shortcut hint goes — the setup page's
+     printed pair and the stickers alike, however the reveal class stands. */
   .cell-key,
-  .chip-key,
-  .action-key {
+  body .key-sticker,
+  body.show-keys .key-sticker {
     display: none;
   }
 
   .tuplet {
-    width: 2.2rem;
-    height: 2.2rem;
+    width: 2rem;
+    height: 2rem;
     padding: 0.24rem;
   }
 
-  .rhythm-panel,
-  .tuplet-panel {
-    padding: 0.45rem;
-  }
-
-  .tuplet-panel {
-    gap: 0.3rem;
-  }
-
-  .tuplet-grid {
-    gap: 0.25rem;
+  .keys-button {
+    display: none;
   }
 
   .action {

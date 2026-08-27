@@ -1,5 +1,0 @@
----
-alwaysApply: true
----
-
-- For any VexFlow API signature or behavior question, use @Docs (VexFlow Wiki / VexFlow Examples / VexFlow Docs / VexFlow Github) rather than relying on memory — the API has changed across major versions and training data may reflect an older version.

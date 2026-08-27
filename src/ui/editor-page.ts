@@ -35,6 +35,8 @@ export type EditorPageElements = EditorElements & {
   workspace: HTMLElement;
   toolbar: HTMLElement;
   keyboardArea: HTMLElement;
+  /** The column against the window's left edge that holds the video. */
+  sidePanel: HTMLElement;
   video: HTMLElement;
   playbackControls: HTMLElement;
   scoreArea: HTMLElement;
@@ -206,6 +208,10 @@ export function createEditorPage(
     elements.workspace.hidden = true;
     elements.toolbar.hidden = true;
     elements.keyboardArea.hidden = true;
+    elements.sidePanel.hidden = true;
+    // Setup is an ordinary scrolling page with the nav in view; the frame —
+    // and the rolled-up nav — belong to the editor proper.
+    document.body.classList.remove("is-framed");
     elements.setup.hidden = false;
     // Built once; the page manages its own regions from then on, and tears
     // itself down before handing over.
@@ -217,8 +223,11 @@ export function createEditorPage(
     // Put on once and then left alone. Every edit rebuilds the controls around
     // the player, and rebuilding the player itself would send the video back to
     // its beginning each time — so the thing that drives it is made out here
-    // too, beside it and outside the editor's life.
-    const iframe = mountVideoPanel(elements.video, from.videoId);
+    // too, beside it and outside the editor's life. Without YouTube's control
+    // bar, because the page opens in playback mode, where the panel drives it.
+    const iframe = mountVideoPanel(elements.video, from.videoId, {
+      controls: false,
+    });
     playback = createPlayback(
       { panel: elements.playbackControls, scoreArea: elements.scoreArea },
       iframe,
@@ -234,6 +243,10 @@ export function createEditorPage(
           source = { ...source, marks };
           showSignatures();
         },
+        // The mode switch trades the embed for the other kind — the control
+        // bar is a parameter of the embed — and puts the position back itself.
+        remountVideo: (embedOptions) =>
+          mountVideoPanel(elements.video, from.videoId, embedOptions),
       },
     );
   }
@@ -537,6 +550,8 @@ export function createEditorPage(
     elements.workspace.hidden = false;
     elements.toolbar.hidden = false;
     elements.keyboardArea.hidden = false;
+    elements.sidePanel.hidden = false;
+    document.body.classList.add("is-framed");
 
     // Built the first time there is a melody, and mutated from then on: it
     // holds the details boxes, and a redraw between two keystrokes would take

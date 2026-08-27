@@ -1,17 +1,19 @@
 import {
-  jumpBackIcon,
   loopIcon,
   metronomeIcon,
   noteEndIcon,
   noteStartIcon,
+  notesHeardIcon,
   pauseIcon,
   playheadIcon,
   playIcon,
+  restartIcon,
   restoreIcon,
 } from "./icons.js";
 import { createSpeedRow } from "./speed-row.js";
 import { createTimeField, type TimeField } from "./time-field.js";
 import { pageTooltip } from "./tooltip.js";
+import { createVolumeRow } from "./volume-row.js";
 
 /**
  * The melody page's playback controls.
@@ -23,14 +25,18 @@ import { pageTooltip } from "./tooltip.js";
  * Built once and mutated, never rebuilt: the section fields are boxes the
  * user types into, and rebuilding one between keystrokes takes the caret
  * with it.
+ *
+ * The panel is two bands of one enclosure — the run (transport and marks),
+ * then the settings (speed, volume, the three toggles, what is heard) — with
+ * the playback/timing switch riding above both in the shell `playback.ts`
+ * builds. It draws no box of its own for that reason.
  */
-import type { Hearing } from "../playback/playalong.js";
-import { createHearingSwitch } from "./hearing-switch.js";
-
 export type PlaybackPanelState = {
   ready: boolean;
   rates: readonly number[];
   rate: number;
+  /** How loud the video speaks, 0 to 100. */
+  volume: number;
   /** The section being played, in video seconds. */
   start: number | undefined;
   end: number | undefined;
@@ -42,8 +48,8 @@ export type PlaybackPanelState = {
   /** Whether a note is selected, for the set-from-note buttons. */
   hasSelection: boolean;
   metronomeOn: boolean;
-  /** What the section is heard as. */
-  hearing: Hearing;
+  /** Whether the transcription sounds along with the video. */
+  notesOn: boolean;
   followOn: boolean;
   /** Whether the frozen tempo exists — gates metronome and follow. */
   timed: boolean;
@@ -51,16 +57,17 @@ export type PlaybackPanelState = {
 
 export type PlaybackPanelHandlers = {
   onRate(rate: number): void;
+  onVolume(volume: number): void;
   onPlayPause(): void;
   onLoop(on: boolean): void;
-  onJumpBack(): void;
+  onRestart(): void;
   onType(field: "start" | "end", seconds: number | undefined): void;
   onNudge(field: "start" | "end", seconds: number): void;
   onFromNote(field: "start" | "end"): void;
   /** Put one mark back to the melody's own start or end. */
   onResetMark(field: "start" | "end"): void;
   onMetronome(on: boolean): void;
-  onHearing(hearing: Hearing): void;
+  onNotes(on: boolean): void;
   onFollow(on: boolean): void;
   /** A letter pressed inside a section field; shift distinguishes variants. */
   onLetter(letter: string, shift: boolean): boolean;
@@ -108,12 +115,12 @@ function iconButton(
   const button = document.createElement("button");
   button.type = "button";
   button.className = className;
-  // The name only. The key is printed on the button in a `<kbd>`, and a
-  // tooltip repeating it would be the same fact twice.
+  // The name only. The key is a sticker over the button, and a tooltip
+  // repeating it would be the same fact twice.
   button.title = title;
   button.setAttribute("aria-label", title);
   button.innerHTML =
-    (shortcut ? `<kbd class="cell-key">${shortcut}</kbd>` : "") + icon;
+    (shortcut ? `<kbd class="key-sticker">${shortcut}</kbd>` : "") + icon;
   button.addEventListener("click", () => {
     const dead = deadReason.get(button);
     if (dead === undefined) {
@@ -151,18 +158,50 @@ function toggle(
   return button;
 }
 
+/** The small uppercase word a row starts with. */
+function rowLabel(text: string, className = "playback-label"): HTMLElement {
+  const label = document.createElement("span");
+  label.className = className;
+  label.textContent = text;
+  return label;
+}
+
 export function createPlaybackPanel(
   element: HTMLElement,
   handlers: PlaybackPanelHandlers,
 ): PlaybackPanel {
   element.replaceChildren();
 
-  const panel = document.createElement("section");
-  panel.className = "panel playback-panel";
+  const panel = document.createElement("div");
+  panel.className = "playback-panel";
 
-  const speed = createSpeedRow(handlers.onRate);
+  // ---- the run: transport, then the section it plays -------------------
 
-  // ---- the section -----------------------------------------------------
+  const run = document.createElement("div");
+  run.className = "playback-section";
+
+  const transport = document.createElement("div");
+  transport.className = "playback-transport";
+
+  const play = iconButton(
+    "playback-transport-button playback-play",
+    playIcon(),
+    "Play the section",
+    handlers.onPlayPause,
+    "␣",
+  );
+  const restart = iconButton(
+    "playback-transport-button",
+    restartIcon(),
+    "Back to the start of the section",
+    handlers.onRestart,
+    "R",
+  );
+  restart.insertAdjacentHTML(
+    "beforeend",
+    `<span class="playback-transport-label">Restart</span>`,
+  );
+  transport.append(play, restart);
 
   function sectionRow(field: "start" | "end"): {
     row: HTMLElement;
@@ -188,8 +227,8 @@ export function createPlaybackPanel(
       "playback-mark-button",
       isStart ? noteStartIcon() : noteEndIcon(),
       isStart
-        ? "Start at note"
-        : "End at note",
+        ? "Start just before the selected note"
+        : "End at the selected note",
       () => handlers.onFromNote(field),
       isStart ? "I" : "O",
     );
@@ -203,10 +242,15 @@ export function createPlaybackPanel(
     );
     const row = document.createElement("div");
     row.className = "playback-mark";
-    // Button, then the box it writes into, then the way back — the shape the
-    // setup page's timing rows already have, so the two panels read the same
-    // and the key stays printed on the corner of the same leading button.
-    row.append(fromNote, timeField.element, reset);
+    // The word, the box it names, the button that writes into it, the way
+    // back — the same shape the timing panel's rows have, so the two read the
+    // same when the switch above them is pressed.
+    row.append(
+      rowLabel(isStart ? "Start" : "End", "playback-label playback-mark-name"),
+      timeField.element,
+      fromNote,
+      reset,
+    );
     return { row, timeField, fromNote, reset };
   }
 
@@ -217,69 +261,40 @@ export function createPlaybackPanel(
   marksColumn.className = "playback-marks";
   marksColumn.append(start.row, end.row);
 
-  // ---- transport -------------------------------------------------------
+  run.append(transport, marksColumn);
 
-  const transport = document.createElement("div");
-  transport.className = "playback-transport";
+  // ---- the settings ----------------------------------------------------
 
-  const play = iconButton(
-    "playback-transport-button playback-play",
-    playIcon(),
-    "Play",
-    handlers.onPlayPause,
-    "␣",
-  );
-  const jumpBack = iconButton(
-    "playback-transport-button",
-    jumpBackIcon(),
-    "Back to start",
-    handlers.onJumpBack,
-    "R",
-  );
-  const loop = iconButton(
-    "playback-transport-button",
-    loopIcon(),
-    "Loop",
-    () => handlers.onLoop(loop.getAttribute("aria-pressed") !== "true"),
-  );
-  loop.setAttribute("aria-pressed", "false");
+  const settings = document.createElement("div");
+  settings.className = "playback-section";
 
-  // The toggles sit in the transport row, the same size as its buttons: one
-  // row of controls rather than two families of different shapes.
+  const speed = createSpeedRow(handlers.onRate);
+
+  const volume = createVolumeRow(handlers.onVolume);
+
+  // The four switches for the run about to be made — icons only, the words
+  // in their titles. The last one is whether the transcription is heard: its
+  // icon carries a speaker that sounds or is struck through, which is the
+  // whole of its state.
+  const loop = toggle(loopIcon(), "Loop", handlers.onLoop);
+  const follow = toggle(playheadIcon(), "Follow along the score", handlers.onFollow);
   const metronome = toggle(metronomeIcon(), "Metronome", handlers.onMetronome);
-  const follow = toggle(
-    playheadIcon(),
-    "Follow",
-    handlers.onFollow,
-  );
+  const notes = toggle(notesHeardIcon(false), "Hear the notes", handlers.onNotes);
 
-  const more = document.createElement("button");
-  more.type = "button";
-  more.className = "playback-more";
-  more.setAttribute("aria-expanded", "false");
-  more.setAttribute("aria-label", "Show speed and playback marks");
-  more.innerHTML = `<span aria-hidden="true">⌄</span>`;
-  more.addEventListener("click", () => {
-    const open = panel.classList.toggle("is-open");
-    more.setAttribute("aria-expanded", String(open));
-  });
+  const toggles = document.createElement("div");
+  toggles.className = "playback-toggle-group";
+  toggles.append(loop, follow, metronome, notes);
 
-  transport.append(play, jumpBack, loop, metronome, follow, more);
+  settings.append(speed.element, volume.element, toggles);
 
-  const hearing = createHearingSwitch(handlers.onHearing);
-
-  // The speed, what is heard and the section fields fold away on a narrow
-  // screen; the transport stays out, being what is reached for mid-take.
-  const extra = document.createElement("div");
-  extra.className = "playback-extra";
-  extra.append(speed.element, hearing.element, marksColumn);
-
-  panel.append(extra, transport);
+  panel.append(run, settings);
   element.append(panel);
 
   return {
     update(state) {
       speed.update(state.rates, state.rate, state.ready);
+
+      volume.update(state.volume, state.ready);
 
       for (const [row, seconds] of [
         [start, state.start],
@@ -305,25 +320,27 @@ export function createPlaybackPanel(
 
       play.disabled = !state.canPlay;
       play.innerHTML =
-        `<kbd class="cell-key">␣</kbd>` +
-        (state.playing ? pauseIcon() : playIcon());
-      play.title = state.playing ? "Pause" : "Play";
-      jumpBack.disabled = !state.canPlay;
-
-      loop.disabled = !state.timed;
-      loop.setAttribute("aria-pressed", String(state.looping));
-      loop.classList.toggle("is-on", state.looping);
-
-      hearing.update(state.hearing, state.timed);
+        `<kbd class="key-sticker">␣</kbd>` +
+        (state.playing ? pauseIcon() : playIcon()) +
+        `<span class="playback-transport-label">${
+          state.playing ? "Pause" : "Play Section"
+        }</span>`;
+      play.title = state.playing ? "Pause" : "Play the section";
+      restart.disabled = !state.canPlay;
 
       for (const [button, on, gated] of [
+        [loop, state.looping, state.timed],
         [metronome, state.metronomeOn, state.timed],
         [follow, state.followOn, state.timed],
+        [notes, state.notesOn, state.timed],
       ] as const) {
         button.disabled = !gated;
         button.setAttribute("aria-pressed", String(on));
         button.classList.toggle("is-on", on);
       }
+      // The speaker in the icon is the state, so it follows the toggle.
+      notes.querySelector(".playback-toggle-icon")!.innerHTML =
+        notesHeardIcon(state.notesOn);
     },
 
     flash(field) {

@@ -37,34 +37,46 @@
             <div id="tuplets"></div>
             <div id="actions"></div>
           </div>
-          <div id="playback">
-            <div id="playback-controls"></div>
-            <div id="video"></div>
-          </div>
         </div>
         <p id="status" role="status"></p>
       </div>
     </div>
 
-    <main>
+    <main class="editor-main">
       <!-- Filled only when there is no puzzle to show. -->
       <div id="trouble"></div>
 
-      <div id="workspace">
-        <!-- The score has every one of its children replaced on each redraw,
-             so the marker that follows the video is a neighbour of it rather
-             than a child, and this is what holds the two together. -->
-        <div id="score-area">
-          <div id="score"></div>
+      <!-- The working frame: the video's column at the left, and beside it the
+           score over the keyboard. While a puzzle is open the page does not
+           scroll; the score's own box is the only thing that does. -->
+      <div id="main-body">
+        <aside id="side-panel" hidden>
+          <div id="playback">
+            <div id="playback-controls"></div>
+            <div id="video"></div>
+          </div>
+        </aside>
+
+        <div id="work-column">
+          <div id="score-scroll">
+            <div id="workspace">
+              <!-- The score has every one of its children replaced on each
+                   redraw, so the marker that follows the video is a neighbour
+                   of it rather than a child, and this is what holds the two
+                   together. -->
+              <div id="score-area">
+                <div id="score"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="keyboard-area" hidden>
+            <div id="keyboard"></div>
+            <div id="pitch-actions"></div>
+          </div>
         </div>
       </div>
     </main>
-
-    <div id="keyboard-area" hidden>
-      <div id="keyboard"></div>
-      <div id="pitch-actions"></div>
-    </div>
-    <footer class="site-foot"><a href="/about">About</a> · <a href="/privacy">Privacy</a></footer>
 
     <script type="module" src="./main.ts"></script>
   </body>

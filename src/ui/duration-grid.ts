@@ -113,14 +113,17 @@ export function createDurationGrid(
   for (const dots of DOT_ROWS) {
     VALUES.forEach(({ value }, column) => {
       const key = KEYS[column];
-      const printed = dots === 0 ? key : `⇧${key}`;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "duration-cell";
       button.dataset.value = String(value);
       button.dataset.dots = String(dots);
+      // Every cell wears its whole key: the digit straddling the box's top
+      // edge for the plain row, and ⇧ with the digit over each dotted cell —
+      // spelled out per cell rather than left as a rule to infer.
       button.innerHTML =
-        `<kbd class="cell-key">${printed}</kbd>` + noteIcon(value, dots);
+        `<kbd class="key-sticker">${dots === 0 ? key : `⇧${key}`}</kbd>` +
+        noteIcon(value, dots);
       button.setAttribute("aria-label", nameOf(value, dots));
 
       const cell = { button, value, dots, key, unavailable: true };

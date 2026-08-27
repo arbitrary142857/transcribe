@@ -39,40 +39,52 @@
             <div id="tuplets"></div>
             <div id="actions"></div>
           </div>
-          <!-- Everything to do with the video, set apart from the controls
-               that write the music down: the player itself, and the controls
-               that drive it. Filled in once the link has been given and never
-               rebuilt after, so nothing an edit does sends the player back to
-               the start. -->
-          <div id="playback">
-            <div id="playback-controls"></div>
-            <div id="video"></div>
-          </div>
         </div>
         <p id="status" role="status"></p>
       </div>
     </div>
 
-    <main>
+    <main class="editor-main">
       <!-- Shown only until a clef and a meter are chosen. From then on both are
            read off the stave, and this is emptied for good. -->
       <div id="setup"></div>
 
-      <div id="workspace" hidden>
-        <!-- The score has every one of its children replaced on each redraw,
-             so the marker that follows the video is a neighbour of it rather
-             than a child, and this is what holds the two together. -->
-        <div id="score-area">
-          <div id="score"></div>
+      <!-- The working frame: the video's column at the left, and beside it the
+           score over the keyboard. Once a melody exists the page stops
+           scrolling and the score's own box is the only thing that does. -->
+      <div id="main-body">
+        <!-- Everything to do with the video: the controls that drive the
+             player, and the player under them. Filled in once the link has
+             been given and rebuilt only by the mode switch, which puts the
+             position back itself — nothing an edit does sends the player back
+             to the start. -->
+        <aside id="side-panel" hidden>
+          <div id="playback">
+            <div id="playback-controls"></div>
+            <div id="video"></div>
+          </div>
+        </aside>
+
+        <div id="work-column">
+          <div id="score-scroll">
+            <div id="workspace" hidden>
+              <!-- The score has every one of its children replaced on each
+                   redraw, so the marker that follows the video is a neighbour
+                   of it rather than a child, and this is what holds the two
+                   together. -->
+              <div id="score-area">
+                <div id="score"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="keyboard-area" hidden>
+            <div id="keyboard"></div>
+            <div id="pitch-actions"></div>
+          </div>
         </div>
       </div>
     </main>
-
-    <div id="keyboard-area" hidden>
-      <div id="keyboard"></div>
-      <div id="pitch-actions"></div>
-    </div>
-    <footer class="site-foot"><a href="/about">About</a> · <a href="/privacy">Privacy</a></footer>
 
     <script type="module" src="./main.ts"></script>
   </body>

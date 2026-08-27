@@ -1,9 +1,9 @@
 /**
- * A small labelled button with its keyboard shortcut printed on it.
+ * A small labelled button with its keyboard shortcut riding its corner.
  *
- * The shortcut is on the control rather than hidden in a tooltip, which is the
- * only way anybody finds out one exists — the same reasoning as the action
- * buttons in the editor, which print theirs in a `kbd` too.
+ * The shortcut is a `key-sticker`: out of the layout, so the chip is the same
+ * size whether or not the reveal button is showing it, and positioned half
+ * off the chip's edge like every other sticker on the page.
  */
 
 /**
@@ -30,7 +30,7 @@ export function chip(
   button.className = "chip";
   // Both halves are constants from the caller, never anything out of the
   // database — the one rule that lets this be innerHTML at all.
-  button.innerHTML = `${label}<kbd class="chip-key">${shortcut}</kbd>`;
+  button.innerHTML = `<kbd class="key-sticker">${shortcut}</kbd>${label}`;
   button.addEventListener("click", run);
   return button;
 }

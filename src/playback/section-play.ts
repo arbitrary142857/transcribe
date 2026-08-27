@@ -67,6 +67,23 @@ export function createSection(range: SectionRange): SectionState {
   return { range, looping: false, playing: false };
 }
 
+/**
+ * How far before a note its section starts, in video seconds.
+ *
+ * A section beginning exactly on the onset clips the attack — the seek is only
+ * frame-accurate, and the first thing heard should be the note arriving, not
+ * the note already sounding. Kept well under the shortest note anyone loops
+ * (a sixteenth at 160 to the quarter is 93.75ms), so the breath before a note
+ * never swallows the note before it.
+ *
+ * Playback only. A *timing* mark is a measurement, and gets no such garnish.
+ */
+export const SECTION_LEAD_SECONDS = 0.08;
+
+/** Where a section starting "at" this onset actually begins. */
+export const leadStart = (onset: number): number =>
+  Math.max(0, onset - SECTION_LEAD_SECONDS);
+
 export const setRange = (
   state: SectionState,
   range: SectionRange,

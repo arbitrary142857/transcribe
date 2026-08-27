@@ -26,8 +26,20 @@ import { middleLinePitchOf, vexFlowKeyFor } from "./vex-key.js";
 /** Room to the right of the last bar so a hanging tie is not clipped. */
 const TAIL_SLACK = 24;
 
+/**
+ * How large the printed score comes out, as a fraction of full size.
+ *
+ * The layout is worked at the container's width divided by this and then
+ * CSS-scaled back down to fit, so everything — staff, notes, spacing — lands
+ * proportionally smaller: more bars share a line and more lines share the
+ * window. Clicks are unaffected, mapped back through the svg's own screen
+ * transform; what the shrink does cost the hit targets is paid back by
+ * `HIT_PADDING` below, which is in svg units and so grew relatively anyway.
+ */
+const SCORE_SCALE = 0.82;
+
 /** Grow each note's clickable area so thin stems stay easy to hit. */
-const HIT_PADDING = 3;
+const HIT_PADDING = 4;
 
 /** Half a notehead's height; note bounds report head centres, not edges. */
 const NOTEHEAD_RADIUS = 6;
@@ -255,7 +267,12 @@ export function renderMelody(
     throw new Error(`No element with id "${elementId}"`);
   }
   // Measure the space available before the old score is cleared out of it.
-  const availableWidth = options.availableWidth ?? element.clientWidth;
+  // Laid out wider than the container by the scale's inverse, then CSS-shrunk
+  // to fit — which is what draws the score at SCORE_SCALE of full size. A
+  // width the caller passes explicitly is taken as the layout width it asks
+  // for, exactly as before.
+  const availableWidth =
+    options.availableWidth ?? element.clientWidth / SCORE_SCALE;
   element.replaceChildren();
 
   const measures = splitIntoMeasures(melody);

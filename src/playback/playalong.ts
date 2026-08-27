@@ -16,15 +16,6 @@ import { eventPositions } from "../editor/position.js";
 import type { Melody } from "../music/melody.js";
 import { Note } from "../music/note-event.js";
 
-/**
- * What is heard while the section plays.
- *
- * `both` exists on purpose rather than as the gap between two switches: playing
- * your own transcription over the recording is how you find out whether it is
- * right, and it is the thing this is most useful for.
- */
-export type Hearing = "video" | "both" | "notes";
-
 /** One sound: what to play, when to start it, and when to let it go. */
 export type SoundingNote = {
   /** Whole notes from the head of the melody. */

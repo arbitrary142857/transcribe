@@ -21,7 +21,7 @@ import type {
 } from "../render/render-melody.js";
 import { createPiano, type Piano } from "../playback/piano.js";
 import { createDurationGrid } from "./duration-grid.js";
-import { restIcon, tieIcon, unpitchedIcon, untieIcon } from "./icons.js";
+import { eraserIcon, restIcon, tieIcon, untieIcon } from "./icons.js";
 import { createSwitch } from "./switch.js";
 import { createTupletMenu } from "./tuplet-menu.js";
 import { createPianoKeyboard, rangeForClef } from "./piano-keyboard.js";
@@ -624,12 +624,12 @@ export function createEditor(
     const printed = shortcut && shortcut.length === 1 && /[a-z]/i.test(shortcut)
       ? shortcut.toUpperCase()
       : shortcut;
-    // No `title`. The words are printed under the icon and the key on it, so a
-    // tooltip here could only repeat one of the two.
+    // No `title`. The words are printed under the icon and the key rides its
+    // corner, so a tooltip here could only repeat one of the two.
     button.setAttribute("aria-label", label);
-    // The key is printed on the control rather than hidden in a tooltip, which
-    // is the only way anybody finds out a shortcut exists.
-    const key = `<kbd class="action-key">${printed ?? ""}</kbd>`;
+    // The key is a sticker on the button's corner — out of the layout, so the
+    // button is the same size whether or not the reveal button is showing it.
+    const key = printed ? `<kbd class="key-sticker">${printed}</kbd>` : "";
     button.innerHTML = `${key}<span class="action-icon">${icon}</span><span class="action-label">${label}</span>`;
     button.addEventListener("click", () => {
       const dead = deadReason.get(button);
@@ -708,7 +708,7 @@ export function createEditor(
   // key for it.
   const clearButton = actionButton(
     elements.pitchActions,
-    unpitchedIcon(),
+    eraserIcon(),
     "Clear pitch",
     "Take the pitch off the selection, leaving its rhythm",
     clearPitchAt,

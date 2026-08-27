@@ -22,6 +22,7 @@ import { authorLabel } from "../shared/session.js";
 import { attemptsLabel } from "../puzzle/verdicts.js";
 import { chip, REDO_KEY, UNDO_KEY } from "./chip.js";
 import { keyLabel } from "./key-label.js";
+import { createNavReveal } from "./site-nav.js";
 
 export type PlayBarState = {
   title: string;
@@ -158,7 +159,7 @@ export function createPlayBar(
   checkGroup.className = "submit-group";
   checkGroup.append(check, checkNote);
 
-  element.append(naming, key, clock, history, checkGroup);
+  element.append(naming, key, clock, history, checkGroup, createNavReveal());
 
   return {
     update(state) {

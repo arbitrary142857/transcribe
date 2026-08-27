@@ -24,6 +24,7 @@
 
 import { readMe, type UserSummary } from "../shared/session.js";
 import { googleButton } from "./google-button.js";
+import { listIcon } from "./icons.js";
 
 export type NavLink = { href: string; label: string; current: boolean };
 
@@ -47,6 +48,28 @@ export function planNav(pathname: string, signedIn: boolean): NavLink[] {
     links.push({ href: "/mine", label: "My transcriptions", current: here === "/mine" });
   }
   return links;
+}
+
+/**
+ * The button that rolls the nav down over a framed page, and up again.
+ *
+ * The working pages keep the nav out of sight — the frame gives every pixel
+ * to the tools and the music — so the way to the rest of the site lives
+ * behind this. It only toggles a class; the stylesheet does the rolling.
+ */
+export function createNavReveal(): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "nav-reveal";
+  button.title = "Site menu";
+  button.setAttribute("aria-label", "Show the site menu");
+  button.setAttribute("aria-expanded", "false");
+  button.innerHTML = listIcon();
+  button.addEventListener("click", () => {
+    const open = document.body.classList.toggle("nav-open");
+    button.setAttribute("aria-expanded", String(open));
+  });
+  return button;
 }
 
 export type SiteNav = {

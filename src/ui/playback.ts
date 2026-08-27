@@ -3,6 +3,7 @@ import type { Melody } from "../music/melody.js";
 import type { TimeSignature } from "../music/types.js";
 import {
   createSection,
+  leadStart,
   pressJumpBack,
   pressPause,
   pressPlay,
@@ -22,7 +23,7 @@ import {
 } from "../playback/tempo-map.js";
 import { eventAtSeconds } from "../playback/follow.js";
 import type { PianoNote } from "../playback/piano.js";
-import { soundingNotes, type Hearing } from "../playback/playalong.js";
+import { soundingNotes } from "../playback/playalong.js";
 import { toMilliseconds } from "../playback/timecode.js";
 import {
   bpmOf,
@@ -33,6 +34,7 @@ import {
   type TimingState,
 } from "../playback/timing-fields.js";
 import type { MelodyRenderResult } from "../render/render-melody.js";
+import { createKeysButton } from "./keys-button.js";
 import { createPlaybackPanel, type PlaybackPanel } from "./playback-panel.js";
 import { createPlayhead, type Playhead } from "./playhead.js";
 import { createTimingPanel, type TimingPanel } from "./timing-panel.js";
@@ -58,6 +60,17 @@ export type PlaybackOptions = {
   canRetime?: boolean;
   /** The marks were changed; the page that owns them should take them on. */
   onRetime?: (marks: Marks) => void;
+  /**
+   * Rebuild the embed, with or without YouTube's own control bar, and hand
+   * back the new iframe.
+   *
+   * Wanted only where the mode can switch: playback drives the player from
+   * the panel and wants no control bar flashing under it, while setting the
+   * timing scrubs with YouTube's own — and the bar is a parameter of the
+   * embed, changeable only by loading a new one. The switch puts the
+   * position, speed and loudness back itself.
+   */
+  remountVideo?: (options: { controls: boolean }) => HTMLIFrameElement;
 };
 
 export type Playback = {
@@ -144,18 +157,68 @@ export function createPlayback(
 
   let metronomeOn = false;
   /**
-   * What is heard while the section plays.
+   * Whether the transcription is heard along with the video.
    *
-   * One setting rather than two toggles, because "both silent" and "both at
-   * once" are equally easy to land on by accident when they are independent,
-   * and only one of those is ever wanted.
+   * One toggle. How loud the video speaks is the volume slider's business
+   * alone — hearing the notes by themselves is this toggle plus the slider
+   * at zero, so nothing here ever mutes the player behind the slider's back.
    */
-  let hearing: Hearing = "video";
+  let notesOn = false;
   let followOn = map !== undefined;
   let hasSelection = false;
 
   const playhead: Playhead = createPlayhead(elements.scoreArea);
   const rig: VideoRig = createVideoRig(iframe);
+
+  /** The iframe as it now stands — the mode switch trades it for another. */
+  let frame = iframe;
+
+  /**
+   * Whether the player itself can be touched, which follows the mode.
+   *
+   * The section is played from this panel, and a first-time visitor clicking
+   * the embed's own play starts the video from 0:00 — a moment that means
+   * nothing here. So the player is out of reach while the panel drives it,
+   * and a click on it fades a line in below saying where to press instead.
+   * Setting the timing is the exception: the marks are taken off the video's
+   * own clock, and YouTube's scrubber is how the clock is moved — so in that
+   * mode the player is its ordinary self.
+   *
+   * Only the pointer is fenced, and only on this client. The rig never trusts
+   * the fence: it watches the player for seeks and pauses it did not cause
+   * (buffering and the resume slip produce them with nobody clicking at all),
+   * so stripping the style in devtools breaks nothing but the styling.
+   */
+  function applyReach(): void {
+    frame.classList.toggle("is-inert", mode !== "timing");
+  }
+
+  /**
+   * The line that fades in under the player when the fence is clicked.
+   *
+   * Absolutely positioned into the slack below the video, so its coming and
+   * going moves nothing else in the column.
+   */
+  const videoNote = document.createElement("p");
+  videoNote.className = "video-note";
+  videoNote.textContent = "Use the playback panel!";
+
+  /** Adopt an iframe: the fence, and the click that teaches where play went. */
+  function takeFrame(next: HTMLIFrameElement): void {
+    frame = next;
+    applyReach();
+    // The note lives on #video, which survives remounts; put it back anyway,
+    // because the remount clears that element's children.
+    next.parentElement?.parentElement?.append(videoNote);
+    // The click lands on the holder behind the fenced iframe.
+    next.parentElement?.addEventListener("click", () => {
+      if (!frame.classList.contains("is-inert")) return;
+      videoNote.classList.remove("is-shown");
+      // Forcing a reflow restarts the fade when two clicks land close.
+      void videoNote.offsetWidth;
+      videoNote.classList.add("is-shown");
+    });
+  }
 
   /** What the marks still get wrong, or nothing. */
   const problem = () => timingProblem(timing, beatsPerBar);
@@ -167,6 +230,7 @@ export function createPlayback(
       ready: rigReady,
       rates: rig.rates(),
       rate: rig.rate(),
+      volume: rigReady ? rig.volume() : 100,
       timed: map !== undefined && problem() === undefined,
     };
 
@@ -179,7 +243,7 @@ export function createPlayback(
       canPlay: rigReady && map !== undefined,
       hasSelection,
       metronomeOn,
-      hearing,
+      notesOn,
       followOn,
     });
 
@@ -191,7 +255,6 @@ export function createPlayback(
         return bpm === undefined ? undefined : String(Math.round(bpm * 10) / 10);
       })(),
       metronomeOn,
-      hearing,
     });
 
     if (modes) {
@@ -203,6 +266,7 @@ export function createPlayback(
       playbackHost.hidden = mode !== "playback";
       timingHost.hidden = mode !== "timing";
     }
+    applyReach();
   }
 
   // ---- the section machine ---------------------------------------------
@@ -251,10 +315,6 @@ export function createPlayback(
   rig.ready
     .then(() => {
       rigReady = true;
-      // Said again now there is a player to say it to. Muting is a request
-      // rather than a state, and one made before the player answered went
-      // nowhere — which would leave the video audible under the transcription.
-      rig.setMuted(hearing === "notes");
       refresh();
     })
     .catch((error: unknown) => {
@@ -316,7 +376,10 @@ export function createPlayback(
     if (index === undefined) return;
     const seconds = field === "start" ? onsets[index] : ends[index];
     if (seconds === undefined) return;
-    setMark(field, seconds);
+    // The start leads in by a breath, so the note's attack is heard arriving
+    // rather than already sounding. The end stays exact — and so do the
+    // timing marks, which never pass through here: those are measurements.
+    setMark(field, field === "start" ? leadStart(seconds) : seconds);
   }
 
   // ---- the timing fields -----------------------------------------------
@@ -380,24 +443,16 @@ export function createPlayback(
   }
 
   /**
-   * Choose what is heard, and make it so.
-   *
-   * Muting is a request rather than a state — the iframe API has no mute event,
-   * so YouTube's own button can move it behind our back — which is why this is
-   * re-asserted on every change rather than tracked.
+   * Turn the transcription's own sound on or off.
    *
    * Called inside a press, which is what lets the piano's audio context be
-   * made at all.
+   * made at all. The video is never touched: its loudness belongs to the
+   * volume slider alone, and hearing the notes by themselves is this plus
+   * the slider at zero.
    */
-  function setHearing(next: Hearing): void {
-    const before = hearing;
-    hearing = map === undefined ? "video" : next;
-    rig.setMuted(hearing === "notes");
-    // Only when the piano itself goes on or off. Handing the notes over drops
-    // whatever is ringing, and moving between two positions that both sound
-    // them changes nothing about the notes — so Both and Notes swap without
-    // cutting the note being held across the switch.
-    if ((before === "video") !== (hearing === "video")) sendPlayalong();
+  function setNotes(on: boolean): void {
+    notesOn = on && map !== undefined;
+    sendPlayalong();
     refresh();
   }
 
@@ -442,7 +497,9 @@ export function createPlayback(
       fromNote(field);
       return true;
     }
-    if (letter === "r" && !shift) {
+    // Restart belongs to the section, and the section is the playback mode's:
+    // while the timing is being set there is no transport for it to mean.
+    if (letter === "r" && !shift && mode === "playback") {
       jumpBack();
       return true;
     }
@@ -455,7 +512,20 @@ export function createPlayback(
     if (event.key === " ") {
       // Taking the default also keeps a focused button from firing itself on
       // the same press — space means the transport, wherever focus sits.
-      playPause();
+      //
+      // In timing mode there is no transport: the video is scrubbed by hand
+      // there, so space runs and stops it in place, seeking nowhere.
+      if (mode === "timing") {
+        if (rigReady) {
+          if (rig.playing()) {
+            rig.pause();
+          } else {
+            rig.play();
+          }
+        }
+      } else {
+        playPause();
+      }
       event.preventDefault();
       return;
     }
@@ -472,44 +542,108 @@ export function createPlayback(
 
   elements.panel.replaceChildren();
 
+  // The reveal button first, in its own box above everything the keys are
+  // for; then the shell — the mode tabs where there are two modes, seated on
+  // the boxed body whichever panel the mode names fills. The panels draw no
+  // box of their own, so switching modes swaps the contents of one box
+  // rather than trading one box for another.
+  elements.panel.append(createKeysButton());
+
+  const shell = document.createElement("section");
+  shell.className = "playback-shell";
+  elements.panel.append(shell);
+
   let modes:
     | readonly { button: HTMLButtonElement; mode: Mode }[]
     | undefined;
 
   if (canRetime) {
     const switcher = document.createElement("div");
-    switcher.className = "mode-switch panel-switch";
+    switcher.className = "panel-tabs";
     switcher.setAttribute("role", "group");
     switcher.setAttribute("aria-label", "What the controls below do");
 
     modes = ([
       ["Playback", "playback"],
-      ["Timing", "timing"],
+      ["Set Timing", "timing"],
     ] as const).map(([label, which]) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "mode-option";
+      button.className = "panel-tab";
       button.textContent = label;
       button.addEventListener("click", () => {
-        mode = which;
-        // A rejection belonged to the panel that is no longer showing.
-        rejected = undefined;
-        refresh();
+        if (mode !== which) void switchMode(which);
       });
       switcher.append(button);
       return { button, mode: which };
     });
 
-    elements.panel.append(switcher);
+    shell.append(switcher);
   }
+
+  /**
+   * Change modes, trading the embed for the other kind on the way.
+   *
+   * Playback wants a player with no control bar — driven from the panel, its
+   * chrome only flashes distraction at every loop — while setting the timing
+   * scrubs with YouTube's own controls. The bar is a parameter of the embed,
+   * changeable only by loading a new one, so the switch reloads the player
+   * and puts back everything the reload forgets: the position, the speed,
+   * the loudness, and the motion. Motion comes back for free — seeking a
+   * freshly cued player starts it, and the browser allows the sound because
+   * the switch was a click — so the work is stopping it again for a video
+   * that was standing still.
+   */
+  async function switchMode(next: Mode): Promise<void> {
+    mode = next;
+    // A rejection belonged to the panel that is no longer showing.
+    rejected = undefined;
+    if (!options.remountVideo || !rigReady) {
+      refresh();
+      return;
+    }
+
+    const at = rig.now();
+    const rate = rig.rate();
+    const volume = rig.volume();
+    const wasPlaying = rig.playing();
+    // Told rather than left to notice: the machine must not spend the swap
+    // believing a player that no longer exists is still running.
+    if (section?.playing) run(pressPause(section));
+    rigReady = false;
+    refresh();
+
+    try {
+      const swapped = options.remountVideo({ controls: next === "timing" });
+      takeFrame(swapped);
+      await rig.swap(swapped);
+      rig.seekTo(at);
+      if (!wasPlaying) rig.pause();
+      rig.setRate(rate);
+      rig.setVolume(volume);
+      rigReady = true;
+    } catch (error: unknown) {
+      trouble =
+        error instanceof Error
+          ? `The video player could not be reached — ${error.message}.`
+          : "The video player could not be reached.";
+    }
+    refresh();
+  }
+
+  const body = document.createElement("div");
+  body.className = "playback-shell-body";
+  shell.append(body);
 
   const playbackHost = document.createElement("div");
   const timingHost = document.createElement("div");
   timingHost.hidden = true;
-  elements.panel.append(playbackHost, timingHost);
+  body.append(playbackHost, timingHost);
 
   const panel: PlaybackPanel = createPlaybackPanel(playbackHost, {
     onRate: (rate) => rig.setRate(rate),
+
+    onVolume: (volume) => rig.setVolume(volume),
 
     onPlayPause: playPause,
 
@@ -519,7 +653,7 @@ export function createPlayback(
       refresh();
     },
 
-    onJumpBack: jumpBack,
+    onRestart: jumpBack,
 
     onResetMark(field) {
       if (!map) return;
@@ -550,7 +684,7 @@ export function createPlayback(
       refresh();
     },
 
-    onHearing: setHearing,
+    onNotes: setNotes,
 
     onFollow(on) {
       followOn = on && map !== undefined;
@@ -560,6 +694,10 @@ export function createPlayback(
 
     onLetter,
   });
+
+  // The player is fenced or not by mode, and the fence's click answers with
+  // the play button — which is why this waits for the panel to exist.
+  takeFrame(iframe);
 
   /**
    * The timing panel, when the timing is this page's to correct.
@@ -590,15 +728,17 @@ export function createPlayback(
           onTypeMeasures: () => {},
           onTypeBpm: (bpm) => act({ kind: "type-bpm", bpm }),
           onToggleLock: () => act({ kind: "toggle-lock" }),
+          onVolume: (volume) => rig.setVolume(volume),
           onMetronome(on) {
             metronomeOn = on && map !== undefined;
             rig.setMetronome(metronomeOn ? map : undefined);
             refresh();
           },
-          onHearing: setHearing,
+          // No notes toggle: what is heard is a playback setting, and this
+          // panel sets the timing. The choice keeps what the playback panel says.
           onLetter,
         },
-        { measures: "fixed" },
+        { measures: "fixed", layout: "editor" },
       )
     : undefined;
 
@@ -639,7 +779,7 @@ export function createPlayback(
    * as they stood a keystroke ago.
    */
   function sendPlayalong(): void {
-    rig.setPlayalong(hearing === "video" ? undefined : played);
+    rig.setPlayalong(notesOn ? played : undefined);
   }
 
   /** Which event is sounding at a video second, or none outside the music. */

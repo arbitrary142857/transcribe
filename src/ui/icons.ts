@@ -20,7 +20,24 @@ function svg(paths: string, width = 24): string {
 }
 
 /** SMuFL glyphs, set in the score's own font. */
-const SMUFL = { quarterNote: "\uE1D5", quarterRest: "\uE4E5" } as const;
+const SMUFL = {
+  quarterNote: "\uE1D5",
+  quarterRest: "\uE4E5",
+  /**
+   * The single-note glyphs, head and stem and flags in one character, indexed
+   * by the note value they draw. Codepoints as VexFlow's own `Glyphs` table
+   * names them: noteWhole, noteHalfUp, noteQuarterUp, note8thUp, note16thUp,
+   * note32ndUp.
+   */
+  note: {
+    1: "\uE1D2",
+    2: "\uE1D3",
+    4: "\uE1D5",
+    8: "\uE1D7",
+    16: "\uE1D9",
+    32: "\uE1DB",
+  } as Record<number, string>,
+} as const;
 
 const glyph = (character: string, x: number, y: number, size: number) =>
   `<text x="${x}" y="${y}" font-family="Bravura" font-size="${size}" fill="currentColor">${character}</text>`;
@@ -45,154 +62,112 @@ function head(cx: number, cy: number, filled: boolean): string {
 const stem = (x: number, top: number, bottom: number) =>
   `<line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}" stroke="currentColor" stroke-width="${STROKE}" stroke-linecap="round" />`;
 
-/**
- * How far apart stacked flags sit.
- *
- * A hook descends about seven units from where it springs, so anything much
- * under this and consecutive flags overlap by more than half their ink: at 2.7,
- * where this started, a sixteenth and a thirty-second were the same dark smear
- * and could not be told apart. Spread to roughly the hook's own depth they read
- * as separate hooks, which is the only way the count is legible at button size.
- *
- * A single flag is untouched by this, so an eighth note looks exactly as it did.
- */
-const FLAG_PITCH = 4;
-
-/**
- * Flags curl off the top of the stem, one per halving below an eighth.
- *
- * Kept high and tight: they have to stay clear of the augmentation dot, which
- * sits out to the right at notehead height, and three of them have to read as
- * three rather than as one thick smear against the stem.
- */
-function flags(x: number, top: number, count: number): string {
-  let drawn = "";
-  for (let i = 0; i < count; i++) {
-    const y = top + i * FLAG_PITCH;
-    // A slender hook rather than a wedge: the outward curve and the return run
-    // close together, so two of them stack without becoming one dark mass.
-    drawn +=
-      `<path d="M${x} ${y} c2.7 0.9 4.0 2.6 3.9 4.6 c-0.05 0.9 -0.45 1.7 -1.2 2.4 ` +
-      `c0.45 -2.1 -0.55 -3.5 -2.4 -4.6 Z" fill="currentColor" />`;
-  }
-  return drawn;
-}
-
 const dot = (cx: number, cy: number) =>
-  `<circle cx="${cx}" cy="${cy}" r="1.15" fill="currentColor" />`;
+  `<circle cx="${cx}" cy="${cy}" r="1.3" fill="currentColor" />`;
+
+/**
+ * How each note value sits in its box: where the glyph's origin goes, and how
+ * far its ink runs so the dot can sit just past it.
+ *
+ * The glyphs are Bravura's own single-note characters, so the drawing is the
+ * engraver's; what is decided here is only placement. Bravura registers these
+ * with the baseline through the notehead's centre, so one `y` lines every head
+ * up across the row. The x offsets centre each glyph's ink — a whole note is
+ * all head, a flagged note runs a flag's width past its stem — and are optical
+ * rather than measured: the ESM build embeds the font whole and keeps no
+ * per-glyph metrics to read.
+ */
+const NOTE_GLYPH: Record<number, { x: number; ink: number }> = {
+  1: { x: 8.4, ink: 7.0 },
+  2: { x: 9.6, ink: 4.8 },
+  4: { x: 9.6, ink: 4.8 },
+  8: { x: 7.6, ink: 8.8 },
+  16: { x: 7.6, ink: 8.8 },
+  32: { x: 7.6, ink: 8.8 },
+};
+
+/** Where every notehead sits: low, but with clear floor under the head. */
+const NOTE_BASELINE = 18.4;
+const NOTE_SIZE = 16;
 
 /**
  * A note of `value` with `dots` augmentation dots.
  *
  * `value` is the denominator of the note's share of a whole note, matching
- * `NoteValue`: 1 is a whole note, 4 a quarter, 16 a sixteenth.
+ * `NoteValue`: 1 is a whole note, 4 a quarter, 16 a sixteenth. The note is
+ * Bravura's glyph; the dot stays a plain circle, because an augmentation dot
+ * is one, and the font's own comes out too small to read at button size.
  */
 export function noteIcon(value: number, dots: number): string {
-  const cx = 7.4;
-  // Low in the box, so the flags have the top of a full-length stem to hang
-  // from and still finish well above the dot.
-  const cy = 18.3;
-  const stemX = cx + 3.8;
-  // High enough that a thirty-second's three flags all fit above the dot. The
-  // box cannot grow to make room: the svg is drawn to a square cell, so a wider
-  // view box would letterbox and this one icon would come out smaller than the
-  // others in its row.
-  const stemTop = 3.2;
-  const flagged = value >= 8;
-  const filled = value >= 4;
-
-  let parts = head(cx, cy, filled);
-  if (value > 1) {
-    parts += stem(stemX, stemTop, cy - 0.5);
-  }
-  if (flagged) {
-    parts += flags(stemX, stemTop, Math.log2(value) - 2);
-  }
-  // Right of the notehead and level with it, which is where a dot goes. A
-  // flagged note pushes it further out, past where the flags reach: level with
-  // the head it already clears them downwards, but a thirty-second's lowest
-  // flag comes down far enough that the two would still overlap side to side,
-  // and a dot touching a flag reads as a fourth flag.
-  const dotX = value === 1 ? cx + 5.6 : stemX + (flagged ? 5.6 : 4);
+  const place = NOTE_GLYPH[value] ?? NOTE_GLYPH[4]!;
+  let parts = glyph(
+    SMUFL.note[value] ?? SMUFL.quarterNote,
+    place.x,
+    NOTE_BASELINE,
+    NOTE_SIZE,
+  );
+  const dotX = place.x + place.ink + 2.6;
   for (let i = 0; i < dots; i++) {
-    parts += dot(dotX + i * 3.1, cy);
+    parts += dot(dotX + i * 3.4, NOTE_BASELINE);
   }
   return svg(parts);
 }
 
-/** Turning a note into a rest of the same length: what it is, and what it becomes. */
+/**
+ * Turning a note into silence: the rest it becomes.
+ *
+ * The rest alone, in Bravura's own drawing — the button's caption already says
+ * "Turn to rest", and the old note-arrow-rest triptych was three pictures
+ * where one glyph says it.
+ */
 export function restIcon(): string {
-  return svg(
-    glyph(SMUFL.quarterNote, 1, 19.5, 20) +
-      arrow(19, 12, 30) +
-      glyph(SMUFL.quarterRest, 33, 16.5, 20),
-    46,
-  );
+  return svg(glyph(SMUFL.quarterRest, 5.6, 17.5, 22));
 }
 
 /**
- * A plain arrow, pointing right.
- *
- * The head is a filled triangle rather than two strokes meeting at a point: an
- * open chevron this small comes out spindly and reads as a stray mark.
+ * Two quarter notes, Bravura's own, side by side — the pair every tie icon is
+ * about. The arc is drawn under the heads, where an engraver puts it when the
+ * stems go up.
  */
-function arrow(from: number, y: number, to: number): string {
+function tiedPair(): string {
   return (
-    `<line x1="${from}" y1="${y}" x2="${to - 3.6}" y2="${y}" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />` +
-    `<path d="M${to} ${y} L${to - 4.4} ${y - 2.9} L${to - 4.4} ${y + 2.9} Z" fill="currentColor" />`
+    glyph(SMUFL.quarterNote, 4, 15, 12) + glyph(SMUFL.quarterNote, 17.5, 15, 12)
+  );
+}
+
+/** Two notes with a tie between them. */
+export function tieIcon(): string {
+  return svg(
+    tiedPair() +
+      `<path d="M6 17.6 Q13.75 22 21.5 17.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />`,
+    28,
   );
 }
 
 /**
- * Two notes with a tie between them.
- *
- * Both notes are drawn whole — heads and stems — because the icon has to say
- * "these two notes", and the tie is the arc joining their heads. Stems up puts
- * the tie underneath, which is where it goes.
+ * The same two notes, with the tie broken open between them: the tie is what
+ * is being taken away, so what is missing has to be the visible part.
  */
-export function tieIcon(): string {
-  const left = 8;
-  const right = 24;
-  const cy = 9.5;
-  // Stems down, which puts the tie above — and away from the noteheads. Sprung
-  // from directly beneath them the curve merged into the heads at button size
-  // and the pair stopped reading as two notes at all.
-  return svg(
-    `<path d="M${left - 1} ${cy - 4.6} Q${(left + right) / 2} ${cy - 9.2} ${right + 1} ${cy - 4.6}" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />` +
-      head(left, cy, true) +
-      stem(left - 3.4, cy + 0.5, 21) +
-      head(right, cy, true) +
-      stem(right - 3.4, cy + 0.5, 21),
-    32,
-  );
-}
-
-/** The same two notes, with the tie broken open between them. */
 export function untieIcon(): string {
-  const left = 8;
-  const right = 24;
-  const cy = 9.5;
-  const arc = (from: number, control: number, to: number) =>
-    `<path d="M${from} ${cy - 4.6} Q${control} ${cy - 8.4} ${to} ${cy - 7.6}" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" />`;
-
-  // Two stubs of a tie with a gap where the join would be: the tie is what is
-  // being taken away, so what is missing has to be the visible part.
   return svg(
-    arc(left - 1, left + 3, left + 6.5) +
-      arc(right + 1, right - 3, right - 6.5) +
-      head(left, cy, true) +
-      stem(left - 3.4, cy + 0.5, 21) +
-      head(right, cy, true) +
-      stem(right - 3.4, cy + 0.5, 21),
-    32,
+    tiedPair() +
+      `<path d="M6 17.6 Q8.5 20.2 10.8 20.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />` +
+      `<path d="M21.5 17.6 Q19 20.2 16.7 20.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />`,
+    28,
   );
 }
 
-/** An X notehead on a stem: a note whose pitch is not chosen yet. */
-export function unpitchedIcon(): string {
-  return svg(
-    `<path d="M5.4 13.8 L11.6 18.6 M11.6 13.8 L5.4 18.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />` +
-      stem(12.1, 5.6, 17.4),
+/**
+ * An eraser, for taking the pitch off a note and leaving its rhythm.
+ *
+ * Phosphor's, like the rest of the interface icons: rubbing something out is
+ * a thing every icon set draws, and this reads as it at button size where an
+ * X notehead on a stem read as a note nobody could name.
+ */
+export function eraserIcon(): string {
+  return phosphor(
+    `<line x1="96" y1="104" x2="160" y2="168" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<path d="M112,216,219.31,108.69a16,16,0,0,0,0-22.63L177.94,44.69a16,16,0,0,0-22.63,0L36.69,163.31a16,16,0,0,0,0,22.63L66.75,216H216" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>`,
   );
 }
 
@@ -250,18 +225,12 @@ export function markEndIcon(): string {
   );
 }
 
-/**
- * A metronome: the case, and the rod leaning out of it.
- *
- * The lean is the whole point — upright it would read as a tent — so the rod
- * runs off to one side with its weight partway up.
- */
+/** A metronome: Phosphor's, case and beating rod. */
 export function metronomeIcon(): string {
-  return svg(
-    `<path d="M8.4 20.5 L11.6 4.5 L14.4 4.5 L17.6 20.5 Z" fill="none" stroke="currentColor" stroke-width="${STROKE}" stroke-linejoin="round" />` +
-      `<line x1="9.6" y1="14.5" x2="16.4" y2="14.5" stroke="currentColor" stroke-width="0.9" opacity="0.55" />` +
-      `<line x1="13" y1="19" x2="16.6" y2="6.4" stroke="currentColor" stroke-width="${STROKE}" stroke-linecap="round" />` +
-      `<rect x="14.1" y="10.4" width="4" height="2.2" rx="0.5" transform="rotate(-16 16.1 11.5)" fill="currentColor" />`,
+  return phosphor(
+    `<path d="M56,216a8,8,0,0,1-7.63-10.43l50.91-160A8,8,0,0,1,106.91,40h42.18a8,8,0,0,1,7.62,5.57l50.91,160A8,8,0,0,1,200,216Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<line x1="128" y1="168" x2="208" y2="80" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<line x1="60.34" y1="168" x2="195.66" y2="168" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>`,
   );
 }
 
@@ -269,81 +238,125 @@ export function metronomeIcon(): string {
  * The marker that follows the music, shown standing on a note.
  *
  * One note under the marker and one clear of it, which is what says the marker
- * moves. Solid enough to survive being drawn in white on a filled button, where
- * the faint version it started as vanished into the fill.
+ * moves. The notes are Bravura's own, stems and all, and the marker is a bar
+ * centred on the staff it rides down.
+ *
+ * Drawn to its own geometry rather than the shared staff above: those
+ * constants put a staff in the lower half of the box, which left this icon
+ * looking half the size of the ones beside it. Here the staff is centred and
+ * the marker reaches nearly the full height, so the icon fills its button.
  */
 export function playheadIcon(): string {
+  const top = 4;
+  const gap = 4;
+  let lines = "";
+  for (let i = 0; i < 5; i++) {
+    const y = top + i * gap;
+    // Fainter than the notes and the marker on purpose: the staff is the
+    // ground this happens on, and at button size five full-strength lines
+    // are all anyone sees.
+    lines += `<line x1="1" y1="${y}" x2="23" y2="${y}" stroke="currentColor" stroke-width="0.9" stroke-linecap="round" opacity="0.4" />`;
+  }
   return svg(
-    staffLines(2.5, 21.5) +
-      head(7.5, 13, true) +
-      head(17, 16, true) +
-      `<rect x="4.9" y="4.5" width="5.2" height="15" rx="1.3" fill="currentColor" opacity="0.5" />` +
-      `<line x1="7.5" y1="4.5" x2="7.5" y2="19.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" />`,
-    24,
+    lines +
+      // The box around the note, which is what the page itself draws over the
+      // score. Outlined as well as washed: a wash alone has no edge, and in
+      // white on the lit accent an edgeless wash is a smudge.
+      `<rect x="2.6" y="1.6" width="8.6" height="20.8" rx="1.6" fill="currentColor" fill-opacity="0.22" ` +
+      `stroke="currentColor" stroke-width="1.1" stroke-opacity="0.9" />` +
+      glyph(SMUFL.quarterNote, 4.2, 16, 14) +
+      glyph(SMUFL.quarterNote, 14.4, 12, 14),
   );
 }
 
-/**
- * A padlock, closed: the tempo is held and edits move in step.
- *
- * The shackle sits proud of the body so the two read as lock parts rather than
- * as a rounded rectangle with a hat.
- */
+/** A padlock, closed: the tempo is held and edits move in step. Phosphor's. */
 export function lockClosedIcon(): string {
-  return svg(
-    `<rect x="6.5" y="11" width="11" height="8.5" rx="1.6" fill="currentColor" />` +
-      `<path d="M8.8 11 V8.4 a3.2 3.2 0 0 1 6.4 0 V11" fill="none" stroke="currentColor" stroke-width="1.7" />`,
+  return phosphor(
+    `<path d="M208,80H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96Z"/>`,
   );
 }
 
 /** The same padlock with its shackle swung open: the tempo follows the marks. */
 export function lockOpenIcon(): string {
-  return svg(
-    `<rect x="6.5" y="11" width="11" height="8.5" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4" />` +
-      `<path d="M8.8 11 V8.4 a3.2 3.2 0 0 1 6.35 -0.6" fill="none" stroke="currentColor" stroke-width="1.7" />`,
+  return phosphor(
+    `<rect x="40" y="88" width="176" height="128" rx="8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<path d="M88,88V56a40,40,0,0,1,40-40c19.35,0,36.29,13.74,40,32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>`,
   );
 }
 
 export function playIcon(): string {
-  return svg(`<path d="M8 5.5 L19 12 L8 18.5 Z" fill="currentColor" />`);
+  return phosphor(
+    `<path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"/>`,
+  );
 }
 
 export function pauseIcon(): string {
-  return svg(
-    `<rect x="7" y="5.5" width="3.6" height="13" rx="0.9" fill="currentColor" />` +
-      `<rect x="13.4" y="5.5" width="3.6" height="13" rx="0.9" fill="currentColor" />`,
+  return phosphor(
+    `<path d="M216,48V208a16,16,0,0,1-16,16H160a16,16,0,0,1-16-16V48a16,16,0,0,1,16-16h40A16,16,0,0,1,216,48ZM96,32H56A16,16,0,0,0,40,48V208a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V48A16,16,0,0,0,96,32Z"/>`,
   );
 }
 
-/** Back to the top of the section: the bar it stops at, and the way there. */
-export function jumpBackIcon(): string {
-  return svg(
-    `<rect x="5.4" y="5.5" width="2.2" height="13" rx="0.7" fill="currentColor" />` +
-      `<path d="M19 5.5 L9.5 12 L19 18.5 Z" fill="currentColor" />`,
+/** Back to the top of the section: Phosphor's skip-back. */
+export function restartIcon(): string {
+  return phosphor(
+    `<path d="M208,47.88V208.12a16,16,0,0,1-24.43,13.43L64,146.77V216a8,8,0,0,1-16,0V40a8,8,0,0,1,16,0v69.23L183.57,34.45A15.95,15.95,0,0,1,208,47.88Z"/>`,
   );
 }
 
-/**
- * A circle almost closed, with one arrowhead carrying it round: what reaches
- * the end starts again.
- */
+/** What reaches the end starts again: Phosphor's repeat. */
 export function loopIcon(): string {
-  return svg(
-    `<path d="M18.35 9.2 A7 7 0 1 0 19 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />` +
-      `<path d="M19.9 4.3 L19.55 10.1 L14.4 8.1 Z" fill="currentColor" />`,
+  return phosphor(
+    `<polyline points="200 88 224 64 200 40" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<path d="M32,128A64,64,0,0,1,96,64H224" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<polyline points="56 168 32 192 56 216" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<path d="M224,128a64,64,0,0,1-64,64H32" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>`,
   );
 }
 
-/**
- * An arrow curling back on itself: put this back the way it started.
- *
- * The loop icon's mirror twin — anticlockwise where the loop runs clockwise —
- * so the two read as relatives, one that circles and one that returns.
- */
+/** Put this back the way it started: Phosphor's arrow-counter-clockwise. */
 export function restoreIcon(): string {
-  return svg(
-    `<path d="M5.65 9.2 A7 7 0 1 1 5 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />` +
-      `<path d="M4.1 4.3 L4.45 10.1 L9.6 8.1 Z" fill="currentColor" />`,
+  return phosphor(
+    `<polyline points="24 56 24 104 72 104" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<path d="M67.59,192A88,88,0,1,0,65.77,65.77L24,104" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>`,
+  );
+}
+
+/** Three lines: the menu that rolls the site nav down, and up again. */
+export function listIcon(): string {
+  return phosphor(
+    `<line x1="40" y1="128" x2="216" y2="128" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<line x1="40" y1="64" x2="216" y2="64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
+      `<line x1="40" y1="192" x2="216" y2="192" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>`,
+  );
+}
+
+/** Phosphor's speaker, sounding — the notes toggle's badge while notes play. */
+const SPEAKER_ON =
+  `<path d="M80,168H32a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80l72-56V224Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
+  `<line x1="80" y1="88" x2="80" y2="168" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
+  `<path d="M192,106.85a32,32,0,0,1,0,42.3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
+  `<path d="M221.67,80a72,72,0,0,1,0,96" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>`;
+
+/** The same speaker struck through: the notes are not heard. */
+const SPEAKER_OFF =
+  `<line x1="48" y1="40" x2="208" y2="216" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
+  `<line x1="80" y1="88" x2="80" y2="168" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
+  `<path d="M192,106.87a32,32,0,0,1,0,42.3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
+  `<path d="M152,154.4V224L80,168H32a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80l6.82-5.3" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
+  `<polyline points="112.15 62.99 152 32 152 106.83" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>`;
+
+/**
+ * Whether the transcription is heard: Phosphor's music-notes with the speaker
+ * standing beside them, sounding or struck through. A wide icon on purpose —
+ * the two glyphs sit shoulder to shoulder, and the pair of pictures is the
+ * whole state: the button that shows this carries no words.
+ */
+export function notesHeardIcon(on: boolean): string {
+  return (
+    `<svg xmlns="${NS}" viewBox="0 0 430 256" fill="currentColor" aria-hidden="true" focusable="false">` +
+    `<g transform="translate(0 14) scale(0.9)"><path d="M212.92,17.71a7.89,7.89,0,0,0-6.86-1.46l-128,32A8,8,0,0,0,72,56V166.1A36,36,0,1,0,88,196V102.25l112-28V134.1A36,36,0,1,0,216,164V24A8,8,0,0,0,212.92,17.71Z"/></g>` +
+    `<g transform="translate(226 38) scale(0.72)">${on ? SPEAKER_ON : SPEAKER_OFF}</g>` +
+    `</svg>`
   );
 }
 
@@ -460,19 +473,27 @@ export function lengthIcon(): string {
 }
 
 /**
- * The Phosphor glyphs: the chili pepper, the heart, and the solvers' check.
+ * The Phosphor glyphs.
  *
- * The icons here that are not this site's own drawing. Every path below is
- * Phosphor Icons' (phosphoricons.com) -- `pepper` and `heart` in their
- * `regular` and `fill` weights, two weights of one silhouette each, which
- * is what lets a display lay the filled shape under the outlined one; and
- * `check-circle` regular for the solved-by figure, which stays legible at
- * figure size and cannot be read as the card's plain ✓ badge. Phosphor
- * Icons is MIT licensed, Copyright (c) 2023 Phosphor Icons; this notice is
- * the attribution the licence asks to travel with the paths. Their
- * viewBox, too (256, not 24); the CSS sizes them in ems.
+ * The icons here that are not this site's own drawing, nor Bravura's. Every
+ * shape passed through `phosphor()` is Phosphor Icons' (phosphoricons.com):
+ * `pepper` and `heart` in their `regular` and `fill` weights, two weights of
+ * one silhouette each, which is what lets a display lay the filled shape
+ * under the outlined one; `check-circle` regular for the solved-by figure;
+ * and the player's controls above — `play`, `pause`, `skip-back` and
+ * `music-notes` in `fill`, `repeat`, `arrow-counter-clockwise`, `metronome`,
+ * `lock-simple` open and closed, `speaker-high`, `speaker-slash`, `eraser`
+ * and `list` in `regular`. Phosphor Icons is MIT
+ * licensed, Copyright (c) 2023 Phosphor Icons; this notice is the
+ * attribution the licence asks to travel with the shapes. Their viewBox,
+ * too (256, not 24); the CSS sizes them in ems.
  */
 const PHOSPHOR_VIEW = `<svg xmlns="${NS}" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false">`;
+
+/** One Phosphor icon, wrapped for a button. Declared above, used above too. */
+function phosphor(inner: string): string {
+  return `${PHOSPHOR_VIEW}${inner}</svg>`;
+}
 
 /** The outline weight: the border of every pepper, always visible. */
 export function pepperIcon(): string {

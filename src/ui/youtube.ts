@@ -114,12 +114,25 @@ export function readYouTubeLink(text: string): LinkReading {
  * `origin` names the page holding the player, so it can tell those messages from
  * anyone else's. It is passed in rather than read from `location` here because
  * this function is also called where there is no browser to read it from.
+ *
+ * `controls: false` asks the player to draw no control bar — YouTube's own
+ * documented parameter, for the places the player is driven from the panel
+ * beside it and its own chrome only flashes distraction. Where the player is
+ * scrubbed by hand — the setup page, the editor's timing mode — the controls
+ * stay, which is the default.
  */
-export function embedUrl(videoId: string, origin?: string): string {
+export function embedUrl(
+  videoId: string,
+  origin?: string,
+  { controls = true }: { controls?: boolean } = {},
+): string {
   const url = new URL(`https://www.youtube.com/embed/${videoId}`);
   url.searchParams.set("playsinline", "1");
   url.searchParams.set("rel", "0");
   url.searchParams.set("enablejsapi", "1");
+  if (!controls) {
+    url.searchParams.set("controls", "0");
+  }
   if (origin) {
     url.searchParams.set("origin", origin);
   }

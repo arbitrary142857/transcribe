@@ -60,11 +60,13 @@ export function createField(options: FieldOptions, onInput: () => void): Field {
   label.className = "setup-link-label details-label";
   label.textContent = options.label;
   if (options.required) {
-    // Marked in the same red the app uses for the note under the cursor, and
-    // hidden from a screen reader, which is told by aria-required instead.
+    // Said in words rather than a star — a star is a footnote mark until the
+    // reader already knows the convention — in the same red the app uses for
+    // the note under the cursor, and hidden from a screen reader, which is
+    // told by aria-required instead.
     const mark = document.createElement("span");
     mark.className = "details-required";
-    mark.textContent = "*";
+    mark.textContent = "(Required)";
     mark.setAttribute("aria-hidden", "true");
     label.append(mark);
   }

@@ -112,9 +112,14 @@ try {
     showTrouble(required("trouble"), level.trouble);
     required("toolbar").hidden = true;
     required("keyboard-area").hidden = true;
+    required("side-panel").hidden = true;
   } else {
     required("toolbar").hidden = false;
     required("keyboard-area").hidden = false;
+    required("side-panel").hidden = false;
+    // The working frame: the page stops scrolling and the score's box takes
+    // over, with the nav rolled up until its button is pressed.
+    document.body.classList.add("is-framed");
     createPlayPage(
       {
         bar: required("play-bar"),

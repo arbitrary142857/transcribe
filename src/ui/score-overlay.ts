@@ -63,11 +63,18 @@ export const wantsLessMotion = (): boolean =>
  * nothing to see.
  */
 export function keepingScroll<T>(rebuild: () => T): T {
+  // The framed pages scroll the score inside its own box; narrow layouts and
+  // the rest of the site scroll the document. Guarding both costs nothing.
+  const scroller = document.getElementById("score-scroll");
+  const top = scroller?.scrollTop ?? 0;
   const x = window.scrollX;
   const y = window.scrollY;
   const result = rebuild();
   if (window.scrollX !== x || window.scrollY !== y) {
     window.scrollTo(x, y);
+  }
+  if (scroller && scroller.scrollTop !== top) {
+    scroller.scrollTop = top;
   }
   return result;
 }

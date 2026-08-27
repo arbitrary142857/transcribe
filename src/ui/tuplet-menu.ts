@@ -4,18 +4,16 @@ import { ratiosOfferedAt } from "../editor/operations.js";
 import { tupletIcon } from "./icons.js";
 
 /**
- * The ratios the menu shows.
- *
- * The four that divide a beat into more parts sit together in a square; the
- * duplet is set apart because it is the one that divides into fewer, which is
- * a different thing to reach for.
+ * The ratios the menu shows, in one row: the four that divide a beat into
+ * more parts first, then the duplet, which divides into fewer and so comes
+ * last rather than among them.
  */
-const RATIOS: readonly { tuplet: Tuplet; name: string; aside?: boolean }[] = [
+const RATIOS: readonly { tuplet: Tuplet; name: string }[] = [
   { tuplet: Tuplet.Triplet, name: "Triplet" },
   { tuplet: Tuplet.Quintuplet, name: "Quintuplet" },
   { tuplet: new Tuplet(6, 4), name: "Sextuplet" },
   { tuplet: new Tuplet(7, 4), name: "Septuplet" },
-  { tuplet: new Tuplet(2, 3), name: "Duplet", aside: true },
+  { tuplet: new Tuplet(2, 3), name: "Duplet" },
 ];
 
 export type TupletMenuOptions = {
@@ -45,14 +43,9 @@ export function createTupletMenu(
 
   const panel = document.createElement("div");
   panel.className = "panel tuplet-panel";
-  const grid = document.createElement("div");
-  grid.className = "tuplet-grid";
-  const aside = document.createElement("div");
-  aside.className = "tuplet-aside";
-  panel.append(grid, aside);
   element.append(panel);
 
-  const buttons = RATIOS.map(({ tuplet, name, aside: apart }) => {
+  const buttons = RATIOS.map(({ tuplet, name }) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "tuplet";
@@ -62,7 +55,7 @@ export function createTupletMenu(
     button.title = name;
     button.setAttribute("aria-label", `${name}, ${tuplet}`);
     button.setAttribute("aria-pressed", "false");
-    (apart ? aside : grid).append(button);
+    panel.append(button);
     return { button, tuplet };
   });
 

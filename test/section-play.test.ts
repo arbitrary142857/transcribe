@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   createSection,
+  leadStart,
   pressJumpBack,
   pressPause,
   pressPlay,
+  SECTION_LEAD_SECONDS,
   setLooping,
   setRange,
   stepSection,
@@ -335,5 +337,21 @@ describe("moving the end mark behind the playhead", () => {
     assert.equal(moved.state.prev, 12);
     const step = stepSection(moved.state, { kind: "tick", now: 20.01, wall: 3100 });
     assert.deepEqual(step.commands, [{ kind: "seek", to: 10 }]);
+  });
+});
+
+describe("leadStart()", () => {
+  it("starts the section a breath before the note, so its attack is heard whole", () => {
+    assert.equal(leadStart(10), 10 - SECTION_LEAD_SECONDS);
+  });
+
+  it("keeps the lead-in under a sixteenth note at a fast tempo", () => {
+    // Sixteenths at 160 to the quarter last 93.75ms; a lead-in reaching past
+    // one would take the previous note with it.
+    assert.ok(SECTION_LEAD_SECONDS < 60 / 160 / 4);
+  });
+
+  it("never reaches before the start of the video", () => {
+    assert.equal(leadStart(0.02), 0);
   });
 });

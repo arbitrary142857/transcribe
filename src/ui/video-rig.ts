@@ -73,8 +73,20 @@ export type VideoRig = {
    * must come from inside a user gesture.
    */
   setPlayalong(notes: readonly PianoNote[] | undefined): void;
-  /** Silence the video itself, for hearing the transcription on its own. */
-  setMuted(muted: boolean): void;
+  /** How loud the video speaks, 0 to 100; 100 while the player has not answered. */
+  volume(): number;
+  setVolume(volume: number): void;
+  /**
+   * Trade the player for the one in this iframe.
+   *
+   * The editor's mode switch rebuilds the embed to change what YouTube draws
+   * on it, and the rig carries on across the trade: same clock machinery, same
+   * metronome and piano, watermarks re-based on the new player's reading.
+   * Whatever was scheduled was scheduled for a player that is gone, so it is
+   * silenced rather than left to sound. The caller owns putting the position,
+   * speed and volume back.
+   */
+  swap(iframe: HTMLIFrameElement): Promise<void>;
   subscribe(listener: RigListener): () => void;
   destroy(): void;
 };
@@ -194,9 +206,14 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
     }
   }, TICK_MS);
 
-  const ready = adoptPlayer(iframe).then((adopted) => {
+  /** Take a freshly adopted player on, first or after a swap. */
+  function take(adopted: PlayerHandle): void {
     handle = adopted;
     clock = startedClock(adopted.sample());
+    // Nothing is owed from before this player existed.
+    const at = now();
+    scheduledThrough = at;
+    playedThrough = at;
     adopted.onLife((life) => {
       // Sample first, so the clock has already taken the change in before
       // anyone is told about it, and `now` is read from the settled clock.
@@ -209,6 +226,10 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
       pump();
       for (const listener of listeners) listener.onRate?.(rate);
     });
+  }
+
+  const ready = adoptPlayer(iframe).then((adopted) => {
+    take(adopted);
     frame = requestAnimationFrame(tickFrame);
   });
 
@@ -257,7 +278,24 @@ export function createVideoRig(iframe: HTMLIFrameElement): VideoRig {
       }
     },
 
-    setMuted: (muted) => handle?.setMuted(muted),
+    volume: () => handle?.volume() ?? 100,
+    setVolume: (volume) => handle?.setVolume(volume),
+
+    async swap(next) {
+      // Whatever was lined up was lined up for a player that is going away.
+      metronome?.silence();
+      piano?.silence();
+      // The old iframe has already been taken out of the page; destroying a
+      // player whose element is gone is allowed to complain into the void.
+      try {
+        handle?.destroy();
+      } catch {
+        // Nothing to do: the player it would tear down no longer exists.
+      }
+      handle = undefined;
+      clock = undefined;
+      take(await adoptPlayer(next));
+    },
 
     subscribe(listener) {
       listeners.push(listener);

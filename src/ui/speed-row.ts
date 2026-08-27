@@ -56,9 +56,12 @@ export function createSpeedRow(onRate: (rate: number) => void): SpeedRow {
 
       if (changed || dots.childElementCount !== rates.length) {
         dots.replaceChildren(
-          ...rates.map(() => {
+          ...rates.map((stop) => {
             const dot = document.createElement("span");
-            dot.className = "playback-speed-dot";
+            // Full speed is the stop that means "as written", so it is the one
+            // marked: bigger and ringed, the home position on the track.
+            dot.className =
+              stop === 1 ? "playback-speed-dot is-unit" : "playback-speed-dot";
             return dot;
           }),
         );

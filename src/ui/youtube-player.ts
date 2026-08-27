@@ -16,9 +16,8 @@ type YTPlayer = {
   setPlaybackRate(rate: number): void;
   playVideo(): void;
   pauseVideo(): void;
-  mute(): void;
-  // The API's own spelling, capital M and all.
-  unMute(): void;
+  getVolume(): number;
+  setVolume(volume: number): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   destroy(): void;
 };
@@ -78,13 +77,13 @@ export type PlayerHandle = {
   pause(): void;
   seekTo(seconds: number): void;
   /**
-   * Silence the video, or let it speak again.
+   * How loud the video speaks, 0 to 100.
    *
-   * There is no event for this: YouTube's own mute button can move it behind
-   * our back, and nothing tells us. So this is a request rather than a state —
-   * whoever holds the setting holds it, and re-asserts it when it matters.
+   * There is no event for it: a request rather than a state, held by whoever
+   * holds the slider.
    */
-  setMuted(muted: boolean): void;
+  volume(): number;
+  setVolume(volume: number): void;
   /** Transport changes — including ones made from YouTube's own controls. */
   onLife(listener: (life: PlayerLife) => void): void;
   /** The speed changed — including from YouTube's own settings menu. */
@@ -193,7 +192,9 @@ export async function adoptPlayer(
     play: () => player.playVideo(),
     pause: () => player.pauseVideo(),
     seekTo: (seconds) => player.seekTo(seconds, true),
-    setMuted: (muted) => (muted ? player.mute() : player.unMute()),
+    volume: () => player.getVolume(),
+    setVolume: (volume) =>
+      player.setVolume(Math.max(0, Math.min(100, Math.round(volume)))),
     onLife: (listener) => lifeListeners.push(listener),
     onRate: (listener) => rateListeners.push(listener),
     destroy: () => player.destroy(),

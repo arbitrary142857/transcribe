@@ -89,6 +89,7 @@ try {
         keyboard: required("keyboard"),
         toolbar: required("toolbar"),
         keyboardArea: required("keyboard-area"),
+        sidePanel: required("side-panel"),
         video: required("video"),
         playbackControls: required("playback-controls"),
         scoreArea: required("score-area"),

@@ -413,7 +413,11 @@ export function createPlayPage(
 
   // ---- the video ---------------------------------------------------------
 
-  const iframe = mountVideoPanel(elements.video, record.videoId);
+  // No control bar, ever: the player is driven from the panel on this page,
+  // and its own chrome flashing at every loop was only distraction.
+  const iframe = mountVideoPanel(elements.video, record.videoId, {
+    controls: false,
+  });
   playback = createPlayback(
     { panel: elements.playbackControls, scoreArea: elements.scoreArea },
     iframe,
