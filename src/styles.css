@@ -47,7 +47,7 @@
      box it sits in, the reveal button, the piano's bed. One tone, so the
      tools read as one family laid on the bands. */
   --tool-box: #fcfaf5;
-  --sheet: #fffffc;
+  --sheet: #fbf9f2;
   --frame-rule: #98907f;
   --page-bg: #ece7dc;
   --ink: #1c1a17;
@@ -80,8 +80,8 @@
   --note-halo-hover: #efe6da;
   --white-key-width: 56px;
   --black-key-width: 36px;
-  --white-key-height: 152px;
-  --black-key-height: 95px;
+  --white-key-height: 132px;
+  --black-key-height: 82px;
   --keyboard-padding: 0.75rem;
 }
 
@@ -128,25 +128,19 @@ main {
 
 /* ---- The working frame ----
 
-   Once a melody is open the page becomes a fixed frame — toolbar, then the
-   side panel beside the score over the keyboard — and stops scrolling; the
-   score's own box is the only thing that does. The nav rolls up out of the
-   frame and comes back at the press of its button in the bar. */
+   Once a melody is open the page becomes a fixed frame — nav, toolbar, then
+   the score over the keyboard with the side panel beside it — and stops
+   scrolling; the score's own box is the only thing that does. The nav keeps
+   its row here as it does everywhere else: it was rolled up behind a button
+   for a while, and the button cost more to know about than the row costs to
+   show. */
 
 body.is-framed {
   height: 100dvh;
   overflow: hidden;
 }
 
-body.is-framed .site-nav {
-  display: none;
-}
-
-body.is-framed.nav-open .site-nav {
-  display: flex;
-}
-
-/* The two working pages hold a side panel against the window's left edge, so
+/* The two working pages hold a side panel against the window's right edge, so
    their main runs the full width and the parts space themselves instead. */
 main.editor-main {
   padding: 0;
@@ -165,10 +159,10 @@ main.editor-main {
   min-height: 0;
 }
 
-/* The video and its controls: a quiet band down the window's left side, its
-   contents centred in whatever height the frame gives it. `overflow-y` is
-   the last resort for a window genuinely shorter than the video's legal
-   floor plus the controls. */
+/* The tools and the video: a quiet band down the window's right side, with
+   the tools pinned to its top and the rest centred in whatever height the
+   frame gives it. `overflow-y` is the last resort for a window genuinely
+   shorter than the video's legal floor plus the controls. */
 #side-panel {
   flex: 0 0 auto;
   display: flex;
@@ -176,9 +170,32 @@ main.editor-main {
   width: var(--side-w);
   min-height: 0;
   overflow-y: auto;
+  gap: 1rem;
   padding: 1.2rem 1.6rem;
   background: var(--band);
-  border-right: 1px solid var(--frame-rule);
+  border-left: 1px solid var(--frame-rule);
+}
+
+/* The panel's own tools, above the video and everything that drives it: the
+   line about the shortcuts, and — in the editor — whether the rhythm controls
+   are on the page at all. They stand apart from the playback shell because
+   they are about the music rather than about the video. */
+#side-tools {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.6rem;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+/* Everything in the corner takes only the room it needs, and hangs from the
+   right-hand edge under the note. The switch spanning the panel gave it the
+   weight of the controls below, which it does not have: it says how the page
+   is set up, not what to do next. */
+#side-tools > * {
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 /* The score over the keyboard, filling what the side panel leaves. */
@@ -198,24 +215,152 @@ main.editor-main {
   min-height: 0;
   overflow-y: auto;
   background: var(--sheet);
+  /* A sheet shorter than the paper sits in the middle of it rather than
+     against the top edge, which is where a short piece sits on a printed page.
+     `safe` is the whole reason this is not plain `center`: once the music is
+     taller than the box, centring would push its first line above the scroll
+     origin where nothing can reach it, and `safe` gives up and aligns to the
+     start instead. */
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
 }
 
 #workspace {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  /* Its own height, never the paper's: stretched, there would be nothing left
+     for the paper to centre. */
+  flex: 0 0 auto;
   min-width: 0;
   padding: 1.75rem 2rem 2rem;
 }
 
-/* The rhythm controls, the frame's top band. Sticky for the narrow layouts
-   where the page still scrolls; in the frame it is simply the first row.
-   A hairline is the whole of the separation — the bands share one quiet tone
-   and the score's sheet below is the bright thing. */
+/* ---- The head of the sheet ----
+
+   Laid out the way printed music lays it out, because that is where a reader
+   already looks for these three things: the title centred and large, what it
+   is from centred and smaller beneath, and who wrote it down against the right
+   margin just above the first stave. It is part of the sheet and scrolls with
+   it — the head of the page, not a status line about the page. */
+#sheet-head {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin-bottom: 1.4rem;
+}
+
+.sheet-title {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* What the page actually centres. Shrink-to-fit, so a short title's box is the
+   width of its words and a long one's is the column. */
+.sheet-title-line {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* Hung off the title's right edge rather than following it in the line, so
+   neither the tick nor the `i` can shove the words off centre — a title sits
+   in the middle of its page whether or not the piece has been solved. Level
+   with the first line's top, the way a footnote mark rides a word. */
+.sheet-title-marks {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding-left: 0.35rem;
+  white-space: nowrap;
+}
+
+/* A fact rather than a warning, so it is only greyed: why Save is unavailable
+   is said by the button itself. */
+.sheet-title-text.is-untitled {
+  color: #a9a196;
+}
+
+.sheet-subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+  color: #57504a;
+  overflow-wrap: anywhere;
+}
+
+/* Against the right margin, where an engraver puts the composer — and against
+   the *staff's* right margin, not the column's. The score keeps `TAIL_SLACK`
+   of its own units clear to the right of the last bar so a hanging tie is not
+   clipped (see render-melody.ts), which at `SCORE_SCALE` comes to the padding
+   below; without it this line hangs a finger's width past the end of the
+   stave. It goes slightly wrong only for a score so wide it has to shrink
+   further to fit, where the slack shrinks with it.
+
+   Its top margin is what separates it from whichever of the two lines above it
+   was last, so a piece with no subtitle simply sits closer to its title. */
+.sheet-credit {
+  margin: 0.9rem 0 0;
+  padding-right: calc(24px * 0.82);
+  font-size: 0.85rem;
+  font-style: italic;
+  text-align: right;
+  color: #6c6459;
+  overflow-wrap: anywhere;
+}
+
+.sheet-solved-mark {
+  font-size: 0.8em;
+  line-height: 1.4;
+  color: var(--note-correct);
+}
+
+/* A footnote mark on the title, and sized like one: the box it opens is about
+   the piece, so it rides the piece's name rather than standing in a bar. */
+.sheet-info {
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.15rem;
+  padding: 0;
+  font: inherit;
+  font-size: 0.72rem;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1;
+  color: #6c6459;
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.sheet-info:hover {
+  color: var(--ink);
+  border-color: #b3aa9d;
+}
+
+/* The rhythm controls, the work column's top band. It runs the width of the
+   column and stops at the side panel's edge, not the window's — the panel is
+   the taller thing, and it runs from the nav to the floor. Sticky for the
+   narrow layouts where the page still scrolls; in the frame it is simply the
+   first row. A hairline is the whole of the separation — the bands share one
+   quiet tone and the score's sheet below is the bright thing. */
 #toolbar {
   position: sticky;
   top: 0;
   z-index: 3;
+  flex: 0 0 auto;
   width: 100%;
   padding: 0.9rem 1.5rem 0.7rem;
   background: var(--band);
@@ -464,22 +609,168 @@ main.editor-main {
 
 /* ---- The bar above the music ---- */
 
-#signatures {
+/* ---- The panel's working controls ----
+
+   Two rows of equal halves and a line under them, directly over the playback
+   shell. Everything here used to stand in a bar across the top of the score;
+   the bar's other half — the title, the subtitle, the byline — became the head
+   of the sheet, and what was left read better gathered with the rest of the
+   things you reach for while working. */
+#panel-actions,
+#panel-submit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  flex: 0 0 auto;
+}
+
+/* This and `#panel-submit`'s own `margin-bottom: auto` centre everything
+   between them — the boxes, the shell, the video, the way out — in whatever
+   the corner leaves, so none of it is pinned to an edge. */
+#panel-actions {
+  margin-top: auto;
+}
+
+#panel-submit {
+  margin-bottom: auto;
+}
+
+/* Empty in a puzzle, which has no box to open: it should not open a gap where
+   nothing is. Which takes the auto margin above out of the layout with it, so
+   the shell inherits the job — without this the whole block gave up centring
+   and sat against the top of the panel on every play page. */
+#panel-actions:empty {
+  display: none;
+}
+
+#panel-actions:empty + #playback {
+  margin-top: auto;
+}
+
+.panel-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+/* Equal halves, whatever is in them: a wide Save beside a narrow clock read as
+   one control and one label. */
+.panel-cell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The row that ends the sitting is the taller one; the boxes above it are
+   doors and want less weight. */
+#panel-submit .panel-cell {
+  min-height: 2.6rem;
+}
+
+/* Shorter than the row under the video, and roomier inside: it is a setting
+   about the page rather than a thing you press, so it should not read as one
+   of the larger controls. */
+#side-tools .switch {
+  padding: 0.28rem 0.75rem 0.28rem 0.85rem;
+}
+
+/* Not equal halves in that row: Check is one short word and the clock has a
+   name as well as a time. The left-hand half takes nearly twice the room. */
+#panel-submit .panel-row > .play-clock {
+  flex-grow: 1.9;
+}
+
+/* The button that ends the sitting, and the pill that explains it. The pill is
+   out of the flow, so this box is exactly the button's. */
+.submit-hold {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
+}
+
+.submit-hold .submit-button {
+  width: 100%;
+}
+
+/* Under the button and against the panel's right edge, so a long sentence
+   grows leftwards into the panel rather than off the side of the window. */
+.panel-note {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 4;
+  width: max-content;
+  max-width: 15rem;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  color: #fffdf9;
+  background: rgb(28 26 23 / 92%);
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+/* Nothing to say, nothing to show — even under the pointer. Written as a
+   condition on the reveal rather than as a rule that overrides it: the reveal
+   is two classes and a pseudo-class against one, so it would win on
+   specificity however the two were ordered, and an empty note would keep its
+   padding and its dark fill — a small black rectangle saying nothing. */
+.submit-hold:hover .panel-note:not(:empty) {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-note {
+    transition: none;
+  }
+}
+
+/* The two doors give their value whatever the label leaves, and cut it off
+   rather than growing: a title typed into Details must not stretch the row. */
+#panel-actions .key-toggle {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+/* Centred in the taller box the row gives it, rather than sitting against the
+   top-left corner of it. Centre rather than baseline for the pair, since the
+   count beside the clock is half its size and baselines put it low. */
+#panel-submit .play-clock {
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 0.9rem;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
-.key-picker {
-  position: relative;
+#panel-actions .key-toggle-label {
+  flex: 0 0 auto;
+  font-size: 0.66rem;
 }
 
+#panel-actions .key-toggle-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+/* Sized for its widest reading, "C♯ major", so the row does not twitch as the
+   key changes; in the panel there is no room to spare for that. */
+#panel-actions .key-toggle-value:not(.details-title) {
+  width: auto;
+}
+
+
+
+/* Key and Details: two doors, and the same door twice. Each says what it is
+   about and what it currently holds, and each opens a box over the page. */
 .key-toggle {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   font: inherit;
@@ -520,18 +811,37 @@ main.editor-main {
 
 /* The chooser floats over the page rather than pushing the music down: the
    score must not move while a panel is open above it. */
+/* The fifteen signatures. It hung off its button once, when the button stood
+   in a bar wide enough to hang something from; in a column this narrow there
+   was nowhere for it to go, so it is centred over the page instead and keeps
+   everything else about itself. It stays open as keys are picked, which is
+   what it is for — keys are tried one against another — so the shell it sits
+   in is the one that asks nothing and closes only when told. */
 .key-panel {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 0;
-  z-index: 5;
   max-width: min(72rem, calc(100vw - 3rem));
   overflow-x: auto;
   background: #fffdf9;
   border: 1px solid var(--rule);
   border-radius: 8px;
   padding: 1rem;
-  box-shadow: 0 6px 20px rgb(28 26 23 / 14%);
+}
+
+/* Inside the box the box already draws, so it drops its own frame — and keeps
+   the sideways scroll, for a window too narrow to lay the circle out flat. */
+.key-modal .key-panel {
+  max-width: none;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+/* Wide enough for the circle of fifths laid flat, which is what it holds.
+   Written against `.modal-box` as well, which sets a 26rem ceiling for the
+   boxes that hold sentences and would otherwise win on document order. The top
+   padding is the corner ×'s room: nothing else in here leaves it any. */
+.modal-box.key-modal {
+  width: max-content;
+  max-width: calc(100vw - 2rem);
 }
 
 .key-layout {
@@ -639,38 +949,6 @@ main.editor-main {
 .history {
   display: flex;
   gap: 0.4rem;
-  margin-left: auto;
-}
-
-/* The way to the rest of the site, on the framed pages where the nav is
-   rolled up: three lines, and pressing them rolls it down. */
-.nav-reveal {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  padding: 0.4rem;
-  font: inherit;
-  color: #6c6459;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-}
-
-.nav-reveal svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.nav-reveal:hover,
-.nav-reveal[aria-expanded="true"] {
-  color: var(--ink);
-  background: #ece5d8;
 }
 
 .chip {
@@ -732,24 +1010,44 @@ main.editor-main {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  margin: auto 0;
+  /* Neither end is auto: the autos live on `#panel-actions` above and
+     `#panel-submit` below, and between them they centre this whole block. An
+     auto here would put free space *inside* the block, between the shell and
+     whichever neighbour it was on, and the block is meant to read as one. */
+  margin: 0;
 }
 
+/* The player and the line under it, stacked. A column rather than plain flow
+   because the frame asks for `height: 100%` — the whole of whatever box it is
+   handed — and in plain flow that meant the whole of this one, note included:
+   the line was pushed clean out of its own parent and onto whatever stood
+   below. As a flex column the frame takes what is left after the line, which
+   is what "the whole box" was always meant to mean. */
 #video {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
 }
 
-/* The answer to a click on the fenced player, fading in below it — placed
-   into the column's slack absolutely, so nothing else moves for it. */
+#video .video-frame {
+  flex: 1 1 auto;
+  height: auto;
+}
+
+/* The answer to a click on the fenced player, fading in below it.
+
+   It keeps its line whether or not it is showing — faded to nothing rather
+   than taken out of the layout. It was positioned absolutely once, into what
+   was then empty column below the video; the way out moved into that space,
+   and a line that appears out of the flow appears *on top of* whatever has
+   since been put under it. Holding the line costs a few pixels of panel that
+   nobody misses, and buys back the guarantee that nothing can collide. */
 .video-note {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 0;
-  right: 0;
-  margin: 0;
+  margin: 0.5rem 0 0;
   text-align: center;
   font-size: 0.84rem;
+  line-height: 1.2;
   color: var(--note-selected);
   opacity: 0;
   pointer-events: none;
@@ -1483,19 +1781,14 @@ main.editor-main {
    that asks nothing — see `dismissable` in modal.ts. */
 .modal-close {
   position: absolute;
-  top: 0.55rem;
-  right: 0.6rem;
+  top: 0.5rem;
+  right: 0.55rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.4rem;
-  height: 2.4rem;
-  padding: 0;
-  font: inherit;
-  /* The only way out of this box, so it is drawn as one rather than as a mark
-     in the corner: there is no Close button beside the way in any more. */
-  font-size: 1.7rem;
-  line-height: 1;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0.4rem;
   color: #8d8378;
   background: none;
   border: 0;
@@ -1503,6 +1796,12 @@ main.editor-main {
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
+}
+
+.modal-close svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .modal-close:hover {
@@ -1519,6 +1818,18 @@ main.editor-main {
   margin: 0 0 0.6rem;
   font-size: 1.1rem;
   font-weight: 600;
+}
+
+/* The two boxes the panel opens name themselves in the top-left corner, large
+   and bold, and keep clear of the × in the other one. The gap under the
+   heading is wider than a paragraph's would be: what follows is a grid of
+   staves or a stack of fields, and both crowd a line of type. */
+.key-modal .modal-title,
+.panel-details-modal .modal-title {
+  margin-bottom: 1.1rem;
+  padding-right: 2.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
 }
 
 .modal-body {
@@ -1844,19 +2155,25 @@ main.editor-main {
   border-radius: 4px;
 }
 
-/* Every key is a sticker straddling the top of the thing it names, centred
-   on it — one placement everywhere, so a key is always found in the same
-   place relative to its icon. Out of the layout, so nothing resizes when the
-   keys appear, and hidden until the reveal button is held (keys-button.ts). */
+/* Every key is a sticker riding the top edge of the thing it names, centred on
+   it — one placement everywhere, so a key is always found in the same place
+   relative to its icon. It sits almost entirely above that edge, biting into
+   the button by a few pixels and no more: enough to read as attached to the
+   control it names, not so much that it lands on the first line of a label
+   like Play Section or Restart. The offset is written out rather than guessed
+   — the cap's own line, its padding, its border and the solid shadow beneath
+   it, less the bite — so it holds if the size changes. Out of the layout, so
+   nothing resizes when the keys appear, and hidden until K is held
+   (keys-note.ts). */
 .key-sticker {
   display: none;
   position: absolute;
-  top: -0.7em;
+  top: calc(6px - 1em - 11px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
   font-family: inherit;
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   line-height: 1;
   padding: 3px 6px;
   color: #f7f5f0;
@@ -1888,7 +2205,10 @@ body.show-keys .key-sticker {
    inside. The sliders keep their pills — a track and its handle are not
    boxes, and squared they read as broken controls rather than as chosen
    corners. */
-#side-panel .keys-button,
+#side-panel .switch,
+#side-panel .key-toggle,
+#side-panel .submit-button,
+#side-panel .play-clock,
 #side-panel .playback-shell-body,
 #side-panel .panel-tab,
 #side-panel .video-frame,
@@ -1907,7 +2227,7 @@ body.show-keys .key-sticker {
    and the switch and the button standing beside them. */
 .key-white,
 .key-black,
-#pitch-actions .switch,
+#pitch-actions .playback-toggle,
 #pitch-actions .action {
   border-radius: 0;
 }
@@ -1925,49 +2245,39 @@ body.show-keys .key-sticker {
   align-items: center;
 }
 
-/* The button that shows the stickers, held rather than pressed: its own box
-   above the panel, with the K keycap — always visible, in the stickers' own
-   dress — and the words beside it. While it is held the box fills and sinks,
-   and the cap goes down with it: the button teaching how it is used. */
-.keys-button {
+/* How to see the stickers, in the panel's top corner: a footnote, not a
+   control. It was a box to press once, which made a button out of an
+   instruction — a thing to press, among things to press, that did nothing
+   lasting when pressed. What is left is the sentence, with the cap in the
+   dress the stickers wear, and the key itself is the only way in. */
+.keys-note {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.6rem 0.8rem;
-  font: inherit;
-  color: #6c6459;
-  background: var(--tool-box);
-  border: 1px solid var(--rule);
-  border-radius: 8px;
-  cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: #8a8176;
+  text-align: right;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.keys-button:hover {
-  background: #f3eee2;
+/* While they are showing, the line says so — the one thing it has left to do. */
+body.show-keys .keys-note {
   color: var(--ink);
 }
 
-body.show-keys .keys-button {
-  background: #e5decf;
-  color: var(--ink);
-  box-shadow: inset 0 2px 6px rgb(28 26 23 / 22%);
-}
-
-.keys-button-k {
+.keys-note-k {
+  flex: 0 0 auto;
   font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 0.62rem;
   line-height: 1;
-  padding: 3.5px 7px;
+  padding: 2.5px 5px;
   color: #f7f5f0;
   background: #423d36;
   border: 1px solid #26221c;
-  border-radius: 5px;
+  border-radius: 4px;
   box-shadow:
     0.6px 0.75px 0 #2b2620,
     1.2px 1.5px 0 #2b2620,
@@ -1975,24 +2285,20 @@ body.show-keys .keys-button {
     2.4px 3px 0 #2b2620;
 }
 
-.keys-button-words {
-  font-size: 0.8rem;
-}
-
-/* Bigger than the rhythm actions: it sits beside a whole keyboard, and at the
-   same size as them it read as an afterthought. */
+/* Wider than the rhythm actions: it sits beside a whole keyboard, and at their
+   width it read as an afterthought. */
 #pitch-actions .action {
   min-width: 5.6rem;
-  padding: 0.55rem 0.4rem 0.45rem;
-  gap: 0.35rem;
+  padding: 0.35rem 0.4rem 0.3rem;
+  gap: 0.3rem;
 }
 
 #pitch-actions .action-icon {
-  height: 2.5rem;
+  height: 1.75rem;
 }
 
 #pitch-actions .action-label {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
 }
 
 #status {
@@ -2034,18 +2340,52 @@ body.show-keys .keys-button {
   overflow: hidden;
 }
 
-/* Clearing a pitch belongs with the piano: it is the inverse of pressing a
-   key, not something done to the rhythm.
+/* The column beside the keys, in the order the hand works down it: the setting
+   that says how the keys will behave from here on, the button that does one
+   thing once, and under them the pair that takes back whatever was just done.
 
-   Stacked, with the setting over the action: the switch says how the keys will
-   behave from here on, and the button below does one thing once. */
-#pitch-actions {
+   Clearing a pitch belongs with the piano — it is the inverse of pressing a
+   key, not something done to the rhythm — and so, for the same reason, does
+   undo: the hand is already down here. */
+/* No taller than what is in it, and centred against the piano rather than
+   stretched to its height: three short controls spaced out to match a whole
+   keyboard read as a column with holes in it.
+
+   Its width is set here rather than left to the widest thing in it. Undo and
+   Redo share a row and each has a word to hold; at the width the column
+   happened to come to, both were squeezed to the point of clipping. */
+#pitch-column {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   justify-content: center;
-  gap: 0.4rem;
   flex: 0 0 auto;
+  width: 8.5rem;
+  gap: 0.5rem;
+}
+
+#pitch-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+/* The piano's own sound switch: shorter than the playback panel's toggles,
+   which stand in a column of their own with room to spare. */
+#pitch-actions .playback-toggle {
+  flex: 0 0 auto;
+  height: 2rem;
+}
+
+/* Equal halves of the column, so neither reads as the other's afterthought,
+   and each with room for its word rather than the least it can be squeezed to. */
+#pitch-history .chip {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding-left: 0.4rem;
+  padding-right: 0.4rem;
 }
 
 /* ---- A switch ---- */
@@ -2231,6 +2571,15 @@ body.show-keys .keys-button {
    editor this scrolls away and the sticky toolbar takes the top back, which is
    why it can afford to be here at all. */
 
+/* The site's bar, ruled off at the bottom like every other boundary between
+   regions here — the toolbar's, the keyboard band's, the side panel's — so the
+   frame below it reads as a region rather than as the nav's own overflow.
+
+   The rule wants the whole window while the links want their 1200px column, so
+   the bar runs edge to edge and the column is made out of its padding instead
+   of out of a width: the content box comes to exactly what `max-width: 1200px`
+   with 1.5rem of padding used to give, and the border is the window's. `max`
+   holds the plain padding on a window narrower than the column. */
 .site-nav {
   display: flex;
   flex-wrap: wrap;
@@ -2238,9 +2587,8 @@ body.show-keys .keys-button {
   justify-content: space-between;
   gap: 0.6rem 1.2rem;
   width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0.85rem 1.5rem 0.7rem;
+  padding: 0.85rem max(1.5rem, calc((100% - 1200px) / 2 + 1.5rem)) 0.7rem;
+  border-bottom: 1px solid var(--frame-rule);
 }
 
 .site-name {
@@ -2421,29 +2769,22 @@ body.show-keys .keys-button {
    and anything extra here is the two panels disagreeing again. */
 
 
-/* ---- The details, and the way out ----
+/* ---- The details ----
 
-   Both ride in the signature bar. The details borrow the key picker's shape
-   exactly — a labelled toggle with a panel floating under it — because they
-   are the same kind of thing: something about the piece that is usually left
-   alone and occasionally changed, and which must not push the music down when
-   it is opened. */
-
-.details-picker {
-  position: relative;
-}
-
-/* Narrower than the key chooser, which has fifteen staves to show. */
-.details-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
+   The editor's box and the published level's box hold the same four rows, so
+   they are laid out by one rule. Narrower than the key chooser, which has
+   fifteen staves to show. */
+.panel-details-modal {
   width: 28rem;
-  max-width: calc(100vw - 3rem);
-  overflow-x: visible;
+  max-width: calc(100vw - 2rem);
 }
 
-/* Held to a width so the bar does not jump about as a title is typed. */
+.panel-details-modal .details-field + .details-field {
+  margin-top: 0.7rem;
+}
+
+/* Held to a width, so the Details button does not stretch as a title is
+   typed into it. */
 .details-title {
   display: inline-block;
   max-width: 14rem;
@@ -2504,16 +2845,10 @@ textarea.details-input {
   line-height: 1.4;
 }
 
-.submit-group {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
 .submit-button {
   padding: 0.4rem 1rem;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
   color: #fffdf9;
   background: var(--note-selected);
   border: 1px solid var(--note-selected);
@@ -2532,19 +2867,6 @@ textarea.details-input {
   background: #ebe5da;
   border-color: var(--rule);
   cursor: not-allowed;
-}
-
-/* Says why the button is grey, in the same voice the setup page uses. */
-.submit-note {
-  margin: 0;
-  max-width: 16rem;
-  font-size: 0.75rem;
-  line-height: 1.2;
-  color: #8d8378;
-}
-
-.submit-note:empty {
-  display: none;
 }
 
 /* The confirm in the one dialog had no disabled state, having never needed
@@ -3346,10 +3668,6 @@ button.upvote-line:focus-visible {
     gap: 0.55rem;
   }
 
-  .keys-button {
-    padding: 0.35rem 0.6rem;
-  }
-
   .playback-panel {
     gap: 0.6rem;
   }
@@ -3398,11 +3716,6 @@ button.upvote-line:focus-visible {
     overflow: visible;
   }
 
-  /* The nav comes back into the flow: a page that scrolls can afford it. */
-  body.is-framed .site-nav {
-    display: flex;
-  }
-
   main.editor-main {
     flex: 1 0 auto;
   }
@@ -3411,12 +3724,51 @@ button.upvote-line:focus-visible {
     flex-direction: column;
   }
 
+  /* The work column stops being a column and lets its three parts stand as
+     bands in their own right, so the order is the one this page has always
+     had: the controls, the video, the music, the keys. The column exists to
+     keep the toolbar out of the side panel's half of the frame, and there are
+     no halves here. */
+  #work-column {
+    display: contents;
+  }
+
+  #toolbar {
+    order: 0;
+  }
+
+  #side-panel {
+    order: 1;
+  }
+
+  #score-scroll {
+    order: 2;
+  }
+
+  #keyboard-area {
+    order: 3;
+  }
+
   #side-panel {
     width: 100%;
     overflow-y: visible;
     padding: 0.6rem 0.75rem;
-    border-right: 0;
+    border-left: 0;
     border-bottom: 1px solid var(--frame-rule);
+  }
+
+  /* A row rather than a column: there is width to spare here and height to
+     save, and the panel is a band across the top now. */
+  #side-tools {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  #side-tools > * {
+    width: auto;
   }
 
   #score-scroll {
@@ -3429,6 +3781,16 @@ button.upvote-line:focus-visible {
     margin: 0;
   }
 
+  /* The panel is a band across the top here, not a column: its contents keep
+     the column's width rather than stretching over the whole window, and the
+     auto margin that centred them vertically has nothing left to centre. */
+  #panel-actions,
+  #panel-submit {
+    width: 100%;
+    max-width: 26rem;
+    margin: 0 auto;
+  }
+
   #playback-controls,
   #video {
     width: 100%;
@@ -3438,16 +3800,12 @@ button.upvote-line:focus-visible {
   #workspace {
     padding: 0.75rem 0.75rem 1rem;
   }
-
-  .nav-reveal {
-    display: none;
-  }
 }
 
-/* Nothing to hold a key over: the reveal button asks for a pointer that can
-   hover and a keyboard to reveal, and a touch screen has neither. */
+/* No key to hold: the note names a keyboard, and a touch screen has none —
+   which is the same reason the stickers themselves are off at this size. */
 @media (hover: none) {
-  .keys-button {
+  .keys-note {
     display: none;
   }
 }
@@ -3507,11 +3865,6 @@ button.upvote-line:focus-visible {
 
   #toolbar {
     padding: 0.55rem 0.7rem 0.45rem;
-  }
-
-  #signatures {
-    gap: 0.4rem;
-    margin-bottom: 0.5rem;
   }
 
   .key-toggle {
@@ -3588,13 +3941,20 @@ button.upvote-line:focus-visible {
     display: none;
   }
 
+  /* And with no stickers to clear, the keyboard band's column closes back up:
+     the air above each control was for caps that never appear here. */
+  #pitch-column,
+  #pitch-actions {
+    gap: 0.35rem;
+  }
+
   .tuplet {
     width: 2rem;
     height: 2rem;
     padding: 0.24rem;
   }
 
-  .keys-button {
+  .keys-note {
     display: none;
   }
 
@@ -3622,8 +3982,8 @@ button.upvote-line:focus-visible {
   :root {
     --white-key-width: 40px;
     --black-key-width: 26px;
-    --white-key-height: 104px;
-    --black-key-height: 64px;
+    --white-key-height: 92px;
+    --black-key-height: 56px;
     --keyboard-padding: 0.4rem;
   }
 
@@ -3642,11 +4002,11 @@ button.upvote-line:focus-visible {
 
   #pitch-actions .action {
     min-width: 4.2rem;
-    padding: 0.4rem 0.3rem;
+    padding: 0.3rem;
   }
 
   #pitch-actions .action-icon {
-    height: 1.9rem;
+    height: 1.5rem;
   }
 
   #pitch-actions .action-label {
@@ -3689,18 +4049,13 @@ button.upvote-line:focus-visible {
   :root {
     --white-key-width: 34px;
     --black-key-width: 22px;
-    --white-key-height: 72px;
-    --black-key-height: 44px;
+    --white-key-height: 64px;
+    --black-key-height: 39px;
     --keyboard-padding: 0.3rem;
   }
 
   #toolbar {
     padding: 0.35rem 0.6rem 0.3rem;
-  }
-
-  #signatures {
-    gap: 0.3rem;
-    margin-bottom: 0.35rem;
   }
 
   #controls {
@@ -3752,7 +4107,7 @@ button.upvote-line:focus-visible {
   }
 
   #pitch-actions .action-icon {
-    height: 1.4rem;
+    height: 1.25rem;
   }
 
   #pitch-actions .action-label {
@@ -3782,96 +4137,17 @@ button.upvote-line:focus-visible {
 
 /* ---- Playing a level ---- */
 
-/* Laid out like the editor's bar above the music, because it sits in the same
-   band and holds the same kinds of thing — but built from its own parts: the
-   three controls that bar exists for (the key chooser, the details boxes, the
-   melody/pitches switch) are exactly what playing a level takes away. */
-#play-bar {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 0.9rem;
-}
-
-.play-naming {
-  flex: 1 1 12rem;
-  min-width: 0;
-}
-
-.play-title {
-  display: flex;
-  align-items: center;
-  gap: 0.1rem;
-  margin: 0;
-  font-size: 1rem;
-  overflow-wrap: anywhere;
-}
-
-/* The way back to what the author wrote, beside the name it belongs to. */
-.play-info {
-  flex: 0 0 auto;
-  width: 1.2rem;
-  height: 1.2rem;
-  margin-left: 0.35rem;
-  padding: 0;
-  font: inherit;
-  font-size: 0.75rem;
-  font-style: italic;
-  line-height: 1;
-  color: #6c6459;
-  background: none;
-  border: 1px solid var(--rule);
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-.play-info:hover {
-  color: var(--ink);
-  background: #f3ece0;
-  border-color: #b3aa9d;
-}
-
-/* Raised from a caption to a second line of naming: at 0.78rem against the
-   title it read as a footnote to something it is actually part of. */
-.play-subtitle {
-  margin: 0.15rem 0 0;
-  font-size: 0.88rem;
-  color: #57504a;
-  overflow-wrap: anywhere;
-}
-
-.play-subtitle:empty {
-  display: none;
-}
-
-/* Read, never pressed. Shaped like the editor's key toggle so the two pages
-   agree about where the key lives, but flat and inert — the key is part of the
-   level here, and a control offering something that cannot be done is worse
-   than no control. A stave with no accidentals is A minor as readily as C
-   major, so this is the only thing on the page that says which. */
-.play-key {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  margin: 0;
-  padding: 0.4rem 0.75rem;
-  background: #f3ece0;
-  border: 1px solid var(--rule);
-  border-radius: 6px;
-}
-
-.play-key-label,
+/* What the puzzle keeps in the side panel: the clock, and the count beside it.
+   The title, the subtitle and the byline are the head of the sheet now, and
+   the key is not printed anywhere — a stave with no accidentals is A minor as
+   readily as C major, so the answer lives in the level's own box, behind the
+   `i` on the title, drawn there as a signature rather than named in a corner. */
+.play-clock-label,
 .play-checks {
   font-size: 0.72rem;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: #8d8378;
-}
-
-.play-key-value {
-  font-size: 0.9rem;
 }
 
 /* The clock and the attempt count, boxed.
@@ -3913,24 +4189,22 @@ button.upvote-line:focus-visible {
   color: var(--note-correct);
 }
 
-/* One pop, on the change from running to stopped. The class is taken off when
-   the animation ends, so redrawing the bar twice a second cannot retrigger it. */
+/* One pop, at the moment the clock stops — never on opening a level that was
+   already finished, which is a fact rather than an event; see `play-page.ts`.
+   Slight, because the box has neighbours: at 14% it grew far enough to sit on
+   the button beside it. The class is taken off when the animation ends, so
+   redrawing twice a second cannot retrigger it. */
 .play-clock.is-stopping {
   animation: clock-stop 460ms cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 
 @keyframes clock-stop {
   0% { transform: scale(1); }
-  45% { transform: scale(1.14); }
+  45% { transform: scale(1.05); }
   100% { transform: scale(1); }
 }
 
 /* The tick beside a solved level's title. */
-.play-solved-mark {
-  margin-left: 0.4rem;
-  color: var(--note-correct);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .play-clock.is-stopping {
     animation: none;
@@ -4087,54 +4361,6 @@ button.upvote-line:focus-visible {
   font-size: 0.78rem;
   line-height: 1.15rem;
   color: #8d8378;
-}
-
-/* Why Submit or Check is grey, shown only when pointed at.
-
-   Out of the flow entirely, which is stronger than reserving room for it: it
-   cannot change the bar's height at all. That matters because these buttons
-   are grey for most of a session — a title has not been typed, notes are still
-   blank — so as permanent text it was a sentence the page always carried and
-   nobody ever needed twice.
-
-   Faded rather than removed: a disabled button cannot be focused, so a
-   keyboard user would never reach this. Keeping it rendered but transparent
-   keeps it in the accessibility tree, and the button's `aria-describedby`
-   points at it. */
-.submit-group {
-  position: relative;
-}
-
-.submit-note {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  right: 0;
-  z-index: 4;
-  width: max-content;
-  max-width: 15rem;
-  margin: 0;
-  padding: 0.35rem 0.6rem;
-  color: #fffdf9;
-  background: rgb(28 26 23 / 92%);
-  border-radius: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease-out;
-}
-
-/* Nothing to say, nothing to show — even under the pointer.
-
-   Written as a condition on the reveal rather than as a rule that overrides it.
-   The pair `.submit-group:hover .submit-note` and `.submit-note:empty` are two
-   classes-plus-a-pseudo against one, so the reveal won on specificity however
-   it was ordered, and an empty note kept its padding, its dark fill and its
-   6px corners — a small black rectangle under the button, saying nothing. */
-.submit-group:hover .submit-note:not(:empty) {
-  opacity: 1;
-}
-
-.submit-note:empty {
-  display: block;
 }
 
 /* ---- A level you have finished ---- */

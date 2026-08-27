@@ -24,19 +24,32 @@ import { openChoiceModal } from "./modal.js";
 import { keepingScroll } from "./score-overlay.js";
 import { createPlayback, type Playback } from "./playback.js";
 import { createSetupPage, type Setup } from "./setup-panel.js";
-import { createSignatureBar, type SignatureBar } from "./signature-bar.js";
+import { createHistoryPair, type HistoryPair } from "./history-pair.js";
+import { createPanelActions, type PanelActions } from "./panel-actions.js";
+import { createSheetHead, type SheetHead } from "./sheet-head.js";
+import { createSideTools, type SideTools } from "./side-tools.js";
+import { ANONYMOUS } from "../shared/session.js";
 import type { SiteNav } from "./site-nav.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { mountVideoPanel } from "./video-panel.js";
 
 export type EditorPageElements = EditorElements & {
-  signatures: HTMLElement;
+  /** The masthead over the score: the title, the subtitle and the byline. */
+  sheetHead: HTMLElement;
   setup: HTMLElement;
   workspace: HTMLElement;
   toolbar: HTMLElement;
   keyboardArea: HTMLElement;
-  /** The column against the window's left edge that holds the video. */
+  /** The column down the window's right-hand side that holds the video. */
   sidePanel: HTMLElement;
+  /** The note in that column's corner about the keyboard shortcuts. */
+  sideTools: HTMLElement;
+  /** Key and Details, above the playback shell. */
+  panelActions: HTMLElement;
+  /** Save and its message, under the video. */
+  panelSubmit: HTMLElement;
+  /** Undo and redo, in the keyboard band under Clear pitch. */
+  pitchHistory: HTMLElement;
   video: HTMLElement;
   playbackControls: HTMLElement;
   scoreArea: HTMLElement;
@@ -125,17 +138,46 @@ export function createEditorPage(
    * across them: it is a way of working on one piece rather than a preference,
    * and a page that started making noise because of something done last week
    * would be a surprise. Held here rather than in the editor because `mount`
-   * rebuilds that from nothing on every undo, mode switch and key change.
+   * rebuilds that from nothing on every undo, rhythm switch and key change.
    */
   let sound = false;
   let editor: Editor | undefined;
   let history: History | undefined;
   let playback: Playback | undefined;
-  let bar: SignatureBar | undefined;
+  let actions: PanelActions | undefined;
+  let head: SheetHead | undefined;
+  let tools: SideTools | undefined;
+  let steps: HistoryPair | undefined;
   let source: Source | undefined;
 
   let details: TranscriptionDetails = { ...EMPTY_DETAILS };
   let saving = false;
+  /**
+   * What went wrong sending it, until the next attempt clears it.
+   *
+   * Held rather than written straight to the page because the panel's one
+   * message line has two other things to say — why Save is grey, and nothing
+   * at all — and a line written from two places would have them overwrite each
+   * other in whichever order they happened to run.
+   */
+  let trouble: string | undefined;
+
+  /**
+   * Whose name goes on the sheet, once /api/me has said.
+   *
+   * The account's, not the level's: only its author can open a transcription
+   * here, so the two are the same — and a transcription that has never been
+   * saved has no author but the person writing it. Nobody signed in means no
+   * line at all rather than a blank one; an account that has asked to be
+   * anonymous is credited as such, and so is one old enough to have no name,
+   * because an email address does not belong on the front of a score.
+   */
+  let credit: string | undefined;
+  void viewer.then((user) => {
+    if (user === undefined) return;
+    credit = user.anonymousAuthor ? ANONYMOUS : (user.username ?? ANONYMOUS);
+    showSignatures();
+  });
 
   /**
    * The address this transcription has in the database, once it has one. A
@@ -321,8 +363,7 @@ export function createEditorPage(
       // The stash passed every shape check and still is not a melody. Nothing
       // to do but say so and start over; the setup page is what "over" is.
       console.error(error);
-      elements.status.textContent =
-        "The work kept on this device could not be read.";
+      trouble = "The work kept on this device could not be read.";
       mount();
       return;
     }
@@ -364,23 +405,38 @@ export function createEditorPage(
     return detailsProblem(details);
   }
 
+  /** Draw everything that is not the score: the masthead and the panel. */
   function showSignatures(): void {
-    if (!melody || !history || !bar) return;
-    bar.update({
-      key: melody.keySignature,
-      clef,
-      pitchOnly,
+    if (!melody || !history || !actions || !head || !steps || !tools) return;
+    tools.update({ showRhythm: !pitchOnly });
+    steps.update({
       canUndo: history.canUndo(),
       canRedo: history.canRedo(),
+    });
+    head.update({
+      title: details.title,
+      subtitle: details.subtitle,
+      credit,
+    });
+    // Compared rather than counted: `isDirty` puts the melody, the words and
+    // the marks against what was last saved, so writing a note and writing it
+    // back leaves the button at Saved. That works because the encoding is
+    // canonical — ties come out in index order and brackets are sorted —
+    // which the undo stack already relies on.
+    const saved = isSaved();
+    const problem = saveProblem();
+    actions.update({
+      submit: {
+        label: saving ? "Saving…" : saved ? "Saved" : "Save",
+        disabled: saving || saved || problem !== undefined,
+      },
+      // What went wrong sending it outranks why the next one cannot go: the
+      // first is news, the second is a standing fact about an empty title.
+      // Neither is worth saying while it is going, or once it has gone.
+      message: saving || saved ? "" : (trouble ?? problem ?? ""),
+      key: melody.keySignature,
+      clef,
       details,
-      saveProblem: saveProblem(),
-      saving,
-      // Compared rather than counted: `isDirty` puts the melody, the words
-      // and the marks against what was last saved, so writing a note and
-      // writing it back leaves the button at Saved. That works because the
-      // encoding is canonical — ties come out in index order and brackets are
-      // sorted — which the undo stack already relies on.
-      saved: isSaved(),
     });
   }
 
@@ -396,8 +452,8 @@ export function createEditorPage(
     if (!melody || !source || saving || isSaved()) return;
     if (saveProblem() !== undefined) return;
     saving = true;
+    trouble = undefined;
     showSignatures();
-    elements.status.textContent = "";
 
     try {
       const user = await viewer;
@@ -463,7 +519,7 @@ export function createEditorPage(
       }
       markSaved(sent);
     } catch (error) {
-      elements.status.textContent =
+      trouble =
         error instanceof Error
           ? `It could not be saved. ${error.message}`
           : "It could not be saved.";
@@ -503,13 +559,23 @@ export function createEditorPage(
       at: Date.now(),
     });
     if (!kept) {
-      elements.status.textContent =
+      trouble =
         "This browser would not keep the work while you sign in. Sign in from another tab, then save here.";
+      showSignatures();
       return false;
     }
     leaving = true;
     return true;
   }
+
+  // Neither of these changes again, so neither waits for a melody: the note
+  // is a static line, and the hook is the nav's.
+  tools = createSideTools(elements.sideTools, {
+    onRhythm: (show) => {
+      pitchOnly = !show;
+      mount();
+    },
+  });
 
   // The corner's sign-in puts the work aside too, and only aside: on the way
   // back it is restored, not saved.
@@ -548,27 +614,33 @@ export function createEditorPage(
     elements.setup.hidden = true;
     elements.setup.replaceChildren();
     elements.workspace.hidden = false;
-    elements.toolbar.hidden = false;
+    // Nothing but the rhythm controls is left in the band, so with those away
+    // it is an empty strip: it goes, and the score takes the height.
+    elements.toolbar.hidden = pitchOnly;
     elements.keyboardArea.hidden = false;
     elements.sidePanel.hidden = false;
     document.body.classList.add("is-framed");
 
-    // Built the first time there is a melody, and mutated from then on: it
-    // holds the details boxes, and a redraw between two keystrokes would take
-    // the caret out of whichever one was being typed into.
-    bar ??= createSignatureBar(elements.signatures, {
-      onKey: changeKey,
-      onMode: (next) => {
-        pitchOnly = next;
-        mount();
+    // All built the first time there is a melody and mutated from then on.
+    // Every one of them outlives an edit: the details box holds boxes somebody
+    // may be typing into, the switch keeps its own idea of which way it is
+    // thrown, and the chips grey and ungrey on every edit — any of them
+    // redrawn that often would take the caret or the focus ring with it.
+    actions ??= createPanelActions(
+      { boxes: elements.panelActions, submit: elements.panelSubmit },
+      {
+        onSubmit: () => void save(),
+        onKey: changeKey,
+        onDetails: (next) => {
+          details = next;
+          showSignatures();
+        },
       },
+    );
+    head ??= createSheetHead(elements.sheetHead);
+    steps ??= createHistoryPair(elements.pitchHistory, {
       onUndo: () => step(history?.undo()),
       onRedo: () => step(history?.redo()),
-      onDetails: (next) => {
-        details = next;
-        showSignatures();
-      },
-      onSave: () => void save(),
     });
 
     // The person mid-edit has not moved, so their selection must not: undo,

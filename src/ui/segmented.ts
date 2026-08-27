@@ -1,10 +1,10 @@
 /**
  * A segmented switch: several choices, exactly one taken.
  *
- * The same `.mode-switch` the signature bar, the playback panel and the
- * hearing switch each draw by hand, made once for the next one — the level
- * filter — which has no reason of its own to differ. The three that exist
- * are left as they are; nothing about them is wrong.
+ * The same `.mode-switch` the playback panel and the hearing switch each draw
+ * by hand, made once for the next one — the level filter — which has no reason
+ * of its own to differ. The two that exist are left as they are; nothing about
+ * them is wrong.
  *
  * Clicking the choice already taken is nothing: exactly one is always on, and
  * never none, so there is no change to report.

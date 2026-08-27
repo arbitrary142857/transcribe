@@ -16,6 +16,11 @@
  * asking twice would be one request too many. The name in the corner is the
  * link to the account's own page, where it can be changed.
  *
+ * It stays in view on every page, the working ones included. It was rolled
+ * up behind a button on those for a while, to give the frame every pixel; the
+ * button was one more thing to know about, and the row of links costs less
+ * than the knowing did.
+ *
  * Signing in keeps you where you are: the link carries this page's address
  * back. A page with work in hand can give the nav something to do on the way
  * out — the editor stashes its melody. Signing out goes home: the page you
@@ -24,7 +29,6 @@
 
 import { readMe, type UserSummary } from "../shared/session.js";
 import { googleButton } from "./google-button.js";
-import { listIcon } from "./icons.js";
 
 export type NavLink = { href: string; label: string; current: boolean };
 
@@ -48,28 +52,6 @@ export function planNav(pathname: string, signedIn: boolean): NavLink[] {
     links.push({ href: "/mine", label: "My transcriptions", current: here === "/mine" });
   }
   return links;
-}
-
-/**
- * The button that rolls the nav down over a framed page, and up again.
- *
- * The working pages keep the nav out of sight — the frame gives every pixel
- * to the tools and the music — so the way to the rest of the site lives
- * behind this. It only toggles a class; the stylesheet does the rolling.
- */
-export function createNavReveal(): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "nav-reveal";
-  button.title = "Site menu";
-  button.setAttribute("aria-label", "Show the site menu");
-  button.setAttribute("aria-expanded", "false");
-  button.innerHTML = listIcon();
-  button.addEventListener("click", () => {
-    const open = document.body.classList.toggle("nav-open");
-    button.setAttribute("aria-expanded", String(open));
-  });
-  return button;
 }
 
 export type SiteNav = {

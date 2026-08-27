@@ -13,11 +13,8 @@
     <link rel="stylesheet" href="../styles.css" />
   </head>
   <body>
-    <!-- Above the toolbar rather than inside it, for two reasons: the toolbar
-         is hidden until a melody exists, which is exactly the stretch of time
-         when leaving is easiest to want; and both bars below are sticky rather
-         than fixed, so this scrolls away the moment work starts and gives the
-         top back to the controls. -->
+    <!-- Above the frame rather than inside it: this is the site's bar, not the
+         editor's, and it keeps its row here as it does on every other page. -->
     <nav class="site-nav">
       <a class="site-name" href="/">Transcribe</a>
       <div id="site-nav" class="site-links">
@@ -26,48 +23,44 @@
       </div>
     </nav>
 
-    <!-- A band across the whole window with its contents centred inside, so the
-         controls never end in a hard edge partway across the page. Pinned to the
-         top as the keyboard is pinned to the bottom, and above the music so it
-         cannot slide out from under the pointer as the score grows a line. -->
-    <div id="toolbar" hidden>
-      <div id="toolbar-inner">
-        <div id="signatures"></div>
-        <div id="toolbar-body">
-          <div id="controls">
-            <div id="durations"></div>
-            <div id="tuplets"></div>
-            <div id="actions"></div>
-          </div>
-        </div>
-        <p id="status" role="status"></p>
-      </div>
-    </div>
-
     <main class="editor-main">
       <!-- Shown only until a clef and a meter are chosen. From then on both are
            read off the stave, and this is emptied for good. -->
       <div id="setup"></div>
 
-      <!-- The working frame: the video's column at the left, and beside it the
-           score over the keyboard. Once a melody exists the page stops
-           scrolling and the score's own box is the only thing that does. -->
+      <!-- The working frame: the score over the keyboard, with the video's
+           column down the right-hand side. Once a melody exists the page
+           stops scrolling and the score's own box is the only thing that does. -->
       <div id="main-body">
-        <!-- Everything to do with the video: the controls that drive the
-             player, and the player under them. Filled in once the link has
-             been given and rebuilt only by the mode switch, which puts the
-             position back itself — nothing an edit does sends the player back
-             to the start. -->
-        <aside id="side-panel" hidden>
-          <div id="playback">
-            <div id="playback-controls"></div>
-            <div id="video"></div>
-          </div>
-        </aside>
-
         <div id="work-column">
+          <!-- The controls the music is written with, in a band over it. The
+               rhythm is all that is left in here — the title, the key and the
+               way out went to the sheet and to the side panel — so the band
+               goes with it when the rhythm editor is switched off. Pinned to
+               the top as the keyboard is pinned to the bottom, and above the
+               music so it cannot slide out from under the pointer as the score
+               grows a line. -->
+          <div id="toolbar" hidden>
+            <div id="toolbar-inner">
+              <div id="toolbar-body">
+                <div id="controls">
+                  <div id="durations"></div>
+                  <div id="tuplets"></div>
+                  <div id="actions"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div id="score-scroll">
             <div id="workspace" hidden>
+              <!-- The head of the sheet: the title centred over the music, the
+                   subtitle under it, and the byline against the right margin.
+                   Inside the scrolling sheet because that is what it is part
+                   of — it scrolls away with the first page, as printed music's
+                   does. -->
+              <div id="sheet-head"></div>
+
               <!-- The score has every one of its children replaced on each
                    redraw, so the marker that follows the video is a neighbour
                    of it rather than a child, and this is what holds the two
@@ -80,9 +73,35 @@
 
           <div id="keyboard-area" hidden>
             <div id="keyboard"></div>
-            <div id="pitch-actions"></div>
+            <!-- The column beside the keys, in two hosts: the page keeps the
+                 first for the whole sitting, and the editor empties and
+                 redraws the second on every edit. Taking a note back is at the
+                 top, where the hand comes to it first. -->
+            <div id="pitch-column">
+              <div id="pitch-history"></div>
+              <div id="pitch-actions"></div>
+            </div>
           </div>
         </div>
+
+        <!-- Everything to do with the video: the controls that drive the
+             player, and the player under them. Filled in once the link has
+             been given and rebuilt only by the mode switch, which puts the
+             position back itself — nothing an edit does sends the player back
+             to the start. The panel's own tools stand above them. -->
+        <aside id="side-panel" hidden>
+          <div id="side-tools"></div>
+          <!-- Save, the rhythm switch, Key and Details, and the one line that
+               says why Save is grey — directly over the playback shell. -->
+          <div id="panel-actions"></div>
+          <div id="playback">
+            <div id="playback-controls"></div>
+            <div id="video"></div>
+          </div>
+          <!-- The way out, under the video: as far from the music as the page
+               can put it, which is where a thing you press once belongs. -->
+          <div id="panel-submit"></div>
+        </aside>
       </div>
     </main>
 

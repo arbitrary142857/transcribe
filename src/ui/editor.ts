@@ -21,8 +21,7 @@ import type {
 } from "../render/render-melody.js";
 import { createPiano, type Piano } from "../playback/piano.js";
 import { createDurationGrid } from "./duration-grid.js";
-import { eraserIcon, restIcon, tieIcon, untieIcon } from "./icons.js";
-import { createSwitch } from "./switch.js";
+import { eraserIcon, pianoHeardIcon, restIcon, tieIcon, untieIcon } from "./icons.js";
 import { createTupletMenu } from "./tuplet-menu.js";
 import { createPianoKeyboard, rangeForClef } from "./piano-keyboard.js";
 import { pageTooltip } from "./tooltip.js";
@@ -44,7 +43,12 @@ export type EditorElements = {
    * sibling, so the video beside it sits off to one side of centre.
    */
   controls?: HTMLElement;
-  status: HTMLElement;
+  /**
+   * The sheet the score is printed on: the whole scrolling region, not just
+   * the score's own box. Pressing anywhere on the paper lets go of the
+   * selection, the way pressing the desk beside a page puts your finger down.
+   */
+  sheet: HTMLElement;
   keyboard: HTMLElement;
 };
 
@@ -148,10 +152,11 @@ export function createEditor(
   /**
    * Where a refused press explains itself.
    *
-   * Beside the pointer rather than in `elements.status`: the piano is at the
-   * bottom of the window and that line is at the top, and text appearing there
-   * grew the whole toolbar. `status` is left for the standing facts that are
-   * true whether or not anybody is pointing at anything.
+   * Beside the pointer rather than in a line of its own: the piano is at the
+   * bottom of the window and a standing line would be somewhere else, and
+   * text appearing there grew whatever band it stood in. What is standing
+   * says the standing facts — why Save is grey, what the last check found —
+   * which are true whether or not anybody is pointing at anything.
    */
   const tooltip = pageTooltip();
 
@@ -688,21 +693,6 @@ export function createEditor(
       "\u232B",
     );
   }
-  // Beside the piano, because it is about what the piano does — and above the
-  // action, because it is a setting rather than a deed: it says how the keys
-  // will behave from now on, where Clear pitch does one thing once.
-  const soundSwitch = createSwitch({
-    label: "Piano sound",
-    title: "Hear each pitch as it is set",
-    checked: sounding,
-    onChange: (on) => {
-      sounding = on;
-      showSound();
-      options.onSound?.(sounding);
-    },
-  });
-  elements.pitchActions.append(soundSwitch.element);
-
   // Backspace, because that is the key that does it: taking the pitch off is
   // the first rung of the ladder in `backspaceLadder`, and there is no second
   // key for it.
@@ -715,8 +705,36 @@ export function createEditor(
     "\u232B",
   );
 
+  /**
+   * Whether the piano sounds as pitches are set.
+   *
+   * Under the action rather than over it, and drawn as the playback panel's
+   * toggles are drawn — an icon that lights when it is on, the keyboard beside
+   * a speaker that is sounding or struck through. It is the same kind of thing
+   * as "hear the notes" over there, so it is the same kind of control here; as
+   * a labelled slider it was the one thing in this band that looked like a
+   * setting rather than a switch you flick while playing.
+   */
+  const soundButton = document.createElement("button");
+  soundButton.type = "button";
+  soundButton.className = "playback-toggle";
+  soundButton.title = "Hear each pitch as it is set";
+  soundButton.setAttribute("aria-label", "Hear each pitch as it is set");
+  soundButton.setAttribute("aria-pressed", "false");
+  soundButton.innerHTML = `<span class="playback-toggle-icon"></span>`;
+  soundButton.addEventListener("click", () => {
+    sounding = !sounding;
+    showSound();
+    options.onSound?.(sounding);
+  });
+  elements.pitchActions.append(soundButton);
+
   function showSound(): void {
-    soundSwitch.set(sounding);
+    soundButton.setAttribute("aria-pressed", String(sounding));
+    soundButton.classList.toggle("is-on", sounding);
+    // The speaker in the icon is the state, so it follows the toggle.
+    soundButton.querySelector(".playback-toggle-icon")!.innerHTML =
+      pianoHeardIcon(sounding);
     keyboard.setSounding(sounding);
     // Silence means silence: a context left open holds the audio hardware for
     // a page that has said it does not want it.
@@ -786,6 +804,33 @@ export function createEditor(
   });
   window.addEventListener("keydown", onKeyDown);
 
+  /**
+   * Press the paper anywhere off the music and the selection lets go.
+   *
+   * The score's own box already does this for a press on empty stave — see
+   * `onMouseDown` in melody-view — so presses that land inside it are left to
+   * it. What this adds is the rest of the sheet: the title block over the
+   * music, and the paper around and below it.
+   *
+   * On mousedown for the same reason the score uses mousedown: hovering
+   * redraws the score, so a `click` is only delivered when down and up land on
+   * the same node, and they often do not.
+   *
+   * On the *capture* phase for a consequence of that same redraw. Bubbling up
+   * from the score, this would run after melody-view had already selected the
+   * note and redrawn — and the redraw replaces the svg, so by then the pressed
+   * node has been thrown away and `contains` says no about a press that was
+   * plainly inside the score. Capture runs first, while the tree the press
+   * happened in is still standing.
+   */
+  function onSheetPress(event: MouseEvent): void {
+    if (event.target instanceof Node && elements.score.contains(event.target)) {
+      return;
+    }
+    view.select(undefined);
+  }
+  elements.sheet.addEventListener("mousedown", onSheetPress, true);
+
   view.select(Math.min(options.initialSelection ?? 0, melody.eventCount - 1));
   syncControls();
 
@@ -794,6 +839,7 @@ export function createEditor(
     selection: () => view.getAnchor(),
     holdStill: (ms) => view.holdStill(ms),
     destroy() {
+      elements.sheet.removeEventListener("mousedown", onSheetPress, true);
       window.removeEventListener("keydown", onKeyDown);
       // Hushed, not destroyed: the tooltip belongs to the page and the controls
       // beside the video go on using it after this editor is gone.

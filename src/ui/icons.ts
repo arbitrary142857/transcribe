@@ -321,15 +321,6 @@ export function restoreIcon(): string {
   );
 }
 
-/** Three lines: the menu that rolls the site nav down, and up again. */
-export function listIcon(): string {
-  return phosphor(
-    `<line x1="40" y1="128" x2="216" y2="128" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
-      `<line x1="40" y1="64" x2="216" y2="64" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>` +
-      `<line x1="40" y1="192" x2="216" y2="192" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16"/>`,
-  );
-}
-
 /** Phosphor's speaker, sounding — the notes toggle's badge while notes play. */
 const SPEAKER_ON =
   `<path d="M80,168H32a8,8,0,0,1-8-8V96a8,8,0,0,1,8-8H80l72-56V224Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>` +
@@ -346,17 +337,74 @@ const SPEAKER_OFF =
   `<polyline points="112.15 62.99 152 32 152 106.83" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="20"/>`;
 
 /**
+ * Where the speaker stands in a two-glyph icon, and how wide the box is.
+ *
+ * Both icons that pair a thing with a speaker use these, so the two read as
+ * one family: the same gap between the pair, the same speaker in the same
+ * place. The gap is the point of them — shoulder to shoulder the two glyphs
+ * ran together into one shape, and at twenty pixels across that shape said
+ * nothing.
+ */
+const SPEAKER_AT = 250;
+const SPEAKER_SCALE = 0.72;
+const PAIRED_WIDTH = 442;
+
+/**
  * Whether the transcription is heard: Phosphor's music-notes with the speaker
  * standing beside them, sounding or struck through. A wide icon on purpose —
- * the two glyphs sit shoulder to shoulder, and the pair of pictures is the
- * whole state: the button that shows this carries no words.
+ * the two glyphs stand apart with the box's width between them, and the pair
+ * of pictures is the whole state: the button that shows this carries no words.
  */
 export function notesHeardIcon(on: boolean): string {
   return (
-    `<svg xmlns="${NS}" viewBox="0 0 430 256" fill="currentColor" aria-hidden="true" focusable="false">` +
+    `<svg xmlns="${NS}" viewBox="0 0 ${PAIRED_WIDTH} 256" fill="currentColor" aria-hidden="true" focusable="false">` +
     `<g transform="translate(0 14) scale(0.9)"><path d="M212.92,17.71a7.89,7.89,0,0,0-6.86-1.46l-128,32A8,8,0,0,0,72,56V166.1A36,36,0,1,0,88,196V102.25l112-28V134.1A36,36,0,1,0,216,164V24A8,8,0,0,0,212.92,17.71Z"/></g>` +
-    `<g transform="translate(226 38) scale(0.72)">${on ? SPEAKER_ON : SPEAKER_OFF}</g>` +
+    `<g transform="translate(${SPEAKER_AT} 38) scale(${SPEAKER_SCALE})">${on ? SPEAKER_ON : SPEAKER_OFF}</g>` +
     `</svg>`
+  );
+}
+
+/**
+ * The piano beside a speaker, sounding or struck through.
+ *
+ * The keyboard's own version of `notesHeardIcon`, and drawn to the same plan:
+ * two glyphs set apart in one wide box, where the pair of pictures is the
+ * whole state and the button carries no words. There the notes are the
+ * transcription playing along with the video; here they are the key you just
+ * pressed.
+ */
+export function pianoHeardIcon(on: boolean): string {
+  return (
+    `<svg xmlns="${NS}" viewBox="0 0 ${PAIRED_WIDTH} 256" fill="currentColor" aria-hidden="true" focusable="false">` +
+    // A stretch of keyboard seen from above: the bed, two gaps dividing three
+    // whites, and two blacks laid over them. Three keys rather than seven —
+    // this is drawn at about twenty pixels across, and at that size a full
+    // octave collapses into a grey smudge. What has to survive the shrink is
+    // the shape of the thing, and three keys still say piano.
+    `<g transform="translate(4 52)">` +
+    `<rect x="8" y="8" width="192" height="148" rx="12" fill="none" stroke="currentColor" stroke-width="16"/>` +
+    `<path d="M72 16V148M136 16V148" stroke="currentColor" stroke-width="12"/>` +
+    `<rect x="52" y="8" width="34" height="76" rx="3"/>` +
+    `<rect x="122" y="8" width="34" height="76" rx="3"/>` +
+    `</g>` +
+    `<g transform="translate(${SPEAKER_AT} 38) scale(${SPEAKER_SCALE})">${on ? SPEAKER_ON : SPEAKER_OFF}</g>` +
+    `</svg>`
+  );
+}
+
+/**
+ * The way out of a box: two strokes crossed.
+ *
+ * Drawn rather than typed. As a multiplication sign it could not be centred in
+ * its button at any line height — the glyph's ink sits above the baseline, and
+ * a line box centred on the baseline leaves the ink riding high — so what the
+ * eye sees was never in the middle of what the pointer presses. Two strokes
+ * through the middle of a square are centred by construction.
+ */
+export function closeIcon(): string {
+  return phosphor(
+    `<line x1="200" y1="56" x2="56" y2="200" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="20"/>` +
+      `<line x1="200" y1="200" x2="56" y2="56" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="20"/>`,
   );
 }
 

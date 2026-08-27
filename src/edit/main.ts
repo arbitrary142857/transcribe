@@ -78,18 +78,22 @@ try {
       {
         setup: required("setup"),
         workspace: required("workspace"),
-        signatures: required("signatures"),
+        sheetHead: required("sheet-head"),
         score: required("score"),
         durations: required("durations"),
         tuplets: required("tuplets"),
         actions: required("actions"),
         controls: required("controls"),
         pitchActions: required("pitch-actions"),
-        status: required("status"),
         keyboard: required("keyboard"),
+        sheet: required("score-scroll"),
         toolbar: required("toolbar"),
         keyboardArea: required("keyboard-area"),
         sidePanel: required("side-panel"),
+        sideTools: required("side-tools"),
+        panelActions: required("panel-actions"),
+        panelSubmit: required("panel-submit"),
+        pitchHistory: required("pitch-history"),
         video: required("video"),
         playbackControls: required("playback-controls"),
         scoreArea: required("score-area"),
@@ -99,7 +103,9 @@ try {
     );
   }
 } catch (error) {
+  // The page never got as far as having a panel to report into, so this goes
+  // where the setup page would have been.
   const message = error instanceof Error ? error.message : String(error);
-  document.getElementById("status")!.textContent = message;
+  showTrouble(required("setup"), message);
   console.error(error);
 }

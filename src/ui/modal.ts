@@ -14,6 +14,8 @@
  * keeps every one of them ignorant of modals rather than each carrying a check.
  */
 
+import { closeIcon } from "./icons.js";
+
 /** What can hold focus inside a dialog. */
 const FOCUSABLE =
   'a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -94,9 +96,9 @@ function openShell(options: ShellOptions): void {
     dismiss.type = "button";
     dismiss.className = "modal-close";
     dismiss.setAttribute("aria-label", "Close");
-    // The glyph is a multiplication sign rather than a letter x, which at this
-    // size leans and reads as a letter.
-    dismiss.textContent = "×";
+    // Drawn rather than typed: see `closeIcon`. A letter or a sign both leave
+    // the ink off the centre of the button under it.
+    dismiss.innerHTML = closeIcon();
     dismiss.addEventListener("click", () => close(false));
     box.append(dismiss);
   }

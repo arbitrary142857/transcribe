@@ -114,22 +114,27 @@ try {
     required("keyboard-area").hidden = true;
     required("side-panel").hidden = true;
   } else {
-    required("toolbar").hidden = false;
+    // The band stays away: nothing that writes a rhythm is drawn here, and it
+    // holds nothing else any more.
     required("keyboard-area").hidden = false;
     required("side-panel").hidden = false;
     // The working frame: the page stops scrolling and the score's box takes
-    // over, with the nav rolled up until its button is pressed.
+    // over, under the nav that stays where it is on every page.
     document.body.classList.add("is-framed");
     createPlayPage(
       {
-        bar: required("play-bar"),
+        sheetHead: required("sheet-head"),
+        sideTools: required("side-tools"),
+        panelActions: required("panel-actions"),
+        panelSubmit: required("panel-submit"),
+        pitchHistory: required("pitch-history"),
         score: required("score"),
         durations: required("durations"),
         tuplets: required("tuplets"),
         actions: required("actions"),
         pitchActions: required("pitch-actions"),
-        status: required("status"),
         keyboard: required("keyboard"),
+        sheet: required("score-scroll"),
         video: required("video"),
         playbackControls: required("playback-controls"),
         scoreArea: required("score-area"),
@@ -142,6 +147,6 @@ try {
   }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  document.getElementById("status")!.textContent = message;
+  showTrouble(required("trouble"), message);
   console.error(error);
 }

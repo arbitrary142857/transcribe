@@ -37,7 +37,7 @@ import {
   firstSoundingNote,
   type TranscriptionRecord,
 } from "../shared/transcription.js";
-import type { UserSummary } from "../shared/session.js";
+import { ANONYMOUS, type UserSummary } from "../shared/session.js";
 import { editDetails } from "./details-modal.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
 import { keepingScroll } from "./score-overlay.js";
@@ -45,13 +45,25 @@ import { solvedContribution } from "./rating-prompt.js";
 import { upvoteLine } from "./upvote-line.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
 import { openLevelModal } from "./level-modal.js";
-import { createPlayBar, type PlayBar } from "./play-bar.js";
+import { createPanelActions, type PanelActions } from "./panel-actions.js";
 import { createPlayback, type Playback } from "./playback.js";
+import { createSheetHead, type SheetHead } from "./sheet-head.js";
+import { createHistoryPair, type HistoryPair } from "./history-pair.js";
+import { createSideTools } from "./side-tools.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { mountVideoPanel } from "./video-panel.js";
 
 export type PlayPageElements = EditorElements & {
-  bar: HTMLElement;
+  /** The masthead over the score: the title, the subtitle and the byline. */
+  sheetHead: HTMLElement;
+  /** The note in the side panel's corner about the keyboard shortcuts. */
+  sideTools: HTMLElement;
+  /** Nothing, here: a puzzle has no Key or Details box to open. */
+  panelActions: HTMLElement;
+  /** The clock and Check, under the video. */
+  panelSubmit: HTMLElement;
+  /** Undo and redo, in the keyboard band under Clear pitch. */
+  pitchHistory: HTMLElement;
   video: HTMLElement;
   playbackControls: HTMLElement;
   scoreArea: HTMLElement;
@@ -103,12 +115,21 @@ export function createPlayPage(
   let verdicts: Verdicts = new Map();
   let checkCount = restored?.checkCount ?? 0;
   let solved = false;
+  /**
+   * Whether it was solved in front of us, rather than before the page opened.
+   *
+   * Only the clock cares, and only for its one pop: arriving at a level you
+   * finished last week is a fact about it, not a thing that just happened.
+   */
+  let justSolved = false;
   let checking = false;
   let report: string | undefined;
 
   let editor: Editor | undefined;
   let playback: Playback | undefined;
-  let bar: PlayBar | undefined;
+  let actions: PanelActions | undefined;
+  let head: SheetHead | undefined;
+  let steps: HistoryPair | undefined;
   /**
    * Whether the piano sounds as pitches are set.
    *
@@ -226,20 +247,31 @@ export function createPlayPage(
 
   const marks = () => marksOf(melody, verdicts, given);
 
+  /** Draw everything that is not the score: the masthead and the panel. */
   function showBar(): void {
-    bar?.update({
-      title: record.title,
-      subtitle: record.subtitle,
-      author: record.author,
-      key: melody.keySignature,
+    steps?.update({
       canUndo: history.canUndo(),
       canRedo: history.canRedo(),
-      elapsedMs: elapsed(),
-      checkCount,
-      checkProblem: solved ? undefined : checkProblem(melody),
-      checking,
-      report,
-      solved,
+    });
+    head?.update({
+      title: record.title,
+      subtitle: record.subtitle,
+      // The level's author, never the player's: the server has already put
+      // this to NULL for an author who asked to be anonymous, which is what
+      // ANONYMOUS then stands in for.
+      credit: record.author ?? ANONYMOUS,
+    });
+    const problem = solved ? undefined : checkProblem(melody);
+    actions?.update({
+      submit: {
+        label: checking ? "Checking…" : solved ? "Solved" : "Check",
+        disabled: checking || solved || problem !== undefined,
+      },
+      // What the last check said wins over why the next one cannot be made:
+      // "two notes are wrong" is the more useful of the two, and the reason
+      // the button is grey is that you are still fixing them.
+      message: checking ? "" : (report ?? problem ?? ""),
+      clock: { elapsedMs: elapsed(), checkCount, solved, justSolved },
     });
   }
 
@@ -363,6 +395,7 @@ export function createPlayPage(
 
       if (answered.solved) {
         solved = true;
+        justSolved = true;
         watch = pauseStopwatch(watch, performance.now());
         finalMs = readStopwatch(watch, performance.now());
         report = undefined;
@@ -460,11 +493,20 @@ export function createPlayPage(
     });
   }
 
-  bar = createPlayBar(elements.bar, {
+  // No rhythm switch and no Key or Details: the rhythm and the key are the
+  // level's, and the words are its author's. What is left in the panel is the
+  // clock and the one button that asks whether you are right.
+  actions = createPanelActions(
+    { boxes: elements.panelActions, submit: elements.panelSubmit },
+    { onSubmit: () => void check() },
+  );
+  // The (i) rides the title on the sheet, as a footnote mark does: the box it
+  // opens is about the piece, so it belongs with the piece's name.
+  head = createSheetHead(elements.sheetHead, { onAbout: () => openAbout() });
+  createSideTools(elements.sideTools);
+  steps = createHistoryPair(elements.pitchHistory, {
     onUndo: () => step(history.undo()),
     onRedo: () => step(history.redo()),
-    onCheck: () => void check(),
-    onAbout: () => openAbout(),
   });
 
   /**

@@ -34,7 +34,6 @@ import {
   type TimingState,
 } from "../playback/timing-fields.js";
 import type { MelodyRenderResult } from "../render/render-melody.js";
-import { createKeysButton } from "./keys-button.js";
 import { createPlaybackPanel, type PlaybackPanel } from "./playback-panel.js";
 import { createPlayhead, type Playhead } from "./playhead.js";
 import { createTimingPanel, type TimingPanel } from "./timing-panel.js";
@@ -196,8 +195,9 @@ export function createPlayback(
   /**
    * The line that fades in under the player when the fence is clicked.
    *
-   * Absolutely positioned into the slack below the video, so its coming and
-   * going moves nothing else in the column.
+   * It holds its line in the flow whether or not it is showing, so that its
+   * coming and going moves nothing else in the column and — more to the point
+   * — so that nothing else can ever be laid where it will appear.
    */
   const videoNote = document.createElement("p");
   videoNote.className = "video-note";
@@ -542,12 +542,11 @@ export function createPlayback(
 
   elements.panel.replaceChildren();
 
-  // The reveal button first, in its own box above everything the keys are
-  // for; then the shell — the mode tabs where there are two modes, seated on
-  // the boxed body whichever panel the mode names fills. The panels draw no
-  // box of their own, so switching modes swaps the contents of one box
-  // rather than trading one box for another.
-  elements.panel.append(createKeysButton());
+  // The shell: the mode tabs where there are two modes, seated on the boxed
+  // body whichever panel the mode names fills. The panels draw no box of
+  // their own, so switching modes swaps the contents of one box rather than
+  // trading one box for another. The button that reveals the stickers stands
+  // above all of this, with the panel's other tools — see `side-tools.ts`.
 
   const shell = document.createElement("section");
   shell.className = "playback-shell";

@@ -21,45 +21,43 @@
       </div>
     </nav>
 
-    <!-- The same band the editor uses, holding a different bar. Hidden until
-         the level has been fetched, so a page that cannot open one shows the
-         reason rather than an empty set of controls. -->
-    <div id="toolbar" hidden>
-      <div id="toolbar-inner">
-        <div id="play-bar"></div>
-        <div id="toolbar-body">
-          <!-- The rhythm belongs to the level, so none of the controls that
-               write one are here. These three are what the editor empties on
-               its way into pitch-only mode, and they exist so that it has
-               somewhere to find nothing. -->
-          <div id="controls" hidden>
-            <div id="durations"></div>
-            <div id="tuplets"></div>
-            <div id="actions"></div>
-          </div>
-        </div>
-        <p id="status" role="status"></p>
-      </div>
-    </div>
-
     <main class="editor-main">
       <!-- Filled only when there is no puzzle to show. -->
       <div id="trouble"></div>
 
-      <!-- The working frame: the video's column at the left, and beside it the
-           score over the keyboard. While a puzzle is open the page does not
-           scroll; the score's own box is the only thing that does. -->
+      <!-- The working frame: the score over the keyboard, with the video's
+           column down the right-hand side. While a puzzle is open the page
+           does not scroll; the score's own box is the only thing that does. -->
       <div id="main-body">
-        <aside id="side-panel" hidden>
-          <div id="playback">
-            <div id="playback-controls"></div>
-            <div id="video"></div>
-          </div>
-        </aside>
-
         <div id="work-column">
+          <!-- The editor's band, and empty here for good: the rhythm belongs to
+               the level, so nothing that writes one is ever drawn. It is kept
+               only because the editor empties three hosts on its way into
+               pitch-only mode and they have to exist to be emptied; the band
+               around them stays hidden from first paint to last. -->
+          <div id="toolbar" hidden>
+            <div id="toolbar-inner">
+              <div id="toolbar-body">
+                <!-- The rhythm belongs to the level, so none of the controls
+                     that write one are here. These three are what the editor
+                     empties on its way into pitch-only mode, and they exist so
+                     that it has somewhere to find nothing. -->
+                <div id="controls" hidden>
+                  <div id="durations"></div>
+                  <div id="tuplets"></div>
+                  <div id="actions"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div id="score-scroll">
             <div id="workspace">
+              <!-- The head of the sheet: the title centred over the music with
+                   the (i) riding it, the subtitle under it, and the byline
+                   against the right margin. -->
+              <div id="sheet-head"></div>
+
               <!-- The score has every one of its children replaced on each
                    redraw, so the marker that follows the video is a neighbour
                    of it rather than a child, and this is what holds the two
@@ -72,9 +70,30 @@
 
           <div id="keyboard-area" hidden>
             <div id="keyboard"></div>
-            <div id="pitch-actions"></div>
+            <!-- The column beside the keys, in two hosts: the page keeps the
+                 first for the whole sitting, and the editor empties and
+                 redraws the second on every edit. Taking a note back is at the
+                 top, where the hand comes to it first. -->
+            <div id="pitch-column">
+              <div id="pitch-history"></div>
+              <div id="pitch-actions"></div>
+            </div>
           </div>
         </div>
+
+        <aside id="side-panel" hidden>
+          <div id="side-tools"></div>
+          <!-- The clock, Check, and the line that says what the last check
+               found — directly over the playback shell. -->
+          <div id="panel-actions"></div>
+          <div id="playback">
+            <div id="playback-controls"></div>
+            <div id="video"></div>
+          </div>
+          <!-- The way out, under the video: as far from the music as the page
+               can put it, which is where a thing you press once belongs. -->
+          <div id="panel-submit"></div>
+        </aside>
       </div>
     </main>
 

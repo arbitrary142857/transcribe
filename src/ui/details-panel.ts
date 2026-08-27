@@ -1,15 +1,17 @@
 /**
  * What the transcription is called, and what its author wants said about it.
  *
- * A disclosure in the bar above the music rather than a step on the way out,
- * because a title is not something you decide at the end: the piece has a name
- * before the first note is written down, and this is where it goes. Nothing
- * here is a submission — it is simply the state of the thing being edited, and
- * Submit sends whatever is in it.
+ * Reachable while the music is being written rather than kept for a step on
+ * the way out, because a title is not something you decide at the end: the
+ * piece has a name before the first note is written down. Nothing here is a
+ * submission — it is simply the state of the thing being edited, and Save
+ * sends whatever is in it. Which is why the box these fill has no OK: every
+ * keystroke has already been reported by the time it is closed.
  *
- * Built once and mutated, never rebuilt. Every field is a box somebody may be
- * typing into, and rebuilding one between keystrokes takes the caret with it —
- * the same reason the link box and the timing panel are left standing.
+ * The fields are made fresh each time the box opens, and that is safe for the
+ * same reason: nothing lives in them that is not already held outside them.
+ * Within one opening they are never rebuilt, because rebuilding a box between
+ * two keystrokes takes the caret with it.
  */
 
 import {
@@ -18,16 +20,7 @@ import {
   type TranscriptionDetails,
 } from "../shared/transcription.js";
 import { createDifficultyStepper, type DifficultyStepper } from "./difficulty-stepper.js";
-import { createDisclosure } from "./disclosure.js";
 import { limitTyping } from "./text-entry.js";
-
-export type DetailsPanel = {
-  /** The toggle and its panel, to be put in the bar. */
-  readonly element: HTMLElement;
-  update(details: TranscriptionDetails): void;
-  /** Open the panel and put the caret in the title. */
-  focusTitle(): void;
-};
 
 export type FieldOptions = {
   label: string;
@@ -49,8 +42,8 @@ let made = 0;
 /**
  * One labelled box with a live count of what is in it.
  *
- * Exported because the details modal wants the very same three boxes without
- * the disclosure around them: same limit, same counter, same red star.
+ * Exported because the published-level box wants the very same three boxes as
+ * the editor's: same limit, same counter, same required mark.
  */
 export function createField(options: FieldOptions, onInput: () => void): Field {
   const row = document.createElement("div");
@@ -92,9 +85,8 @@ export function createField(options: FieldOptions, onInput: () => void): Field {
     input.setAttribute("aria-required", "true");
   }
 
-  // Numbered as well as named: the same three fields can stand in the editor's
-  // bar and in a modal at once, and a label pointing at the wrong box is
-  // worse than no label.
+  // Numbered as well as named: two boxes of these can stand on one page at
+  // once, and a label pointing at the wrong box is worse than no label.
   made += 1;
   const id = `details-${options.label.toLowerCase()}-${made}`;
   input.id = id;
@@ -162,29 +154,24 @@ export function difficultyRow(
   return row;
 }
 
-export function createDetailsPanel(
+/**
+ * The rows the details box holds, and a way to put fresh values in them.
+ *
+ * The caller owns the box; this owns what goes in it. `update` exists for the
+ * live editor, where the melody's details can change under an open box — an
+ * undo does not touch them, but a restore does — and it declines to write over
+ * whichever field the caret is in, as `createField` already does.
+ */
+export type DetailsFields = {
+  readonly rows: readonly HTMLElement[];
+  update(details: TranscriptionDetails): void;
+  /** Put the caret in the title, for a box opened in order to name something. */
+  focusTitle(): void;
+};
+
+export function createDetailsFields(
   onChange: (details: TranscriptionDetails) => void,
-): DetailsPanel {
-  const element = document.createElement("div");
-  element.className = "key-picker details-picker";
-
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "key-toggle";
-  toggle.setAttribute("aria-expanded", "false");
-
-  const value = document.createElement("span");
-  value.className = "key-toggle-value details-title";
-
-  const label = document.createElement("span");
-  label.className = "key-toggle-label";
-  label.textContent = "Details";
-  toggle.append(label, value);
-
-  const panel = document.createElement("div");
-  panel.className = "key-panel details-panel";
-  panel.hidden = true;
-
+): DetailsFields {
   let difficulty: number | undefined;
   const report = () =>
     onChange({
@@ -222,48 +209,16 @@ export function createDetailsPanel(
     report();
   });
 
-  panel.append(title.row, subtitle.row, instructions.row, stars);
-
-  const disclosure = createDisclosure({
-    root: element,
-    onChange(open) {
-      panel.hidden = !open;
-      toggle.setAttribute("aria-expanded", String(open));
-      toggle.classList.toggle("is-on", open);
-    },
-  });
-
-  toggle.addEventListener("click", () => disclosure.toggle());
-  // Escape closes, since a panel of text boxes holds attention in a way the
-  // key chooser does not; nothing is lost by closing, because every keystroke
-  // has already been reported.
-  panel.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      disclosure.close();
-      toggle.focus();
-      event.stopPropagation();
-    }
-  });
-
-  element.append(toggle, panel);
-
   return {
-    element,
+    rows: [title.row, subtitle.row, instructions.row, stars],
     update(details) {
       title.show(details.title);
       subtitle.show(details.subtitle ?? "");
       instructions.show(details.instructions ?? "");
       difficulty = details.difficulty;
       stars.picker.set(difficulty);
-
-      const named = details.title.trim() !== "";
-      value.textContent = named ? details.title.trim() : "Untitled";
-      // Untitled is a fact, not a warning, so it is only greyed — the reason
-      // Submit is unavailable is written under Submit.
-      value.classList.toggle("is-untitled", !named);
     },
     focusTitle() {
-      disclosure.open();
       title.input.focus();
     },
   };
