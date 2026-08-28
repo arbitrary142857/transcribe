@@ -241,7 +241,9 @@ export function createPlaybackPanel(
       () => handlers.onResetMark(field),
     );
     const row = document.createElement("div");
-    row.className = "playback-mark";
+    // Named apart so the stylesheet can give each field the colour of the mark
+    // it holds, for the pulse it gives when the button above writes into it.
+    row.className = `playback-mark playback-mark-${field}`;
     // The word, the box it names, the button that writes into it, the way
     // back — the same shape the timing panel's rows have, so the two read the
     // same when the switch above them is pressed.

@@ -273,11 +273,25 @@ export function createTimingPanel(
     input.value = text;
   };
 
-  const flashable: Record<TimingField, HTMLElement> = {
-    start: startField.element,
-    end: endField.element,
-    measures: measuresRow,
-    bpm: tempoRow,
+  /**
+   * How each field says it was written into.
+   *
+   * The two timecodes hand it to the field itself, which pulses inside its own
+   * edge. The other two are rows — a label beside a box — with no face of
+   * their own to pulse, so those glow at their bounds instead.
+   */
+  const pulse = (target: HTMLElement) => {
+    target.classList.remove("is-auto-edited");
+    // Forcing a reflow restarts the animation when two flashes land close.
+    void target.offsetWidth;
+    target.classList.add("is-auto-edited");
+  };
+
+  const flashable: Record<TimingField, () => void> = {
+    start: () => startField.flash(),
+    end: () => endField.flash(),
+    measures: () => pulse(measuresRow),
+    bpm: () => pulse(tempoRow),
   };
 
   return {
@@ -322,10 +336,7 @@ export function createTimingPanel(
 
     flash(fields) {
       for (const field of fields) {
-        const target = flashable[field];
-        target.classList.remove("is-auto-edited");
-        void target.offsetWidth;
-        target.classList.add("is-auto-edited");
+        flashable[field]();
       }
     },
   };

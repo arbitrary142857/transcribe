@@ -31,6 +31,13 @@
   color-scheme: light;
   /* The side panel's column width, shared by the frame beside it. */
   --side-w: clamp(20rem, 24vw, 23rem);
+  /* The two section marks. Named here because three things have to agree on
+     them: the markers drawn over the stave, the icons on the buttons that set
+     them, and the flash the field gives when one is set. Deep enough to stand
+     at the weight of the staff lines and the noteheads, so they read as marks
+     on the notation rather than as highlighter over it. */
+  --mark-start: #0f6b8a;
+  --mark-end: #9a6400;
   /* Named once, so changing the page's typeface is changing this line.
      Everything else says `font: inherit` — the one other place a face is
      spelled out is the tuplet number in `icons.ts`, which is drawn into an svg
@@ -757,13 +764,21 @@ main.editor-main {
   font-size: 0.88rem;
 }
 
-/* Sized for its widest reading, "C♯ major", so the row does not twitch as the
-   key changes; in the panel there is no room to spare for that. */
-#panel-actions .key-toggle-value:not(.details-title) {
-  width: auto;
+/* Not equal halves: Key holds one short name from a list of fifteen, and
+   Details holds a title somebody typed. So Key takes only what its widest
+   reading needs and Details takes everything left over. The name keeps the
+   fixed width the base rule gives it, which is what makes "only what it
+   needs" a constant — the row must not twitch as the key changes. */
+#panel-actions .key-door {
+  flex: 0 0 auto;
 }
 
-
+/* That constant, at the panel's own reading size: wide enough for "C♯ major",
+   the widest of the fifteen, with nothing spare — every millimetre not spent
+   here is a millimetre of somebody's title. */
+#panel-actions .key-toggle-value:not(.details-title) {
+  width: 4rem;
+}
 
 /* Key and Details: two doors, and the same door twice. Each says what it is
    about and what it currently holds, and each opens a box over the page. */
@@ -1518,20 +1533,64 @@ main.editor-main {
   cursor: not-allowed;
 }
 
-/* The small visual that says "the app moved this one itself": a warm pulse
-   that fades, on whichever field an automatic edit landed. */
+/* The small visual that says "the app moved this one itself": a pulse that
+   fades, on whichever field an automatic edit landed.
+
+   Two shapes for two kinds of target. A *field* pulses just inside its own
+   edge, because it has a face to draw on and because the panel packs it within
+   a few pixels of the button beside it — a glow spreading outward from there
+   would reach into its neighbour. A *row* — a label beside a box — has no face
+   of its own, so it glows at its bounds instead.
+
+   Neither forces a corner radius any more. The one that did drew a rounded
+   ring around a field the side panel had squared off, which is the tell that a
+   shape was being asserted rather than followed: taking the element's own
+   corners is right wherever it is used.
+
+   The colour is a variable so that a field standing for something already
+   coloured can pulse in its own colour — the two section marks do, matching
+   the markers that appear on the stave — while everything else keeps the warm
+   default. Two variables rather than one with a changing alpha: a custom
+   property inside a keyframe is substituted, not interpolated, so the fade has
+   to be spelled out as its two ends. */
 @keyframes auto-edited {
   0% {
-    box-shadow: 0 0 0 3px rgb(180 67 44 / 45%);
+    box-shadow: 0 0 0 3px var(--flash-from, rgb(180 67 44 / 45%));
   }
   100% {
-    box-shadow: 0 0 0 3px rgb(180 67 44 / 0%);
+    box-shadow: 0 0 0 3px var(--flash-to, rgb(180 67 44 / 0%));
+  }
+}
+
+@keyframes auto-edited-inset {
+  0% {
+    box-shadow: inset 0 0 0 2px var(--flash-from, rgb(180 67 44 / 45%));
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px var(--flash-to, rgb(180 67 44 / 0%));
   }
 }
 
 .is-auto-edited {
   animation: auto-edited 0.9s ease-out;
-  border-radius: 6px;
+}
+
+.time-field-input.is-auto-edited {
+  animation-name: auto-edited-inset;
+}
+
+/* Each section field pulses in the colour of the mark it holds, so pressing
+   the button, the flash it answers with, and the marker that lands on the
+   stave are visibly one act. Set on the box so that the input inside inherits
+   it — the pulse is drawn on the input, the colour is named on the row. */
+.playback-mark-start .time-field {
+  --flash-from: rgb(15 107 138 / 60%);
+  --flash-to: rgb(15 107 138 / 0%);
+}
+
+.playback-mark-end .time-field {
+  --flash-from: rgb(154 100 0 / 60%);
+  --flash-to: rgb(154 100 0 / 0%);
 }
 
 /* ---- The setup page's timing rows ---- */
@@ -1894,6 +1953,38 @@ main.editor-main {
   max-width: 1200px;
   /* Centred in whatever the side panel leaves, rather than pinned against it. */
   margin: 0 auto;
+}
+
+/* ---- The section markers ----
+
+   Where the two marks under the video fall on the stave: one opening the
+   passage and one closing it, ruled through the staff as plain lines. Colour
+   says which is which, and each also stands on its own side of the music it
+   holds, so the pair reads as a span even when they are lines apart.
+
+   Not quite solid. At full strength a line ruled through the staff reads as a
+   barline — a thing the notation already means something by — and it blots out
+   whatever it crosses. Letting the staff show through says the mark is over
+   the music rather than part of it. */
+.section-bracket {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: currentcolor;
+  opacity: 0.68;
+  /* A bookmark, never a target: the score underneath is hit-tested on every
+     mouse move, and a marker catching those clicks would make notes
+     unselectable wherever it happened to be standing. */
+  pointer-events: none;
+  will-change: transform;
+}
+
+.section-bracket-start {
+  color: var(--mark-start);
+}
+
+.section-bracket-end {
+  color: var(--mark-end);
 }
 
 .playhead {
@@ -2845,8 +2936,15 @@ textarea.details-input {
   line-height: 1.4;
 }
 
+/* The side padding is small because it is never a margin — this button is
+   always the full width of its cell, so the room around the word is the
+   cell's, and the padding only ever acts as a floor under it. A roomier
+   1rem of it was subtracted from a box that "Checking…" already filled: the
+   line came out wider than the space left for it, and a line with no slack
+   cannot be centred, so it sat against the left edge with the ellipsis
+   hanging over the right border. */
 .submit-button {
-  padding: 0.4rem 1rem;
+  padding: 0.4rem 0.25rem;
   font: inherit;
   font-size: 0.92rem;
   color: #fffdf9;

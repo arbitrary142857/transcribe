@@ -21,6 +21,11 @@ import { alterationInEffect, spellingContext } from "../music/spelling.js";
 // name.
 import type { Accidental as Alteration } from "../music/types.js";
 import { planBeams } from "./beaming.js";
+import {
+  chooseLines,
+  lineRequirement as requirementOf,
+  settledWeights,
+} from "./line-breaks.js";
 import { middleLinePitchOf, vexFlowKeyFor } from "./vex-key.js";
 
 /** Room to the right of the last bar so a hanging tie is not clipped. */
@@ -57,56 +62,13 @@ const KEY_ACCIDENTAL_WIDTH = 12;
 const TIME_SIGNATURE_WIDTH = 30;
 
 /**
- * Padding over the formatter's bare minimum, which packs notes until they
- * almost touch. Only binds when the music is too wide for the page; given more
- * room the bars are justified out to fill it anyway.
- */
-const BAR_BREATHING = 1.08;
-
-/**
- * The least room a bar may get, as a fraction of an equal share of its line.
- * Without it a bar holding one whole note collapses to a sliver next to a bar
- * of seven quintuplet sixteenths, though both last exactly as long.
- */
-const MIN_BAR_SHARE = 0.95;
-
-/**
- * How many bars share a line, by the width available.
+ * The most bars that may share a line, however little they hold.
  *
- * A narrow window would otherwise cram four bars into a line and scale the
- * whole score down to fit, leaving the notes too small to read. Breaking more
- * often trades height, which the page can scroll, for width, which it cannot.
- *
- * Ordered widest first; the first row the width reaches wins, so the last row
- * needs a threshold of 0 to catch everything else. Add a row to introduce
- * another step.
+ * Not a target — how many actually go on a line is settled by what they need
+ * and what the page has — but a ceiling, so that a piece of near-empty bars
+ * does not come out as one long thin strip of them.
  */
-const LINE_BREAKPOINTS: readonly { minWidth: number; barsPerLine: number }[] = [
-  { minWidth: 900, barsPerLine: 4 },
-  { minWidth: 0, barsPerLine: 2 },
-];
-
-function barsPerLineFor(availableWidth: number): number {
-  return (
-    LINE_BREAKPOINTS.find((row) => availableWidth >= row.minWidth)
-      ?.barsPerLine ?? 4
-  );
-}
-
-/** Break after every `barsPerLine`-th measure, as measure indices. */
-function breaksEvery(barsPerLine: number, measureCount: number): Set<number> {
-  const breaks = new Set<number>();
-  for (let i = barsPerLine - 1; i < measureCount; i += barsPerLine) {
-    breaks.add(i);
-  }
-  return breaks;
-}
-
-/**
- * Repetitions used to settle that floor. It converges geometrically while
- * `MIN_BAR_SHARE` is below 1, so this is far more than it needs.
- */
-const FLOOR_PASSES = 40;
+const MAX_BARS_PER_LINE = 6;
 
 export type RenderMelodyOptions = {
   elementId?: string;
@@ -156,8 +118,22 @@ export type NoteHitRegion = {
   h: number;
 };
 
-/** Where one event was drawn: which line of music, and how far along it. */
-export type EventAnchor = { readonly line: number; readonly x: number };
+/**
+ * Where one event was drawn: which line of music, and how far along it.
+ *
+ * `x` is the middle of the notehead, for anything that sits *on* the note.
+ * `left` and `right` are the whole of what was drawn for it — accidentals,
+ * stem and flag included — which is what anything standing *between* two
+ * notes has to clear. The two are different questions and the answers differ
+ * by more than a notehead: an accidental reaches well left of the head it
+ * belongs to.
+ */
+export type EventAnchor = {
+  readonly line: number;
+  readonly x: number;
+  readonly left: number;
+  readonly right: number;
+};
 
 /**
  * How tall one line of music stands, in the svg's own coordinates.
@@ -165,7 +141,22 @@ export type EventAnchor = { readonly line: number; readonly x: number };
  * Taken from the staff and everything hanging off it rather than from the five
  * lines alone, so a marker drawn down a line covers its ledger notes too.
  */
-export type ScoreLineBox = { readonly top: number; readonly bottom: number };
+export type ScoreLineBox = {
+  readonly top: number;
+  readonly bottom: number;
+  /**
+   * The five lines alone, before any of that opening out.
+   *
+   * What a marker drawn *to the staff* rather than to the notes wants: a
+   * bracket down one line and the next should be the same height, and a bar
+   * holding a high note is no reason for it to grow.
+   */
+  readonly staffTop: number;
+  readonly staffBottom: number;
+  /** Where notes may stand: after the clef and meter, before the last barline. */
+  readonly left: number;
+  readonly right: number;
+};
 
 export type MelodyRenderResult = {
   svg: SVGSVGElement;
@@ -385,18 +376,6 @@ export function renderMelody(
     };
   });
 
-  const breaks =
-    options.lineBreakAfter ??
-    breaksEvery(barsPerLineFor(availableWidth), measures.length);
-
-  const lines: number[][] = [[]];
-  for (let i = 0; i < measures.length; i++) {
-    lines[lines.length - 1]!.push(i);
-    if (breaks.has(i) && i < measures.length - 1) {
-      lines.push([]);
-    }
-  }
-
   // Every line restates the clef and key; only the first states the meter.
   const accidentalCount = Math.abs(melody.keySignature.fifths());
   const leadWidth = (lineIndex: number) =>
@@ -404,44 +383,42 @@ export function renderMelody(
     KEY_ACCIDENTAL_WIDTH * accidentalCount +
     (lineIndex === 0 ? TIME_SIGNATURE_WIDTH : 0);
 
-  // Every bar here lasts the same length of time, so they should come out close
-  // to the same width, with content only stretching a bar that genuinely needs
-  // the room. Weighting purely by content would leave a bar holding one whole
-  // note a sliver beside a bar of seven quintuplet sixteenths.
-  const weightsOf = (lineIndex: number) => {
-    const mins = lines[lineIndex]!.map((i) => built[i]!.minWidth);
-    // A floor rather than an average: a bar that already needs more than its
-    // share keeps exactly the room its contents ask for, so propping up the
-    // sparse bars never squeezes the crowded ones.
-    //
-    // The floor is a fraction of an equal share of the room actually handed
-    // out, which depends on the floor — raising the thin bars raises the total,
-    // which raises the floor again. Settle it by repetition rather than against
-    // the raw minimums, where one crowded bar drags the whole line's share up
-    // and leaves its sparse neighbours looking starved beside it.
-    let weights = mins;
-    for (let pass = 0; pass < FLOOR_PASSES; pass++) {
-      const share = weights.reduce((total, w) => total + w, 0) / weights.length;
-      weights = mins.map((m) => Math.max(m, MIN_BAR_SHARE * share));
+  // Where the music wraps. Settled from what each bar's contents actually need
+  // — which the formatter has already told us, above — rather than from a
+  // count fixed in advance. A caller that has its own opinion still gets it.
+  const lines: number[][] = [];
+  if (options.lineBreakAfter) {
+    const breaks = options.lineBreakAfter;
+    lines.push([]);
+    for (let i = 0; i < measures.length; i++) {
+      lines[lines.length - 1]!.push(i);
+      if (breaks.has(i) && i < measures.length - 1) {
+        lines.push([]);
+      }
     }
-    return weights;
-  };
+  } else {
+    let at = 0;
+    for (const take of chooseLines(
+      built.map((bar) => bar.minWidth),
+      {
+        usable: availableWidth - startX - TAIL_SLACK,
+        firstLead: leadWidth(0),
+        otherLead: leadWidth(1),
+        maxPerLine: MAX_BARS_PER_LINE,
+      },
+    )) {
+      lines.push(Array.from({ length: take }, (_, k) => at + k));
+      at += take;
+    }
+  }
 
-  /**
-   * The narrowest this line can be while every bar still holds its contents.
-   * Solved from the share each bar is about to be given, so a bar that evening
-   * out shrinks is still guaranteed at least its minimum.
-   */
-  const lineRequirement = (lineIndex: number) => {
-    const weights = weightsOf(lineIndex);
-    const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-    const tightest = Math.max(
-      ...lines[lineIndex]!.map(
-        (i, position) => (built[i]!.minWidth * totalWeight) / weights[position]!,
-      ),
-    );
-    return leadWidth(lineIndex) + tightest * BAR_BREATHING;
-  };
+  // The same arithmetic the breaks were chosen by, so what a line was promised
+  // when it was measured is what it is actually given when it is drawn.
+  const minsOf = (lineIndex: number) =>
+    lines[lineIndex]!.map((i) => built[i]!.minWidth);
+  const weightsOf = (lineIndex: number) => settledWeights(minsOf(lineIndex));
+  const lineRequirement = (lineIndex: number) =>
+    requirementOf(minsOf(lineIndex), leadWidth(lineIndex));
 
   // Pass 2 — fill the width the page gives us, but never go below what the
   // hungriest line needs, so a narrow window scrolls rather than overlapping
@@ -490,6 +467,14 @@ export function renderMelody(
   // Kept per line rather than per bar: what is wanted later is how tall a line
   // of music stands, and every bar on a line shares that.
   const staveOfLine: Stave[] = [];
+  /**
+   * And the last bar of each line, which is a different stave entirely.
+   *
+   * A line of music is one stave per bar, so the first of them knows where the
+   * line's notes begin and only the last knows where they end. Asking the
+   * first for both put the closing bracket at the end of bar one.
+   */
+  const endStaveOfLine: Stave[] = [];
 
   for (let i = 0; i < measures.length; i++) {
     const placement = placements[i]!;
@@ -505,6 +490,7 @@ export function renderMelody(
     if (placement.startsLine) {
       staveOfLine.push(stave);
     }
+    endStaveOfLine[staveOfLine.length - 1] = stave;
     if (placement.startsLine) {
       stave.addClef(clef);
       stave.addKeySignature(keySpec);
@@ -635,23 +621,51 @@ export function renderMelody(
   // Where each event ended up, for anything drawn over the score. The x is the
   // middle of the notehead rather than its left edge, so a marker put here sits
   // on the note rather than beside it.
-  const anchors: EventAnchor[] = notes.map((note, i) => ({
-    line: lineOfEvent[i] ?? 0,
-    x: (note.getNoteHeadBeginX() + note.getNoteHeadEndX()) / 2,
-  }));
+  //
+  // The width beside it is the opposite measurement, and taken the opposite
+  // way. `getBoundingBox()` is avoided by `hitRegion` above precisely because
+  // it swallows accidentals and ledger lines — which is exactly what is wanted
+  // here, where the question is not "what did you aim at" but "what must I not
+  // be drawn through". It merges the noteheads, the stem, the flag and every
+  // modifier; a box that comes back empty — no canvas to measure a glyph on
+  // yet — falls back to the noteheads, which are never absent.
+  const anchors: EventAnchor[] = notes.map((note, i) => {
+    const headLeft = note.getNoteHeadBeginX();
+    const headRight = note.getNoteHeadEndX();
+    const box = note.getBoundingBox();
+    const drawn = box.getW() > 0;
+    return {
+      line: lineOfEvent[i] ?? 0,
+      x: (headLeft + headRight) / 2,
+      left: drawn ? Math.min(headLeft, box.getX()) : headLeft,
+      right: drawn ? Math.max(headRight, box.getX() + box.getW()) : headRight,
+    };
+  });
 
   // Each line's height: the staff, opened out to take in whatever its notes
   // reach to. Ledger lines and long stems are what make this worth measuring
   // rather than assuming — a bar with a high note is taller than an empty one.
   const lineBoxes: ScoreLineBox[] = staveOfLine.map((stave, line) => {
-    let top = stave.getYForLine(0);
-    let bottom = stave.getYForLine(4);
+    const staffTop = stave.getYForLine(0);
+    const staffBottom = stave.getYForLine(4);
+    let top = staffTop;
+    let bottom = staffBottom;
     for (const region of regions) {
       if (lineOfEvent[region.melodyIndex] !== line) continue;
       top = Math.min(top, region.y);
       bottom = Math.max(bottom, region.y + region.h);
     }
-    return { top: top - LINE_MARGIN, bottom: bottom + LINE_MARGIN };
+    return {
+      top: top - LINE_MARGIN,
+      bottom: bottom + LINE_MARGIN,
+      staffTop,
+      staffBottom,
+      // Both settle the stave's format if it has not been settled, so they are
+      // safe to ask for here and only here — after everything is drawn. The
+      // right edge comes off the line's *last* bar; `stave` is only its first.
+      left: stave.getNoteStartX(),
+      right: (endStaveOfLine[line] ?? stave).getNoteEndX(),
+    };
   });
 
   const svg = element.querySelector("svg");

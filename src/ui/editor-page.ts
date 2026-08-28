@@ -26,6 +26,7 @@ import { createPlayback, type Playback } from "./playback.js";
 import { createSetupPage, type Setup } from "./setup-panel.js";
 import { createHistoryPair, type HistoryPair } from "./history-pair.js";
 import { createPanelActions, type PanelActions } from "./panel-actions.js";
+import { saveButton } from "./save-button.js";
 import { createSheetHead, type SheetHead } from "./sheet-head.js";
 import { createSideTools, type SideTools } from "./side-tools.js";
 import { ANONYMOUS } from "../shared/session.js";
@@ -110,10 +111,12 @@ const EMPTY_DETAILS: TranscriptionDetails = {
  * waiting and the setup page is never built at all. So does restoring one
  * from the stash.
  *
- * Saving stays on the page. The first save of a new transcription gives it an
- * address, which the page takes on without leaving, so that a reload resumes
- * the same draft; every save after is an edit of it. Publishing is done from
- * the author's own list, not from here.
+ * Saving ends the sitting. The one button under the video both saves and
+ * leaves — for the author's own list, which is where publishing is done and
+ * so where the work is next wanted — and when there is nothing owed it only
+ * leaves. The first save of a new transcription gives it an address, which
+ * the page takes on before going, so that Back comes to this draft rather
+ * than to the setup page; every save after is an edit of it.
  *
  * `nav` knows who is signed in, and Save asks it first, because a
  * transcription is saved to an account: with nobody signed in, the work is
@@ -122,6 +125,15 @@ const EMPTY_DETAILS: TranscriptionDetails = {
  * out, so signing in from the corner loses nothing either — though that one
  * only puts the work back, and leaves saving to the visitor.
  */
+/**
+ * How long the finished save stands before the page goes, in milliseconds.
+ *
+ * Long enough to read as a step that completed, short enough that nobody
+ * waits on it. Both halves of the departure are fast enough to arrive in the
+ * same frame otherwise, which reads as a glitch rather than as an exit.
+ */
+const DEPARTURE_MS = 300;
+
 export function createEditorPage(
   elements: EditorPageElements,
   entry: Entry,
@@ -408,6 +420,12 @@ export function createEditorPage(
   /** Draw everything that is not the score: the masthead and the panel. */
   function showSignatures(): void {
     if (!melody || !history || !actions || !head || !steps || !tools) return;
+    // A page on its way out draws nothing more. The save that ends a sitting
+    // finishes by clearing `saving`, and repainting on that would flick the
+    // button through a reading nobody can act on — "Saving…" to "Exit (No
+    // Changes)" and gone — in the frames before the list arrives. What was on
+    // screen when the button was pressed stays there until the page changes.
+    if (leaving) return;
     tools.update({ showRhythm: !pitchOnly });
     steps.update({
       canUndo: history.canUndo(),
@@ -420,16 +438,18 @@ export function createEditorPage(
     });
     // Compared rather than counted: `isDirty` puts the melody, the words and
     // the marks against what was last saved, so writing a note and writing it
-    // back leaves the button at Saved. That works because the encoding is
-    // canonical — ties come out in index order and brackets are sorted —
-    // which the undo stack already relies on.
+    // back leaves the button offering the exit alone. That works because the
+    // encoding is canonical — ties come out in index order and brackets are
+    // sorted — which the undo stack already relies on.
     const saved = isSaved();
     const problem = saveProblem();
     actions.update({
-      submit: {
-        label: saving ? "Saving…" : saved ? "Saved" : "Save",
-        disabled: saving || saved || problem !== undefined,
-      },
+      submit: saveButton({
+        saving,
+        saved,
+        stored: levelId !== undefined,
+        problem,
+      }),
       // What went wrong sending it outranks why the next one cannot go: the
       // first is news, the second is a standing fact about an empty title.
       // Neither is worth saying while it is going, or once it has gone.
@@ -448,6 +468,39 @@ export function createEditorPage(
    * the work stashed. The server's 401 is the same trip, for a session that
    * ran out under the page.
    */
+  function submit(): void {
+    if (saving) return;
+    // Nothing owed, nothing to send: the button says so, and gives the way
+    // out on its own rather than standing grey between the visitor and it.
+    if (isSaved()) {
+      exit();
+      return;
+    }
+    void save();
+  }
+
+  /**
+   * Leave for the author's own list, which is where a finished sitting ends.
+   *
+   * `leaving` first: the guard below argues about unsaved work, and this is
+   * the one departure that has just put the work away itself. It also freezes
+   * the panel, so the button holds whatever it said when it was pressed.
+   *
+   * `pause` is for the departure that follows a save. The save is quick and
+   * the list is quick, and the two landing together read as a stumble rather
+   * than as an act completed — so the finished "Saving…" is left standing for
+   * a beat before the page goes. Leaving with nothing to save waits for
+   * nothing: there is no act to complete, only the door.
+   */
+  function exit({ pause = 0 } = {}): void {
+    leaving = true;
+    if (pause === 0) {
+      window.location.assign("/mine");
+      return;
+    }
+    window.setTimeout(() => window.location.assign("/mine"), pause);
+  }
+
   async function save(): Promise<void> {
     if (!melody || !source || saving || isSaved()) return;
     if (saveProblem() !== undefined) return;
@@ -506,10 +559,11 @@ export function createEditorPage(
       }
 
       if (levelId === undefined) {
-        // A new transcription has an address now. The page takes it on
-        // without leaving, so a reload resumes this draft; `replaceState`
-        // rather than `pushState`, so Back still leaves the page rather than
-        // returning to a setup page that no longer exists.
+        // A new transcription has an address now, and the page takes it on
+        // before leaving for the list: it is the address Back should come to
+        // from there, and the one a save that somehow fails after this point
+        // would go on from. `replaceState` rather than `pushState`, so the
+        // setup page that no longer exists is not left behind the visitor.
         const { id } = (await response.json()) as { id?: unknown };
         if (!isTranscriptionId(id)) {
           throw new Error("The server's answer could not be read.");
@@ -518,6 +572,7 @@ export function createEditorPage(
         window.history.replaceState(null, "", `/edit?level=${id}`);
       }
       markSaved(sent);
+      exit({ pause: DEPARTURE_MS });
     } catch (error) {
       trouble =
         error instanceof Error
@@ -629,7 +684,7 @@ export function createEditorPage(
     actions ??= createPanelActions(
       { boxes: elements.panelActions, submit: elements.panelSubmit },
       {
-        onSubmit: () => void save(),
+        onSubmit: () => void submit(),
         onKey: changeKey,
         onDetails: (next) => {
           details = next;
@@ -729,7 +784,12 @@ export function createEditorPage(
     event.preventDefault();
   });
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted) leaving = false;
+    if (!event.persisted) return;
+    leaving = false;
+    // Restored mid-departure, the panel is still holding the reading it froze
+    // on. Thawing it is not enough — it has to be redrawn, or the button sits
+    // at "Saving…", grey, over a save that finished before the page left.
+    showSignatures();
   });
 
   switch (entry.kind) {

@@ -174,10 +174,14 @@ export function createTimeField(options: TimeFieldOptions): TimeField {
       }
     },
     flash() {
-      element.classList.remove("is-auto-edited");
+      // On the input rather than on the box around it: the pulse is drawn
+      // inside the field's own edge, and only the input has a face to draw it
+      // on — the wrapper is a positioning shell with nothing painted on it, so
+      // anything inset there would be hidden behind the input in front.
+      input.classList.remove("is-auto-edited");
       // Forcing a reflow restarts the animation when two flashes land close.
-      void element.offsetWidth;
-      element.classList.add("is-auto-edited");
+      void input.offsetWidth;
+      input.classList.add("is-auto-edited");
     },
   };
 }

@@ -3,7 +3,6 @@ import type { Melody } from "../music/melody.js";
 import type { TimeSignature } from "../music/types.js";
 import {
   createSection,
-  leadStart,
   pressJumpBack,
   pressPause,
   pressPlay,
@@ -22,6 +21,10 @@ import {
   type TempoMap,
 } from "../playback/tempo-map.js";
 import { eventAtSeconds } from "../playback/follow.js";
+import {
+  boundaryTimes,
+  nearestBoundary,
+} from "../playback/section-bounds.js";
 import type { PianoNote } from "../playback/piano.js";
 import { soundingNotes } from "../playback/playalong.js";
 import { toMilliseconds } from "../playback/timecode.js";
@@ -36,6 +39,10 @@ import {
 import type { MelodyRenderResult } from "../render/render-melody.js";
 import { createPlaybackPanel, type PlaybackPanel } from "./playback-panel.js";
 import { createPlayhead, type Playhead } from "./playhead.js";
+import {
+  createSectionBrackets,
+  type SectionBrackets,
+} from "./section-brackets.js";
 import { createTimingPanel, type TimingPanel } from "./timing-panel.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { createVideoRig, type VideoRig } from "./video-rig.js";
@@ -167,6 +174,7 @@ export function createPlayback(
   let hasSelection = false;
 
   const playhead: Playhead = createPlayhead(elements.scoreArea);
+  const brackets: SectionBrackets = createSectionBrackets(elements.scoreArea);
   const rig: VideoRig = createVideoRig(iframe);
 
   /** The iframe as it now stands — the mode switch trades it for another. */
@@ -267,6 +275,26 @@ export function createPlayback(
       timingHost.hidden = mode !== "timing";
     }
     applyReach();
+    showBrackets();
+  }
+
+  /**
+   * Stand the two brackets in the gaps the marks fall in.
+   *
+   * Here rather than beside the machine because this runs on every change the
+   * panel is told about, which is every way a mark can move: typed, nudged,
+   * taken from a note, reset, or re-timed under them. Both are always shown —
+   * a section whose end sits before its start is something somebody did, and
+   * hiding half of it would leave them guessing which mark moved.
+   */
+  function showBrackets(): void {
+    const times = boundaryTimes(onsets, ends);
+    brackets.show(
+      sectionStart === undefined
+        ? undefined
+        : nearestBoundary(times, sectionStart),
+      sectionEnd === undefined ? undefined : nearestBoundary(times, sectionEnd),
+    );
   }
 
   // ---- the section machine ---------------------------------------------
@@ -376,10 +404,10 @@ export function createPlayback(
     if (index === undefined) return;
     const seconds = field === "start" ? onsets[index] : ends[index];
     if (seconds === undefined) return;
-    // The start leads in by a breath, so the note's attack is heard arriving
-    // rather than already sounding. The end stays exact — and so do the
-    // timing marks, which never pass through here: those are measurements.
-    setMark(field, field === "start" ? leadStart(seconds) : seconds);
+    // Both marks are the note's own timestamp, exactly. A start set a breath
+    // early so the attack is heard arriving was tried and taken back out: a
+    // mark means the note it was taken from, and nothing else.
+    setMark(field, seconds);
   }
 
   // ---- the timing fields -----------------------------------------------
@@ -751,6 +779,7 @@ export function createPlayback(
       ends = [];
       played = [];
       sendPlayalong();
+      showBrackets();
       return;
     }
     const positions = eventPositions(melody);
@@ -768,6 +797,9 @@ export function createPlayback(
       midi: note.midi,
     }));
     sendPlayalong();
+    // The gaps have moved even though the marks have not: a note written, or a
+    // tempo corrected, puts every onset somewhere new.
+    showBrackets();
   }
 
   /**
@@ -797,6 +829,7 @@ export function createPlayback(
 
     onScore(rendered) {
       playhead.onScore(rendered);
+      brackets.onScore(rendered);
     },
 
     onSelect(index) {
@@ -811,6 +844,7 @@ export function createPlayback(
       window.removeEventListener("keydown", onKey);
       unsubscribe();
       playhead.destroy();
+      brackets.destroy();
       rig.destroy();
     },
   };

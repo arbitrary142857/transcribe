@@ -172,7 +172,7 @@ export function createPanelActions(
 
     const keyButton = document.createElement("button");
     keyButton.type = "button";
-    keyButton.className = "key-toggle panel-cell";
+    keyButton.className = "key-toggle panel-cell key-door";
     const keyName = document.createElement("span");
     keyName.className = "key-toggle-label";
     keyName.textContent = "Key";

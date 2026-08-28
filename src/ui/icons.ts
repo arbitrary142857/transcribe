@@ -45,17 +45,33 @@ const glyph = (character: string, x: number, y: number, size: number) =>
 /** Strokes stay light: at this size a heavy line turns a note into a blob. */
 const STROKE = 1.15;
 
+/* The staff these icons are drawn on. Up here because the things drawn on it
+   are measured from it: a notehead is a staff space tall, and a mark down it
+   runs from above the top line to the bottom one. */
+const STAFF_TOP = 10;
+const STAFF_GAP = 3;
+const STAFF_BOTTOM = STAFF_TOP + 4 * STAFF_GAP;
+
 /**
  * A notehead: an oval leaning the way a notehead leans.
+ *
+ * One staff space tall, which is what a notehead is. Drawn nearly twice that
+ * it filled the space above and the space below as well, and the staff it was
+ * standing on stopped reading as a staff. Half a hair over the space rather
+ * than exactly it, because a real head does overlap the lines it sits between.
  *
  * A filled head is filled and nothing else. Giving it a stroke as well grew it
  * by half the stroke on every side, which is what made these look swollen next
  * to the hollow ones.
  */
+const HEAD_RY = STAFF_GAP / 2 + 0.15;
+/** Wider than it is tall, in a notehead's own proportion. */
+const HEAD_RX = HEAD_RY * 1.32;
+
 function head(cx: number, cy: number, filled: boolean): string {
   const shape = filled
-    ? `rx="3.9" ry="2.7" fill="currentColor"`
-    : `rx="3.6" ry="2.5" fill="none" stroke="currentColor" stroke-width="1.25"`;
+    ? `rx="${HEAD_RX}" ry="${HEAD_RY}" fill="currentColor"`
+    : `rx="${HEAD_RX - 0.15}" ry="${HEAD_RY - 0.15}" fill="none" stroke="currentColor" stroke-width="1"`;
   return `<ellipse cx="${cx}" cy="${cy}" ${shape} transform="rotate(-20 ${cx} ${cy})" />`;
 }
 
@@ -177,9 +193,6 @@ export function eraserIcon(): string {
  * Kept faint but not ghostly: these icons are also drawn in white on a filled
  * button, where anything lighter disappears into the fill.
  */
-const STAFF_TOP = 10;
-const STAFF_GAP = 3;
-const STAFF_BOTTOM = STAFF_TOP + 4 * STAFF_GAP;
 
 function staffLines(from: number, to: number): string {
   let drawn = "";
@@ -198,6 +211,59 @@ function staffLines(from: number, to: number): string {
  */
 const pointer = (x: number) =>
   `<path d="M${x} ${STAFF_TOP - 1.6} L${x - 3.2} ${STAFF_TOP - 6} L${x + 3.2} ${STAFF_TOP - 6} Z" fill="currentColor" />`;
+
+/**
+ * The section mark itself, drawn small: a line ruled through the staff.
+ *
+ * Not a pointer at what the button does but a picture of what it leaves — the
+ * same line, in the same colour, as the one that appears on the stave when the
+ * button is pressed, so the two are recognisably one act. Nothing pre-made is
+ * drawn on for it: the staff and the note around it are this file's own,
+ * because no icon set has a note on a staff.
+ *
+ * Standing past the staff by the same amount above and below, as the real one
+ * does. Bolder than strict proportion asks: at 24px a line kept to scale comes
+ * out the weight of a staff line and reads as one.
+ *
+ * The colour rides in through `style` rather than an attribute, which is what
+ * lets it be `var(--mark-start)`: presentation attributes take no custom
+ * properties, and these two colours are named once in the stylesheet.
+ */
+const MARK_WIDTH = 1.3;
+/** How far past the staff the mark stands, as the real one does: the same at
+    both ends, and in the proportion the score's own marker keeps. */
+const MARK_OVERHANG = 2.7;
+
+function sectionMark(x: number, colour: string): string {
+  return (
+    `<rect x="${x - MARK_WIDTH / 2}" y="${STAFF_TOP - MARK_OVERHANG}"` +
+    ` width="${MARK_WIDTH}" height="${4 * STAFF_GAP + 2 * MARK_OVERHANG}"` +
+    ` style="fill:${colour}" opacity="0.68" />`
+  );
+}
+
+/**
+ * The stem's reach above the staff, which is the top of these two icons' ink.
+ */
+const NOTE_STEM_TOP = 6.5;
+
+/**
+ * Sit the mark icons' drawing in the middle of the box they are given.
+ *
+ * The staff is pitched at `STAFF_TOP`, which leaves far more air above it than
+ * below — fine for an icon whose ink is the staff, wrong for these two, whose
+ * ink is a stem reaching well above it and a mark hanging below. Left alone
+ * they sat low in the button.
+ *
+ * Computed from the extents rather than nudged by eye, so it stays centred if
+ * the stem or the overhang is ever changed again.
+ */
+function centred(drawing: string): string {
+  const inkTop = Math.min(NOTE_STEM_TOP, STAFF_TOP - MARK_OVERHANG);
+  const inkBottom = Math.max(STAFF_BOTTOM, STAFF_BOTTOM + MARK_OVERHANG);
+  const shift = HEIGHT / 2 - (inkTop + inkBottom) / 2;
+  return `<g transform="translate(0 ${Math.round(shift * 100) / 100})">${drawing}</g>`;
+}
 
 const barline = (x: number, width: number) =>
   `<line x1="${x}" y1="${STAFF_TOP}" x2="${x}" y2="${STAFF_BOTTOM}" stroke="currentColor" stroke-width="${width}" stroke-linecap="butt" />`;
@@ -408,26 +474,28 @@ export function closeIcon(): string {
   );
 }
 
-/** The moment the selected note begins: a pointer onto its left edge. */
+/** The moment the selected note begins: the mark ruled down its left edge. */
 export function noteStartIcon(): string {
   return svg(
-    staffLines(3, 24) +
-      head(14, 16, true) +
-      stem(17.8, 6.5, 15.5) +
-      `<line x1="9.4" y1="8" x2="9.4" y2="20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />` +
-      pointer(9.4),
+    centred(
+      staffLines(3, 24) +
+        head(14, 16, true) +
+        stem(14 + HEAD_RX, NOTE_STEM_TOP, 15.5) +
+        sectionMark(9.4, "var(--mark-start)"),
+    ),
     27,
   );
 }
 
-/** The moment the selected note ends: a pointer onto its right edge. */
+/** The moment the selected note ends: the mark ruled down its right edge. */
 export function noteEndIcon(): string {
   return svg(
-    staffLines(3, 24) +
-      head(9.5, 16, true) +
-      stem(13.3, 6.5, 15.5) +
-      `<line x1="17.8" y1="8" x2="17.8" y2="20.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />` +
-      pointer(17.8),
+    centred(
+      staffLines(3, 24) +
+        head(9.5, 16, true) +
+        stem(9.5 + HEAD_RX, NOTE_STEM_TOP, 15.5) +
+        sectionMark(17.8, "var(--mark-end)"),
+    ),
     27,
   );
 }

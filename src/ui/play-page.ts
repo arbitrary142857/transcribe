@@ -46,6 +46,7 @@ import { upvoteLine } from "./upvote-line.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
 import { openLevelModal } from "./level-modal.js";
 import { createPanelActions, type PanelActions } from "./panel-actions.js";
+import { CHECKING_MS, stillToWait } from "./pacing.js";
 import { createPlayback, type Playback } from "./playback.js";
 import { createSheetHead, type SheetHead } from "./sheet-head.js";
 import { createHistoryPair, type HistoryPair } from "./history-pair.js";
@@ -349,6 +350,22 @@ export function createPlayPage(
     report = undefined;
     showBar();
 
+    // Every press is held at "Checking…" for the same moment, whatever the
+    // server does with it. The answer often comes back faster than the word
+    // can be read, and a score that twitches without having visibly been
+    // asked anything reads as a glitch rather than as a verdict.
+    //
+    // The same moment for a taken-down level and for a solve, so the pace
+    // never says which is coming before the words do.
+    const pressed = performance.now();
+    const settle = (): Promise<void> =>
+      new Promise((resume) =>
+        setTimeout(
+          resume,
+          stillToWait(CHECKING_MS, performance.now() - pressed),
+        ),
+      );
+
     const attempt = attemptOf(melody);
     try {
       const response = await fetch(`/api/levels/${level.id}/check`, {
@@ -363,6 +380,7 @@ export function createPlayPage(
         // unpublished and given a new address. A fact about the level rather
         // than about the attempt, so it is said plainly, without "could not
         // be checked" in front of it.
+        await settle();
         checking = false;
         report = "This level has been taken down.";
         showBar();
@@ -381,6 +399,11 @@ export function createPlayPage(
         total: number;
         solved: boolean;
       };
+
+      // Held here, before anything the answer says is acted on, so the whole
+      // verdict — the marks, the shake, the burst, the words under the button
+      // — arrives at once when the moment is up.
+      await settle();
 
       // Taken before the new verdicts land, so "newly found" can be told from
       // "found ten minutes ago". Only the new ones celebrate; without this,
@@ -434,6 +457,7 @@ export function createPlayPage(
 
       save();
     } catch (error) {
+      await settle();
       checking = false;
       report =
         error instanceof Error
