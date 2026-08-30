@@ -399,62 +399,254 @@ main.editor-main {
   padding: 0.85rem 1rem 1rem;
 }
 
-/* ---- Setup: clef, meter, video and timing, asked once ---- */
+/* ---- Setup: the video, and then everything asked about it, once ---- */
 
+/* The page runs one way down. The link box at the top, the three things that
+   video has to be told about below it, and the way out at the foot.
+
+   Its own page in every sense: the editor's whole frame is hidden while this
+   is showing, so nothing here stands on the sheet the score is printed on or
+   shares a box with it. */
 #setup {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding: 2rem 1.5rem 2rem;
+  align-items: stretch;
+  gap: 1.9rem;
   width: 100%;
-  max-width: 1200px;
+  /* Wide enough for the three columns side by side and no wider. The section
+     box is two columns of its own now — the marks and the player — so this is
+     a good deal wider than it was, and the video is held to the smallest frame
+     YouTube asks embedders for rather than the page being held to the video. */
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: 1.6rem 1.5rem 2rem;
+  /* The section box's two columns, named here because three rules need them to
+     agree: each column's own width, and the width of the region around the box
+     — which cannot be left to the content, since the line of advice under the
+     box would otherwise set it and that line is a whole sentence long. */
+  --marks-w: 17rem;
+  --player-w: 22.25rem;
+  --section-gap: 1rem;
 }
 
-/* The choosers redraw themselves whole on every pick; everything below them
-   is built once, because a redraw would reload the video and pull the caret
-   out of a box mid-keystroke. */
-.setup-choosers {
+/* Top left, and the size a page's name is: the one thing here that says what
+   all of this is for. */
+.setup-title {
+  margin: 0;
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+/* A level that could not be opened stands where the setup page would have.
+   Centred rather than stretched: it is a sentence, not one of the boxes. */
+#setup > .level-trouble {
+  align-self: center;
+  max-width: 36rem;
+}
+
+/* ---- The boxes ---- */
+
+/* Every box on the page: its heading, then what it asks for. */
+.setup-box {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Not a flex row: the mark that hangs off some of these is a superscript, and
+   a flex item is laid out by its parent and ignores `vertical-align`. */
+.setup-box-title {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* ---- The three questions, side by side ---- */
+
+/* The two boxes side by side and centred on one another, with the line of
+   advice hanging under the right-hand one.
+
+   A grid rather than a row of columns, and that is the whole point: the advice
+   is in a row of its own, so it does not count towards the height of the box
+   it belongs to. Wrapped up with that box — which is what a column of the two
+   would be — it dragged the box upward and the two boxes were never level. */
+.setup-columns {
+  display: grid;
+  grid-template-columns: auto auto;
+  /* Hung from the page's own edges rather than centred between them, so the
+     left box starts where the title starts and the right box ends where the
+     way out ends. */
+  justify-content: space-between;
+  /* One row of two boxes. It stays a grid rather than a flex row because the
+     two tracks size to their contents and the boxes must not stretch to a
+     shared width — only to a shared height. */
+  /* Stretched rather than centred, so the two come out the same height
+     whichever of them is the taller. What each does with the room it is given
+     is its own business — both centre what they hold. */
+  align-items: stretch;
+  column-gap: 1.15rem;
+  row-gap: 0.5rem;
+}
+
+.setup-settings-box {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.setup-section-box {
+  grid-column: 2;
+  grid-row: 1;
+  /* Closer under its heading than the other box needs to be: what follows is a
+     column of rows rather than a block of buttons, and the heading reads as the
+     first line of it. */
+  gap: 0.4rem;
+}
+
+/* Sized by what it holds rather than to a figure: padded out to some shared
+   width it would be a box with a hole in it. */
+.setup-settings-box {
+  flex: 0 0 auto;
+}
+
+/* The clefs down the left, the meters beside them, and the rule between: two
+   things settled at once, and one question — what stands at the head of the
+   stave. */
+.setup-settings-body {
+  display: flex;
+  flex: 1 1 auto;
   align-items: center;
   justify-content: center;
   gap: 1rem;
 }
 
-/* The video and its timing controls, side by side once a link is loaded. */
-.setup-studio {
-  display: flex;
-  align-items: flex-start;
+/* A column of two rather than a row of two: it makes a narrow left-hand band
+   of the clefs, which is the shape they take on the stave as well. */
+.setup-clef-row {
+  flex-direction: column;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  width: 100%;
 }
 
-#setup-video {
+/* The heading's own word, standing between the two halves where a rule stood.
+   A rule parts two things; this joins them, which is what the box does. */
+.setup-and {
+  align-self: center;
+  font-size: 0.85rem;
+  font-style: italic;
+  color: #8d8378;
+}
+
+/* The marks and the player, side by side. Two columns because the marks are
+   read off the video: watching it and pressing them is one act, and stacked
+   they were half a screen apart. It is also what lets the panel be the width
+   of its own rows — a slider's worth of width was the only thing making it
+   wider than that, and the slider now stands over the player it belongs to. */
+/* The rows down the left at their own spacing, the player beside them, and the
+   two centred on one another: the halves are within a few pixels of the same
+   height anyway, and neither is stretched to meet the other — rows spread to
+   fill a box read as a form with something missing from it. */
+.setup-section-body {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--section-gap);
+}
+
+.setup-section-marks {
   flex: 0 0 auto;
-  width: clamp(356px, 34vw, 480px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  width: var(--marks-w);
+}
+
+/* Every row opens with its word against the left wall; what the word names
+   follows, and the box runs from there to the right-hand edge — including the
+   space the buttons used to hold at that end.
+
+   Three of the words are held to one width and the fourth to the width of all
+   three of the first row's parts, so that every box on the column starts at
+   the same place. The speed slider is the exception on purpose: its word takes
+   only what it needs, and the track gets the rest. */
+.setup-section-marks .playback-mark,
+.setup-section-marks .timing-measures,
+.setup-section-marks .timing-tempo,
+.setup-section-marks .playback-speed {
+  gap: 0.55rem;
+}
+
+/* Larger than the editor's, where the same words label a panel in a crowded
+   sidebar. Here they are the page's only controls and the words are read. */
+.setup-section-marks .playback-label {
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+}
+
+.setup-section-marks .playback-mark-name,
+.setup-section-marks .timing-tempo > .playback-label,
+.setup-section-marks .playback-speed > .playback-label {
+  flex: 0 0 3rem;
+}
+
+.setup-section-marks .timing-measures-name {
+  /* The word, the button and the gap between them, so the count's box lines up
+     with the timecodes above it. The tracking is drawn in a little, because
+     what has to fit in that width is a word and a ceiling rather than a word. */
+  flex: 0 0 calc(3rem + 0.55rem + 2.5rem);
+  letter-spacing: 0.02em;
+}
+
+/* The readout takes the slot the buttons stand in — the track is sent past it
+   rather than the readout brought back before the word — so the track runs the
+   width of the boxes above it, both of its edges on their edges. */
+.setup-section-marks .playback-speed-track {
+  order: 1;
+}
+
+.setup-section-marks .playback-speed-value {
+  width: 2.5rem;
+  text-align: center;
+}
+
+/* The button on the tempo row is the metronome, and it takes the shape of the
+   mark buttons standing above it — `flex` and not `width`, because the shared
+   toggle rule grows it past any width it is given. */
+.setup-section-marks .timing-metronome {
+  flex: 0 0 2.5rem;
+  height: 2.1rem;
+}
+
+.setup-section-player {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  /* The floor YouTube asks embedders for: 356px is where 16:9 stops clearing
+     200px of height. With the speed slider back among the rows, the left-hand
+     half is within a few pixels of that by itself, so the player is back at
+     full size and nothing has to be stretched to meet anything. */
+  width: var(--player-w);
   max-width: 100%;
 }
 
-#setup-timing {
-  flex: 0 1 auto;
-  width: 17rem;
-  max-width: 100%;
-}
+/* ---- The cells a choice is made from ---- */
 
-/* The submit sits after both choosers on the same line, and drops below them
-   only when the window is too narrow to hold all three. */
-.setup-submit {
-  flex: 0 0 auto;
-}
-
-/* Each chooser is one line: two clefs, or seven meters, with nothing to wrap. */
 .setup-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* The six meters, three to a line: the simple ones over the compound ones,
+   which is the order anybody would list them in. A grid rather than a wrapping
+   row, because wrapping puts four on the first line and two on the second the
+   moment the box is a few pixels wider than it has to be. */
+.setup-meter-row {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 0.45rem;
 }
 
 .setup-cell {
@@ -472,7 +664,7 @@ main.editor-main {
   -webkit-appearance: none;
 }
 
-.setup-cell:hover {
+.setup-cell:hover:not(:disabled) {
   background: #f5efe4;
   border-color: #b3aa9d;
 }
@@ -488,42 +680,161 @@ main.editor-main {
   pointer-events: none;
 }
 
+/* Narrower than a meter's, which is what makes the two cells the same height:
+   a clef's diagram is twice as tall as it is wide — it overhangs the staff at
+   both ends — while a meter's is only a third again, so at a shared width the
+   clef cell stands half as tall again as its neighbour. */
 .setup-cell[aria-label$="clef"] .setup-staff {
-  width: 2.6rem;
+  width: 2rem;
 }
 
-.setup-submit {
-  padding: 0.6rem 1.6rem;
+/* The small word over a part of a box, in the dress the link box's own label
+   wears — the panels' one way of naming a thing that is not a heading. */
+.setup-sub-label {
+  font-size: 0.72rem;
+  white-space: nowrap;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #8d8378;
+}
+
+/* ---- The meter written by hand ---- */
+
+/* The six with buttons, and the one written by hand beside them. */
+.setup-meter-body {
+  display: flex;
+  align-items: stretch;
+  gap: 0.9rem;
+}
+
+/* Beside the six rather than under them, with nothing drawn between: the same
+   question answered a slower way, not a second question, and a rule there
+   would say it was a second one. Its word sits over the boxes, as the box
+   headings sit over what they ask for. */
+.setup-meter-custom {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+/* The two boxes, and the signature they write standing beside them. */
+.meter-field {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.meter-field-boxes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* Height pinned rather than left to the text, because the numerals beside
+   these are laid out in rows of exactly this height: that is what puts each
+   box on the line of the numeral it writes. */
+.meter-field-input {
+  width: 2.9rem;
+  height: 1.9rem;
+  padding: 0.2rem 0.3rem;
   font: inherit;
   font-size: 0.95rem;
-  color: #fffdf9;
-  background: var(--note-selected);
-  border: 1px solid var(--note-selected);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
   border-radius: 6px;
-  cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
 }
 
-.setup-submit:hover:not(:disabled) {
-  background: #9c3925;
+.meter-field-input:focus {
+  outline: none;
+  border-color: #b3aa9d;
+  box-shadow: inset 0 0 0 1px #b3aa9d;
 }
 
-.setup-submit:disabled {
-  color: #8d8378;
-  background: #ebe5da;
-  border-color: var(--rule);
+/* What cannot be read is said on the box that holds it, in the colour every
+   other mistake on this page is said in. */
+.meter-field-input.is-wrong {
+  color: var(--note-selected);
+  border-color: var(--note-selected);
+  box-shadow: inset 0 0 0 1px var(--note-selected);
+}
+
+.meter-field-input:disabled {
+  background: #f7f4ed;
+  border-color: #e2dccd;
   cursor: not-allowed;
 }
 
-/* The link box. Wide enough to hold a whole YouTube address without scrolling
-   it. */
-.setup-link {
+/* The signature itself, in the notation font the score is set in — the same
+   glyphs the six buttons carry, without the stave they carry them on. Its two
+   rows are the height of the two boxes, so numeral and box share a line. */
+.meter-field-glyph {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.8rem;
+}
+
+/* The two numerals as close as a printed time signature sets them, which is
+   closer than the two boxes beside them stand: Bravura carries a great deal of
+   air above and below these glyphs, so rows the height of the boxes leave the
+   pair a whole staff apart and they stop reading as one signature. The pair is
+   still centred on the boxes as a pair — each numeral simply is not on the
+   line of its own box any more.
+
+   The row height is the floor under all of this, and the two numerals can
+   never touch while it holds: the tallest of Bravura's time-signature digits
+   inks 24px at this font size, and this leaves three clear either side of it.
+   Raise the font size without raising this and they will collide. */
+.meter-field-numeral {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.7rem;
+  font-family: "Bravura", var(--font-ui);
+  font-size: 2.9rem;
+  line-height: 0;
+  color: var(--ink);
+}
+
+/* Nothing readable in the boxes, so nothing is shown as though there were: one
+   question mark standing for the pair, across both lines. */
+/* Grey rather than red. Nothing is wrong yet when it first appears — no meter
+   has been chosen — and the box that *is* wrong says so in red beside it. */
+.meter-field-glyph.is-unread .meter-field-numeral:first-child {
+  height: auto;
+  font-family: var(--font-ui);
+  font-size: 2.1rem;
+  line-height: 1;
+  font-weight: 700;
+  color: #a49b8e;
+}
+
+.meter-field-glyph.is-unread .meter-field-numeral:last-child {
+  display: none;
+}
+
+/* ---- The link box ---- */
+
+/* The one box that is answerable on arrival, and the shortest: its padding is
+   even top and bottom, so the label and the row sit centred in it rather than
+   riding above a strip kept for a mistake nobody has made yet. */
+.setup-link {
+  /* Centred on the page, and in the same place from the moment the page opens:
+     it is the whole page to begin with, and everything else arrives behind it
+     rather than under it. */
+  align-self: center;
+  gap: 0.4rem;
   width: 100%;
-  max-width: 30rem;
+  max-width: 32rem;
+  padding: 0.8rem 1rem;
 }
 
 .setup-link-row {
@@ -537,7 +848,7 @@ main.editor-main {
 }
 
 /* Loading is an ordinary step, not the page's one commitment — that is the
-   Start writing button — so this is drawn quieter. */
+   button at the foot — so this is drawn quieter. */
 .setup-link-submit {
   flex: 0 0 auto;
   padding: 0.5rem 0.9rem;
@@ -557,17 +868,7 @@ main.editor-main {
   border-color: #b3aa9d;
 }
 
-.setup-start-note {
-  margin: -0.4rem 0 0;
-  font-size: 0.8rem;
-  color: #6c6459;
-}
-
-.setup-start-note:empty {
-  display: none;
-}
-
-/* The one part of this page that says what it is: a row of clefs is a row of
+/* The one part of this box that says what it is: a row of clefs is a row of
    clefs, but an empty box is nothing in particular. */
 .setup-link-label {
   font-size: 0.72rem;
@@ -600,18 +901,137 @@ main.editor-main {
   box-shadow: inset 0 0 0 1px var(--note-selected);
 }
 
-/* Holds its line whether or not it has anything to say, so that a link being
-   read does not shift the row the box sits in. */
-.setup-link-note {
+/* ---- What went wrong, wherever it went wrong ---- */
+
+/* Takes no room at all until it has something to say, so a box is the size of
+   what is in it and grows only when there is a mistake to report. Held space
+   for an error reads as a box with something missing from it. */
+.setup-note {
   margin: 0;
-  min-height: 1.15rem;
   font-size: 0.75rem;
-  line-height: 1.15rem;
-  color: #8d8378;
+  line-height: 1.3;
+  color: #6c6459;
 }
 
-.setup-link-note.is-wrong {
+.setup-note:empty {
+  display: none;
+}
+
+.setup-note.is-wrong {
   color: var(--note-selected);
+}
+
+/* ---- The section: the timing panel over the video ---- */
+
+#setup-video {
+  width: 100%;
+}
+
+/* The heading, and the line about the box in the corner beside it.
+
+   Its width is told rather than left to its contents, and that is the whole
+   reason this rule has one: a paragraph asked how wide it would like to be
+   answers with its whole sentence on one line, and the box would then be drawn
+   to *that* — leaving the two columns below it standing in a box wider than
+   they are, with the slack falling to the right of the video. So the head is
+   given the width of the body beneath it, and the aside fits into whatever the
+   heading leaves of that. */
+.setup-box-head {
+  width: calc(var(--marks-w) + var(--section-gap) + var(--player-w));
+  display: flex;
+  /* Tops together, not baselines: the two are set at very different sizes, and
+     a small aside hung from a large heading's baseline sits well below the top
+     of the box it is in. */
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.2rem;
+}
+
+/* The heading keeps its line whole and the aside takes what is left: a heading
+   broken over two lines to make room for a footnote has the two the wrong way
+   round. */
+.setup-box-head > .setup-box-title {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Two lines in the box's top corner, out of the way of everything the box is
+   for. Smaller than a line standing on its own would be: it is an aside, and
+   it has to come out at two lines in the room the heading leaves it. */
+.setup-tip {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.68rem;
+  /* Still room for the caps standing in the sentence — they are taller than
+     the text around them and cast a shadow besides — and no more than that. */
+  line-height: 1.6;
+  text-align: right;
+  color: #5f574c;
+}
+
+/* Square whatever letter it carries: an I is a stroke and an O is a circle,
+   and set by their own widths the two read as different kinds of thing. The
+   caps on the buttons are square for the same reason. */
+.setup-tip-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0 0.2rem;
+  padding: 0;
+}
+
+/* ---- The mark on what cannot be changed later ---- */
+
+/* Three of the things asked for here are written into the music itself and
+   cannot move under it afterwards. They do not sit together — two are boxes,
+   the third is one row inside the timing box, whose neighbours the editor
+   *can* correct — so the warning is a mark beside each of the three and one
+   line at the foot saying what the mark means. */
+/* ---- The foot of the page ---- */
+
+/* The way out, and nothing beside it. The reason it is grey is not written
+   here: that is a standing fact which would hold a line of page for as long as
+   it was true, and it is asked for instead by pointing at the button. What the
+   three settled-for-good settings are is said in full by the confirmation the
+   button opens, which is the last moment it can be said and the one where it
+   is read. */
+.setup-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 0.2rem;
+}
+
+/* The page's one commitment, and the only thing on it drawn in the accent. */
+.setup-submit {
+  flex: 0 0 auto;
+  padding: 0.6rem 1.6rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: #fffdf9;
+  background: var(--note-selected);
+  border: 1px solid var(--note-selected);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.setup-submit:hover:not([aria-disabled="true"]) {
+  background: #9c3925;
+}
+
+/* Greyed by `aria-disabled` rather than by `disabled`, because a disabled
+   button receives no pointer events and so cannot be pointed at — and being
+   pointed at is how this one says what is still missing. */
+.setup-submit[aria-disabled="true"] {
+  color: #8d8378;
+  background: #ebe5da;
+  border-color: var(--rule);
+  cursor: not-allowed;
 }
 
 /* ---- The bar above the music ---- */
@@ -1575,7 +1995,8 @@ main.editor-main {
   animation: auto-edited 0.9s ease-out;
 }
 
-.time-field-input.is-auto-edited {
+.time-field-input.is-auto-edited,
+.timing-bpm-input.is-auto-edited {
   animation-name: auto-edited-inset;
 }
 
@@ -1627,6 +2048,14 @@ main.editor-main {
 .timing-measures-input:disabled,
 .timing-bpm-input:disabled {
   opacity: 0.5;
+}
+
+/* Saying no to a keystroke: the shake a refused note gives, in the colour the
+   page says everything else wrong in. */
+.timing-measures-input.is-shaking {
+  color: var(--note-selected);
+  border-color: var(--note-selected);
+  box-shadow: inset 0 0 0 1px var(--note-selected);
 }
 
 /* The lock is a mode, not an action: lit while the tempo is held. */
@@ -1877,6 +2306,19 @@ main.editor-main {
   margin: 0 0 0.6rem;
   font-size: 1.1rem;
   font-weight: 600;
+}
+
+/* The question the setup page asks on the way out is that page's own last box,
+   so it names itself at the size that page names its boxes. */
+.setup-confirm .modal-title {
+  font-size: 1.3rem;
+}
+
+/* The words the reader is being asked to check, in the accent. Colour alone:
+   the sentence around them is the reading, and these are the four places in it
+   where the eye has to stop. */
+.modal-marked {
+  color: var(--note-selected);
 }
 
 /* The two boxes the panel opens name themselves in the top-left corner, large
@@ -2232,18 +2674,32 @@ main.editor-main {
 
 /* The setup page's badge, printed on its mark buttons as it always was: that
    page has no reveal button, so its two hints stay in plain sight. */
-.cell-key {
+/* The setup page's caps: always showing, and hung off the top-left corner of
+   the button they name rather than laid inside it. Marking the section is the
+   first thing anybody does on that page, so the keys are not something to be
+   discovered — and out at the corner they cover no part of the icon under
+   them, which sitting inside the button they did.
+
+   Dressed as a key and not as a button. Drawn in the box's own fill and edge
+   they read as a second small button fused to the corner of the first; in the
+   dark cap the stickers and the printed sentences wear, they read as the key
+   they name. */
+.key-corner {
   position: absolute;
-  top: 2px;
-  left: 2px;
+  top: -0.45rem;
+  left: -0.45rem;
+  z-index: 2;
   font-family: inherit;
-  font-size: 0.66rem;
+  font-size: 0.58rem;
   line-height: 1;
-  padding: 1.5px 4px;
-  color: #6c6459;
-  background: rgb(240 234 224 / 92%);
-  border: 1px solid var(--rule);
+  padding: 2.5px 5px;
+  color: #f7f5f0;
+  background: #423d36;
+  border: 1px solid #26221c;
   border-radius: 4px;
+  box-shadow:
+    0.6px 0.75px 0 #2b2620,
+    1.2px 1.5px 0 #2b2620;
 }
 
 /* Every key is a sticker riding the top edge of the thing it names, centred on
@@ -2325,7 +2781,7 @@ body.show-keys .key-sticker {
 
 /* Hints are labels, never targets: a press anywhere on the control is a press
    on the control. */
-.cell-key,
+.key-corner,
 .key-sticker {
   pointer-events: none;
 }
@@ -2359,7 +2815,8 @@ body.show-keys .keys-note {
   color: var(--ink);
 }
 
-.keys-note-k {
+.keys-note-k,
+.setup-tip-key {
   flex: 0 0 auto;
   font-family: inherit;
   font-size: 0.62rem;
@@ -3900,10 +4357,37 @@ button.upvote-line:focus-visible {
   }
 }
 
+/* Not enough width for the two boxes abreast — the settings box and the
+   section box together want a little over a thousand pixels — so they become
+   one column, with the advice under its own box as before. A grid does not
+   wrap of its own accord, which is why this is said rather than left to the
+   layout. */
+@media (max-width: 77rem) {
+  .setup-columns {
+    grid-template-columns: minmax(0, auto);
+    justify-items: center;
+  }
+
+  .setup-settings-box,
+  .setup-section-box,
+  .setup-tip {
+    grid-column: 1;
+  }
+
+  .setup-section-box {
+    grid-row: 2;
+  }
+
+  .setup-tip {
+    grid-row: 3;
+  }
+}
+
 /* No key to hold: the note names a keyboard, and a touch screen has none —
    which is the same reason the stickers themselves are off at this size. */
 @media (hover: none) {
-  .keys-note {
+  .keys-note,
+  .setup-tip {
     display: none;
   }
 }
@@ -3921,44 +4405,102 @@ button.upvote-line:focus-visible {
     padding: 0 0.75rem 1rem;
   }
 
-  /* A row of seven meters cannot fit, so it wraps rather than running off both
-     edges of the page. */
   #setup {
-    padding: 1.5rem 0.75rem 1rem;
-    gap: 0.75rem;
+    padding: 1.25rem 0.75rem 1.5rem;
+    gap: 0.85rem;
   }
 
-  .setup-row {
-    flex-wrap: wrap;
+  .setup-title {
+    font-size: 1.45rem;
+  }
+
+  /* No room for three abreast: they become three bands down the page, each the
+     full width of it. */
+  .setup-columns {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* The aside goes back under its heading: there is no corner to put it in at
+     this width. */
+  .setup-box-head {
+    width: auto;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+  }
+
+  .setup-box-head > .setup-box-title {
+    white-space: normal;
+  }
+
+  .setup-tip {
+    text-align: left;
+  }
+
+  /* One column of the grid. */
+  .setup-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setup-settings-box,
+  .setup-section-box,
+  .setup-tip {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .setup-section-box {
+    grid-row: 2;
+  }
+
+  .setup-tip {
+    grid-row: 3;
+  }
+
+  /* Every box that holds two things side by side stacks them: there is not the
+     width here for the clefs beside the meters, the six beside the written
+     one, or the marks beside the player. The rules that parted them turn with
+     them. */
+  .setup-settings-body,
+  .setup-meter-body,
+  .setup-section-body {
+    flex-direction: column;
+  }
+
+  .setup-clef-row {
+    flex-direction: row;
     justify-content: center;
   }
 
+  .setup-meter-custom {
+    align-items: center;
+  }
+
+  .setup-section-marks,
+  .setup-section-player {
+    width: 100%;
+  }
+
+  .setup-row {
+    justify-content: center;
+  }
+
+  /* A link box narrower than the page shows too little of a link to check it
+     against the one that was copied. */
+  .setup-link,
   .setup-panel {
     max-width: 100%;
   }
 
-  /* A line of its own, the full width of the page: there is no room beside the
-     choosers, and a link box narrower than this shows too little of a link to
-     check it against the one that was copied. */
-  .setup-link {
-    flex: 1 1 100%;
-    max-width: 100%;
+  /* The way out spans the page: at this width there is nothing to put beside
+     it. */
+  .setup-foot {
+    align-items: stretch;
   }
 
-  /* The video above its controls, as on the melody page. */
-  .setup-studio {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  #setup-video {
-    width: 100%;
-    max-width: 26rem;
-  }
-
-  #setup-timing {
-    width: 100%;
-    max-width: 26rem;
+  .setup-submit {
+    flex: 1 1 auto;
   }
 
   #toolbar {
@@ -4033,7 +4575,7 @@ button.upvote-line:focus-visible {
 
   /* Nothing to press them on, so every shortcut hint goes — the setup page's
      printed pair and the stickers alike, however the reveal class stands. */
-  .cell-key,
+  .key-corner,
   body .key-sticker,
   body.show-keys .key-sticker {
     display: none;
@@ -4372,8 +4914,9 @@ button.upvote-line:focus-visible {
   }
 }
 
-/* A note saying no. Applied to the svg group VexFlow wraps each note in, so it
-   is the notehead itself that moves rather than something drawn over it. */
+/* Saying no. On the score it is applied to the svg group VexFlow wraps each
+   note in, so the notehead itself moves rather than something drawn over it;
+   on the setup page a box wears it when it declines what was typed. */
 .is-shaking {
   animation: note-shake 340ms ease-in-out;
 }

@@ -9,13 +9,15 @@ import {
 } from "../playback/timing-fields.js";
 import {
   beatsPerBarOf,
-  beatsPerMinute,
   tempoMapOf,
   type Marks,
 } from "../playback/tempo-map.js";
 import { renderStaveDiagram } from "../render/stave-diagram.js";
-import { openModal } from "./modal.js";
+import { createMeterField, type MeterField } from "./meter-field.js";
+import { marked, openModal } from "./modal.js";
+import { createSpeedRow } from "./speed-row.js";
 import { createTimingPanel, type TimingPanel } from "./timing-panel.js";
+import { pageTooltip } from "./tooltip.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { mountVideoPanel } from "./video-panel.js";
 import { createVideoRig, type VideoRig } from "./video-rig.js";
@@ -23,6 +25,14 @@ import { readYouTubeLink } from "./youtube.js";
 
 const CLEFS = ["treble", "bass"] as const;
 
+/**
+ * The meters worth a button of their own.
+ *
+ * Not the meters that can be written: the boxes underneath take any count from
+ * 1 to 31 over any note value anybody counts in, and 5/8 and 7/8 are typed
+ * there. These six are the ones common enough that finding them should not
+ * involve typing at all.
+ */
 const METERS: readonly TimeSignature[] = [
   { beats: 4, beatUnit: 4 },
   { beats: 3, beatUnit: 4 },
@@ -30,10 +40,15 @@ const METERS: readonly TimeSignature[] = [
   { beats: 6, beatUnit: 8 },
   { beats: 9, beatUnit: 8 },
   { beats: 12, beatUnit: 8 },
-  { beats: 5, beatUnit: 8 },
 ];
 
 const meterLabel = (meter: TimeSignature) => `${meter.beats}/${meter.beatUnit}`;
+
+const sameMeter = (
+  one: TimeSignature | undefined,
+  other: TimeSignature | undefined,
+) =>
+  one?.beats === other?.beats && one?.beatUnit === other?.beatUnit;
 
 /**
  * Only as wide as the thing being shown.
@@ -52,8 +67,9 @@ const METER_HEADROOM = { above: 7, below: 7 };
  * Everything the melody page needs to begin.
  *
  * Three of these are settled for good — the clef, the meter and the bar count,
- * which the music is written against and cannot move under it. The marks are
- * only settled *here*: they were guessed against a video nobody had
+ * which the music is written against and cannot move under it. That is said
+ * once, in the confirmation the way out opens, with the numbers filled in. The
+ * marks are only settled *here*: they were guessed against a video nobody had
  * transcribed yet, and the editor can correct them.
  */
 export type Setup = {
@@ -70,22 +86,67 @@ export type SetupPageOptions = {
   onStart: (setup: Setup) => void;
 };
 
-function cell(
-  label: string,
-  selected: boolean,
-  run: () => void,
-): HTMLButtonElement {
+/** One choice in a row of them: a button carrying a diagram of what it picks. */
+function cell(label: string, run: () => void): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "setup-cell";
   button.title = label;
   button.setAttribute("aria-label", label);
-  button.setAttribute("aria-pressed", String(selected));
-  if (selected) {
-    button.classList.add("is-on");
-  }
+  button.setAttribute("aria-pressed", "false");
   button.addEventListener("click", run);
   return button;
+}
+
+/** Say whether a cell is the one taken. */
+function markCell(button: HTMLButtonElement, on: boolean): void {
+  button.setAttribute("aria-pressed", String(on));
+  button.classList.toggle("is-on", on);
+}
+
+/**
+ * One of the page's boxes: a heading, and room under it for the choice.
+ *
+ * An `aside` is set beside the heading rather than under it — a line about the
+ * box, in its corner, out of the way of the controls and still inside the box
+ * it is about.
+ */
+function boxed(title: string, aside?: HTMLElement): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "panel setup-box";
+  const heading = document.createElement("h2");
+  heading.className = "setup-box-title";
+  heading.textContent = title;
+  if (aside === undefined) {
+    section.append(heading);
+    return section;
+  }
+  const head = grouped("setup-box-head");
+  head.append(heading, aside);
+  section.append(head);
+  return section;
+}
+
+const grouped = (className: string): HTMLElement => {
+  const element = document.createElement("div");
+  element.className = className;
+  return element;
+};
+
+/** A line for saying what went wrong, taking no room until it has to. */
+function note(className: string): HTMLParagraphElement {
+  const line = document.createElement("p");
+  line.className = className;
+  line.setAttribute("role", "status");
+  return line;
+}
+
+/** A key as it is printed in a sentence, in the dress the caps on the buttons wear. */
+function keyCap(letter: string): HTMLElement {
+  const cap = document.createElement("kbd");
+  cap.className = "setup-tip-key";
+  cap.textContent = letter;
+  return cap;
 }
 
 /**
@@ -97,19 +158,27 @@ const beatsPerBar = (meter: TimeSignature | undefined): number =>
   meter === undefined ? 4 : beatsPerBarOf(meter);
 
 /**
- * The first page: clef, meter, video, and the timing that pins them together.
+ * The first page: the video, then the clef, the meter and the section of it
+ * being written down.
  *
- * Split into two kinds of region. The choosers redraw themselves whole on
- * every pick, as the page always has. Everything below them — the link box,
- * the video, the timing panel — is built once and only ever mutated, because
- * a redraw there would take the caret out of a box mid-keystroke, and would
- * reload the video itself: an iframe starts over whenever it is replaced.
+ * It runs in one direction. Until a video has been named there is nothing on
+ * the page but the link box, because every other question here is a question
+ * about *that video* — how many bars of it, where they start, what they are
+ * counted in — and there is no answering them against no video at all. So the
+ * link box is the whole page to begin with, and the rest arrives at once
+ * behind it. The box itself does not move when it does.
+ *
+ * Split into two kinds of region. The boxes are built once and only ever
+ * mutated: a redraw would take the caret out of a box mid-keystroke, and would
+ * reload the video itself, since an iframe starts over whenever it is
+ * replaced. What changes on a pick is which cell is lit, not what is on the
+ * page.
  *
  * The clef, the meter and the bar count chosen here are final: the music is
- * written against all three and none can move under it afterwards, so the way
- * out runs through a confirmation that says so. The timing marks are not among
- * them — they are a first guess at a video nobody has transcribed yet, and the
- * editor can correct them.
+ * written against all three and none can move under it afterwards, which is
+ * what the confirmation on the way out says, with the numbers filled in. The
+ * timing marks are not among them — they are a first guess at a video nobody
+ * has transcribed yet, and the editor can correct them.
  */
 export function createSetupPage(
   element: HTMLElement,
@@ -125,73 +194,20 @@ export function createSetupPage(
   let trouble: string | undefined;
   let timing: TimingState = { locked: false };
   let metronomeOn = false;
+  /** Why the last thing asked of the timing could not be done. */
+  let rejected: string | undefined;
 
-  // ---- the choosers, redrawn whole on every pick -------------------------
+  // ---- the page's title --------------------------------------------------
 
-  const choosers = document.createElement("div");
-  choosers.className = "setup-choosers";
-
-  function drawChoosers(): void {
-    choosers.replaceChildren();
-    const clefs = document.createElement("section");
-    clefs.className = "panel setup-panel";
-    const clefRow = document.createElement("div");
-    clefRow.className = "setup-row";
-    clefs.append(clefRow);
-    for (const candidate of CLEFS) {
-      const button = cell(`${candidate} clef`, clef === candidate, () => {
-        clef = candidate;
-        drawChoosers();
-        refresh();
-      });
-      const staff = document.createElement("div");
-      staff.className = "setup-staff";
-      renderStaveDiagram(
-        staff,
-        CLEF_WIDTH,
-        (stave) => stave.addClef(candidate),
-        CLEF_HEADROOM,
-      );
-      button.append(staff);
-      clefRow.append(button);
-    }
-
-    const meters = document.createElement("section");
-    meters.className = "panel setup-panel";
-    const meterRow = document.createElement("div");
-    meterRow.className = "setup-row";
-    meters.append(meterRow);
-    for (const candidate of METERS) {
-      const selected =
-        meter?.beats === candidate.beats &&
-        meter?.beatUnit === candidate.beatUnit;
-      const button = cell(`${meterLabel(candidate)} time`, selected, () => {
-        meter = candidate;
-        drawChoosers();
-        // The tempo is counted in this meter's beats, so the shown BPM moves
-        // even though no mark did.
-        panel.flash(["bpm"]);
-        refresh();
-      });
-      const staff = document.createElement("div");
-      staff.className = "setup-staff";
-      renderStaveDiagram(
-        staff,
-        METER_WIDTH,
-        (stave) => stave.addTimeSignature(meterLabel(candidate)),
-        METER_HEADROOM,
-      );
-      button.append(staff);
-      meterRow.append(button);
-    }
-
-    choosers.append(clefs, meters);
-  }
+  const title = document.createElement("h1");
+  title.className = "setup-title";
+  title.textContent = "Set Up Your Transcription";
 
   // ---- the link box and its Submit --------------------------------------
 
   const linkPanel = document.createElement("section");
-  linkPanel.className = "panel setup-panel setup-link";
+  linkPanel.className = "panel setup-box setup-link";
+  const tooltip = pageTooltip();
 
   const linkLabel = document.createElement("label");
   linkLabel.className = "setup-link-label";
@@ -215,9 +231,10 @@ export function createSetupPage(
   submit.className = "setup-link-submit";
   submit.textContent = "Load video";
 
-  const linkNote = document.createElement("p");
-  linkNote.className = "setup-link-note";
-  linkNote.setAttribute("role", "status");
+  // Only ever shown holding a problem, and taking no room at all otherwise:
+  // a box with a line of empty space kept for a mistake nobody has made reads
+  // as a box with something missing from it.
+  const linkNote = note("setup-note");
 
   linkRow.append(linkInput, submit);
   linkPanel.append(linkLabel, linkRow, linkNote);
@@ -242,12 +259,12 @@ export function createSetupPage(
     rig?.destroy();
     rigReady = false;
     trouble = undefined;
+    rejected = undefined;
     timing = { locked: false };
     metronomeOn = false;
     videoId = reading.videoId;
 
     const iframe = mountVideoPanel(videoArea, videoId);
-    studio.hidden = false;
     rig = createVideoRig(iframe);
     // The speed can change without this page asking — YouTube's own settings
     // menu — and the readout must follow it either way.
@@ -275,16 +292,139 @@ export function createSetupPage(
     }
   });
 
-  // ---- the video and the timing panel, mounted once ----------------------
+  // ---- the clef and the meter, in one box --------------------------------
 
-  const studio = document.createElement("div");
-  studio.className = "setup-studio";
-  studio.hidden = true;
-  const videoArea = document.createElement("div");
-  videoArea.id = "setup-video";
+  // One box, because they are one decision: what stands at the head of the
+  // stave before a note is written on it. The clefs are a column and the
+  // meters a block beside them, parted by a rule.
+  const settingsBox = boxed("Clef and Time Signature");
+  settingsBox.classList.add("setup-settings-box");
+  const settingsBody = grouped("setup-settings-body");
+  settingsBox.append(settingsBody);
+
+  const clefRow = grouped("setup-row setup-clef-row");
+  // The heading's own word, standing where it says the same thing about the
+  // two halves: one box, two choices, and no rule drawn between them.
+  const joiner = document.createElement("span");
+  joiner.className = "setup-and";
+  joiner.textContent = "and";
+  settingsBody.append(clefRow, joiner);
+
+  const clefCells = CLEFS.map((candidate) => {
+    const button = cell(`${candidate} clef`, () => {
+      clef = candidate;
+      refresh();
+    });
+    const staff = document.createElement("div");
+    staff.className = "setup-staff";
+    renderStaveDiagram(
+      staff,
+      CLEF_WIDTH,
+      (stave) => stave.addClef(candidate),
+      CLEF_HEADROOM,
+    );
+    button.append(staff);
+    clefRow.append(button);
+    return { button, clef: candidate as string };
+  });
+
+  const meterBody = grouped("setup-meter-body");
+  const meterRow = grouped("setup-row setup-meter-row");
+  meterBody.append(meterRow);
+  settingsBody.append(meterBody);
+
+  const meterCells = METERS.map((candidate) => {
+    const button = cell(`${meterLabel(candidate)} time`, () => {
+      setMeter(candidate);
+      // The boxes below follow the pick, so the two are never two answers.
+      meterField.show(candidate);
+    });
+    const staff = document.createElement("div");
+    staff.className = "setup-staff";
+    renderStaveDiagram(
+      staff,
+      METER_WIDTH,
+      (stave) => stave.addTimeSignature(meterLabel(candidate)),
+      METER_HEADROOM,
+    );
+    button.append(staff);
+    meterRow.append(button);
+    return { button, meter: candidate };
+  });
+
+  // Beside the six rather than under them: the same question answered a slower
+  // way, not a second question, so nothing is drawn between them.
+  const customRow = grouped("setup-meter-custom");
+  const customLabel = document.createElement("span");
+  customLabel.className = "setup-sub-label";
+  customLabel.textContent = "Or write one";
+  const meterField: MeterField = createMeterField({
+    onChange: (chosen) => setMeter(chosen),
+  });
+  customRow.append(customLabel, meterField.element);
+  meterBody.append(customRow);
+
+  /**
+   * Take a meter, from either the buttons or the boxes.
+   *
+   * The two are one answer, not two: a button fills the boxes, and typing in
+   * the boxes lights whichever button it lands on.
+   */
+  function setMeter(chosen: TimeSignature | undefined): void {
+    if (sameMeter(chosen, meter)) return;
+    meter = chosen;
+    // The tempo is counted in this meter's beats, so the shown BPM moves even
+    // though no mark did. The panel holds this back while its box is empty:
+    // picking a meter before anything is marked moves no tempo.
+    panel.flash(["bpm"]);
+    refresh();
+  }
+
+  // ---- the section: the timing panel beside the video --------------------
+
+  // Two columns rather than one. The marks are read off the video, so the
+  // video stands beside them where both can be watched at once, with the speed
+  // it is being watched at over it — and the panel, freed of the slider, is no
+  // wider than the rows it actually has.
+  const tip = document.createElement("p");
+  tip.className = "setup-tip";
+  tip.append(
+    "Tap the ",
+    keyCap("I"),
+    " and ",
+    keyCap("O"),
+    " keys to mark the start and end of the section. Slow the video down for " +
+      "better results, and check your work using the metronome.",
+  );
+
+  const sectionBox = boxed("Section to Transcribe", tip);
+  sectionBox.classList.add("setup-section-box");
+
   const timingArea = document.createElement("div");
   timingArea.id = "setup-timing";
-  studio.append(videoArea, timingArea);
+  const marksColumn = grouped("setup-section-marks");
+  marksColumn.append(timingArea);
+
+  // Under the marks it belongs with, rather than over the player: it is one of
+  // the things being set, and the right-hand half of this box is the video and
+  // nothing else.
+  const speed = createSpeedRow((rate) => rig?.setRate(rate));
+  marksColumn.append(speed.element);
+
+  // Empty until the link is given, and never seen empty: the box it stands in
+  // is not on the page until there is a video to put here.
+  const videoArea = document.createElement("div");
+  videoArea.id = "setup-video";
+  const playerColumn = grouped("setup-section-player");
+  playerColumn.append(videoArea);
+
+  const sectionBody = grouped("setup-section-body");
+  sectionBody.append(marksColumn, playerColumn);
+
+  // What the timing refused, under both columns rather than inside the narrow
+  // one — a bar count past the longest transcription there is, most of all.
+  const timingNote = note("setup-note is-wrong");
+  sectionBox.append(sectionBody, timingNote);
 
   /** Run one reducer action, flash what it rewrote, and follow through. */
   function act(action: TimingAction): void {
@@ -295,11 +435,14 @@ export function createSetupPage(
       rig && rig.duration() > 0 ? rig.duration() : undefined,
     );
     timing = step.state;
+    // Said in the box rather than swallowed: a bar count over the limit, or a
+    // locked edit that would run past the video, is a thing the user did and
+    // is owed an answer to. Cleared by the next thing that works.
+    rejected = step.rejected;
     if (step.rejected) {
-      // Refused, and the state did not move. Nothing is said about it: the
-      // panel has no line to say it in, and the box simply shows what it still
-      // holds. The Start button below goes on saying what is missing.
-      panel.update(panelState());
+      // Refused, and the state did not move: the boxes go back to showing what
+      // they still hold, and the line below the panel says why.
+      refresh();
       return;
     }
     panel.flash([...step.autoEdited, ...markedField(action)]);
@@ -354,52 +497,96 @@ export function createSetupPage(
     return false;
   };
 
-  const panel: TimingPanel = createTimingPanel(timingArea, {
-    onRate: (rate) => rig?.setRate(rate),
-    onMark: markNow,
-    onType: (field, seconds) =>
-      act({ kind: field === "start" ? "type-start" : "type-end", seconds }),
-    onNudge: (field, seconds) => act({ kind: "nudge", field, seconds }),
-    onTypeMeasures: (count) => act({ kind: "type-measures", count }),
-    onTypeBpm: (bpm) => act({ kind: "type-bpm", bpm }),
-    onToggleLock: () => act({ kind: "toggle-lock" }),
-    onMetronome: (on) => {
-      const map = currentMap();
-      if (on && map) {
-        metronomeOn = true;
-        // Inside the click, which is the only place sound may start from.
-        rig?.setMetronome(map);
-      } else {
-        metronomeOn = false;
-        rig?.setMetronome(undefined);
-      }
-      refresh();
+  const panel: TimingPanel = createTimingPanel(
+    timingArea,
+    {
+      onRate: (rate) => rig?.setRate(rate),
+      onMark: markNow,
+      onType: (field, seconds) =>
+        act({ kind: field === "start" ? "type-start" : "type-end", seconds }),
+      onNudge: (field, seconds) => act({ kind: "nudge", field, seconds }),
+      onTypeMeasures: (count) => act({ kind: "type-measures", count }),
+      onTypeBpm: (bpm) => act({ kind: "type-bpm", bpm }),
+      onToggleLock: () => act({ kind: "toggle-lock" }),
+      onMetronome: (on) => {
+        const map = currentMap();
+        if (on && map) {
+          metronomeOn = true;
+          // Inside the click, which is the only place sound may start from.
+          rig?.setMetronome(map);
+        } else {
+          metronomeOn = false;
+          rig?.setMetronome(undefined);
+        }
+        refresh();
+      },
+      onLetter,
     },
-    onLetter,
-  });
+    // The bar count is still being settled here; the two mark keys are printed
+    // where they can be seen, since marking the section is the first thing
+    // anybody does on this page; each row's button follows the word that names
+    // it, leaving the box the whole of the rest of the row; and the speed
+    // slider is placed by this page, under the rows rather than in a band of
+    // its own.
+    {
+      measures: "editable",
+      keys: "corner",
+      speed: "outside",
+      buttons: "leading",
+    },
+  );
 
   // ---- the way out -------------------------------------------------------
 
   const start = document.createElement("button");
   start.type = "button";
   start.className = "setup-submit";
-  start.textContent = "Start writing";
+  start.textContent = "Begin Transcribing! →";
 
-  const startNote = document.createElement("p");
-  startNote.className = "setup-start-note";
-  startNote.setAttribute("role", "status");
+  const foot = grouped("setup-foot");
+  foot.append(start);
 
+  /** What still stands between here and a melody, or nothing. */
   function whatIsMissing(): string | undefined {
-    if (!clef || !meter) return "Choose a clef and a meter.";
-    if (!videoId) return "Load the video you are writing from.";
     if (trouble) return trouble;
+    if (!clef) return "Choose a clef.";
+    if (!meter) return "Choose a time signature.";
     if (!rigReady) return "Waiting for the video…";
     return timingProblem(timing, beatsPerBar(meter));
   }
 
+  /** The reason the way out is grey, or nothing while it is not. */
+  let missing: string | undefined;
+
+  /**
+   * Dead rather than disabled, so it can be pointed at.
+   *
+   * The reason used to stand in a line beside the button, which is a standing
+   * fact taking a line of page for as long as it is true. It is now asked for
+   * instead: hover the grey button and it says what is left to do. A `disabled`
+   * button receives no pointer events at all and could answer nothing, so this
+   * is `aria-disabled` with the press refused below — the same way round the
+   * greyed duration cells and the dead piano keys take.
+   */
+  const sayWhyGrey = () => {
+    if (missing === undefined) return;
+    // Over the button rather than beside the pointer. The pointer is the right
+    // anchor for a small control being swept over, and the wrong one here: a
+    // browser fires `pointerenter` *before* the move that caused it, so the
+    // remembered position is the one before this button — and this button is
+    // wide enough that its own top edge is a better place regardless.
+    const box = start.getBoundingClientRect();
+    tooltip.say(missing, { x: box.left + box.width / 2, y: box.top });
+  };
+  start.addEventListener("pointerenter", sayWhyGrey);
+  start.addEventListener("pointerleave", () => tooltip.say(undefined));
+  start.addEventListener("focus", sayWhyGrey);
+  start.addEventListener("blur", () => tooltip.say(undefined));
+
   start.addEventListener("click", () => {
     const map = currentMap();
     if (!clef || !meter || !videoId || !map || timing.measures === undefined) {
+      sayWhyGrey();
       return;
     }
     const chosen: Setup = {
@@ -411,23 +598,39 @@ export function createSetupPage(
     };
     const bars = chosen.measures === 1 ? "1 bar" : `${chosen.measures} bars`;
     void openModal({
-      title: "The clef, the meter and the bar count are final",
+      title: "Are you sure?",
+      // The three settings read back as they will be written, each marked, so
+      // that checking them against the video is a matter of reading four words
+      // rather than of remembering what was picked ten minutes ago.
       body: [
-        `${bars} at ${Math.round(beatsPerMinute(map))} BPM, ` +
-          `in ${meterLabel(chosen.meter)}, ${chosen.clef} clef.`,
-        "Once writing begins, none of those three can be changed. Check them " +
-          "against the video before going on.",
-        "The timing marks can: correct them from the editor whenever the " +
-          "tempo turns out to be a little off.",
+        [
+          "Beyond this point, the clef, number of measures, and time " +
+            "signature ",
+          marked("cannot be changed"),
+          ".",
+        ],
+        [
+          "Your transcription will consist of ",
+          marked(bars),
+          " of ",
+          marked(meterLabel(chosen.meter)),
+          " written in ",
+          marked(`${chosen.clef} clef`),
+          "—is that correct?",
+        ],
       ],
-      confirm: "Start writing",
+      confirm: "Yes, proceed",
       cancel: "Go back",
+      className: "setup-confirm",
     }).then((confirmed) => {
       if (!confirmed) return;
       // The player is let go before its iframe is thrown away, and the page
       // cleans itself up entirely — nothing here survives into the editor.
       window.removeEventListener("keydown", onKey);
       rig?.destroy();
+      // Hushed rather than destroyed: the tooltip belongs to the page, and the
+      // editor is about to want it.
+      tooltip.say(undefined);
       element.replaceChildren();
       onStart(chosen);
     });
@@ -457,17 +660,36 @@ export function createSetupPage(
         bpm === undefined ? undefined : String(Math.round(bpm * 10) / 10),
       metronomeOn,
       timed: meter !== undefined && problem === undefined,
+      metered: meter !== undefined,
     };
   }
 
   function refresh(): void {
+    // Everything but the link box is a question about a particular video, so
+    // until there is one there is nothing here to ask it about — and the rest
+    // of the page is not drawn greyed, it is not drawn.
+    const asked = videoId !== undefined;
+    columns.hidden = !asked;
+    foot.hidden = !asked;
+
+    for (const candidate of clefCells) {
+      markCell(candidate.button, clef === candidate.clef);
+    }
+    for (const candidate of meterCells) {
+      markCell(candidate.button, sameMeter(meter, candidate.meter));
+    }
+
     panel.update(panelState());
-    const missing = whatIsMissing();
-    start.disabled = missing !== undefined;
-    startNote.textContent = missing ?? "";
+    speed.update(rig?.rates() ?? [1], rig?.rate() ?? 1, rigReady);
+    timingNote.textContent = rejected ?? "";
+
+    missing = asked ? whatIsMissing() : "Load the video you are writing from.";
+    start.setAttribute("aria-disabled", String(missing !== undefined));
   }
 
-  drawChoosers();
-  element.append(choosers, linkPanel, studio, start, startNote);
+  const columns = grouped("setup-columns");
+  columns.append(settingsBox, sectionBox);
+
+  element.append(title, linkPanel, columns, foot);
   refresh();
 }

@@ -240,6 +240,9 @@ export function createPlayback(
       rate: rig.rate(),
       volume: rigReady ? rig.volume() : 100,
       timed: map !== undefined && problem() === undefined,
+      // The melody has a meter, always: it was settled before this page was
+      // built and cannot move.
+      metered: true,
     };
 
     panel.update({
@@ -765,7 +768,7 @@ export function createPlayback(
           // panel sets the timing. The choice keeps what the playback panel says.
           onLetter,
         },
-        { measures: "fixed", layout: "editor" },
+        { measures: "fixed" },
       )
     : undefined;
 

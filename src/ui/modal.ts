@@ -114,31 +114,59 @@ function openShell(options: ShellOptions): void {
   box.querySelector<HTMLElement>(FOCUSABLE)?.focus();
 }
 
+/**
+ * One paragraph of a message: a sentence, or its parts where some of them are
+ * marked.
+ *
+ * A dialog that asks somebody to check a number against the video has to be
+ * able to say which words are the numbers, and a paragraph set as one string
+ * cannot. `marked()` builds the parts that stand out.
+ */
+export type ModalLine = string | readonly (string | Node)[];
+
+/** A phrase the reader is meant to stop on, in the app's accent. */
+export function marked(text: string): HTMLElement {
+  const span = document.createElement("span");
+  span.className = "modal-marked";
+  span.textContent = text;
+  return span;
+}
+
+/** One paragraph of a message, however the caller spelled it. */
+function paragraph(line: ModalLine): HTMLParagraphElement {
+  const element = document.createElement("p");
+  element.className = "modal-body";
+  if (typeof line === "string") {
+    element.textContent = line;
+  } else {
+    element.append(...line);
+  }
+  return element;
+}
+
 export type ModalOptions = {
   title: string;
   /** Lines of the message; each becomes its own paragraph. */
-  body: readonly string[];
+  body: readonly ModalLine[];
   /** What the committing button says. */
   confirm: string;
   /** What the retreating button says. */
   cancel: string;
+  /** Extra classes for the box, for a question drawn to its own page's scale. */
+  className?: string;
 };
 
 export function openModal(options: ModalOptions): Promise<boolean> {
   return new Promise((resolve) => {
     openShell({
+      className: options.className,
       onClose: resolve,
       fill(close) {
         const heading = document.createElement("h2");
         heading.className = "modal-title";
         heading.textContent = options.title;
 
-        const lines = options.body.map((line) => {
-          const paragraph = document.createElement("p");
-          paragraph.className = "modal-body";
-          paragraph.textContent = line;
-          return paragraph;
-        });
+        const lines = options.body.map(paragraph);
 
         const buttons = document.createElement("div");
         buttons.className = "modal-buttons";
@@ -166,7 +194,7 @@ export function openModal(options: ModalOptions): Promise<boolean> {
 
 export type ChoiceModalOptions = {
   title: string;
-  body: readonly string[];
+  body: readonly ModalLine[];
   /** What the retreating button says. */
   cancel: string;
   /**
@@ -192,12 +220,7 @@ export function openChoiceModal(options: ChoiceModalOptions): Promise<boolean> {
         heading.className = "modal-title";
         heading.textContent = options.title;
 
-        const lines = options.body.map((line) => {
-          const paragraph = document.createElement("p");
-          paragraph.className = "modal-body";
-          paragraph.textContent = line;
-          return paragraph;
-        });
+        const lines = options.body.map(paragraph);
 
         const cancel = document.createElement("button");
         cancel.type = "button";

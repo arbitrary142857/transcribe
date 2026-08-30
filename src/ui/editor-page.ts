@@ -38,6 +38,13 @@ export type EditorPageElements = EditorElements & {
   /** The masthead over the score: the title, the subtitle and the byline. */
   sheetHead: HTMLElement;
   setup: HTMLElement;
+  /**
+   * The editor's whole working frame: the score, the keys and the video's
+   * column. Hidden entire while the setup page is showing — its parts were
+   * hidden one by one once, and the sheet the score scrolls inside is not one
+   * of them, so the setup page stood on a blank page of music paper.
+   */
+  mainBody: HTMLElement;
   workspace: HTMLElement;
   toolbar: HTMLElement;
   keyboardArea: HTMLElement;
@@ -259,6 +266,7 @@ export function createEditorPage(
   }
 
   function showSetup(): void {
+    elements.mainBody.hidden = true;
     elements.workspace.hidden = true;
     elements.toolbar.hidden = true;
     elements.keyboardArea.hidden = true;
@@ -668,6 +676,7 @@ export function createEditorPage(
     if (!melody) return;
     elements.setup.hidden = true;
     elements.setup.replaceChildren();
+    elements.mainBody.hidden = false;
     elements.workspace.hidden = false;
     // Nothing but the rhythm controls is left in the band, so with those away
     // it is an empty strip: it goes, and the score takes the height.

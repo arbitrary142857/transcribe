@@ -95,6 +95,26 @@ export function createTimeField(options: TimeFieldOptions): TimeField {
     options.onCommit(parsed);
   }
 
+  /**
+   * What a timecode is made of, and nothing else.
+   *
+   * A signed or exponent-bearing number is not a moment in a video, and a box
+   * that takes one has to hand back a refusal for something it should never
+   * have accepted a keystroke of. Digits, the colon parting minutes from
+   * seconds, and the point before the milliseconds — that is the whole
+   * alphabet, and `parseTimecode` reads exactly it.
+   */
+  const TIMECODE_CHARACTERS = /^[0-9:.]*$/;
+
+  input.addEventListener("beforeinput", (event) => {
+    const typed = (event as InputEvent).data;
+    // Deletions and the rest carry no text, and can take nothing but
+    // characters that were allowed in.
+    if (typed === null || typed === undefined) return;
+    if (TIMECODE_CHARACTERS.test(typed)) return;
+    event.preventDefault();
+  });
+
   input.addEventListener("change", commit);
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {

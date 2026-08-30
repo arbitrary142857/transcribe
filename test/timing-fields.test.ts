@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   bpmOf,
+  MEASURES_MAX,
   stepTiming,
   timingProblem,
   type TimingAction,
@@ -119,6 +120,20 @@ describe("stepTiming() unlocked", () => {
     assert.ok(step(MARKED, { kind: "type-measures", count: 0 }).rejected);
     assert.ok(step(MARKED, { kind: "type-measures", count: 2.5 }).rejected);
     assert.ok(step(MARKED, { kind: "type-measures", count: 1000 }).rejected);
+  });
+
+  it("counts up to the longest transcription there is, and no further", () => {
+    assert.equal(
+      step(MARKED, { kind: "type-measures", count: MEASURES_MAX }).state
+        .measures,
+      MEASURES_MAX,
+    );
+    const refused = step(MARKED, {
+      kind: "type-measures",
+      count: MEASURES_MAX + 1,
+    });
+    assert.equal(refused.state, MARKED);
+    assert.match(refused.rejected ?? "", new RegExp(`1 to ${MEASURES_MAX}`));
   });
 
   it("nudges a mark by a step", () => {

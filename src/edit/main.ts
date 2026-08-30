@@ -77,6 +77,7 @@ try {
     createEditorPage(
       {
         setup: required("setup"),
+        mainBody: required("main-body"),
         workspace: required("workspace"),
         sheetHead: required("sheet-head"),
         score: required("score"),

@@ -68,8 +68,16 @@ export type TimingStep = {
 export const BPM_MIN = 10;
 export const BPM_MAX = 600;
 
-/** A typo guard, not a design limit. */
-export const MEASURES_MAX = 999;
+/**
+ * The longest transcription there is.
+ *
+ * A limit rather than a typo guard: every bar of this is written by hand and
+ * read off one score, and a piece that runs past it is several transcriptions
+ * rather than one. It is also the last moment anybody can be told — the bar
+ * count is settled on the setup page and cannot move afterwards — so the box
+ * that takes it says so rather than silently taking what it was given.
+ */
+export const MEASURES_MAX = 128;
 
 /** The tempo the three fields imply, if they imply one. */
 export function bpmOf(
