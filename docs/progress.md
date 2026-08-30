@@ -185,11 +185,13 @@ could never be taken.
 ## The catalog
 
 `/` reads progress once (`GET /api/progress` for an account, one local read
-per level otherwise) and draws the ✓ badge, "Resume" and "Play again" from
-it, as before. It also filters: All, Unplayed (no record, or no pitches), In
-progress (pitches, no solve), Solved. One of the four is always taken; the
-choice is not remembered between visits, unlike Compact, because a filter is a
-question asked now rather than a way of liking the page.
+per level otherwise) and draws each card's status word — Not Started (no
+record, or no pitches), In Progress (pitches, no solve), Transcribed
+(solved) — along with "Resume" and "Play again" in the level's box. The same
+three buckets are the status cut in the filter box, as three switches rather
+than one choice of four: all on by default, all of them off shows nothing,
+and none of it is remembered between visits, unlike Compact, because a filter
+is a question asked now rather than a way of liking the page.
 
 ## What a level's life does to progress
 

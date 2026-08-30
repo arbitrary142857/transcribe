@@ -40,18 +40,24 @@ export type NavLink = { href: string; label: string; current: boolean };
 export const cornerLabel = (user: UserSummary): string =>
   user.username ?? user.email;
 
-/** The nav's own pages, and whether this is one of them. */
+/**
+ * The nav's own pages, and whether this is one of them.
+ *
+ * Two links either way, and which the second is depends on who is looking.
+ * Signed in, it is your own list — where "+ Create Transcription" already
+ * sits, so a second way to the editor in the bar beside it would be the same
+ * invitation twice. Signed out there is no such list, so the invitation is
+ * the nav's to make, and it is worded as the button words it.
+ */
 export function planNav(pathname: string, signedIn: boolean): NavLink[] {
   // The dev server answers `/edit` with `/edit/`; the two are one page.
   const here = pathname.length > 1 ? pathname.replace(/\/$/u, "") : pathname;
-  const links: NavLink[] = [
+  return [
     { href: "/", label: "Levels", current: here === "/" },
-    { href: "/edit", label: "New transcription", current: here === "/edit" },
+    signedIn
+      ? { href: "/mine", label: "My Transcriptions", current: here === "/mine" }
+      : { href: "/edit", label: "Create Transcription", current: here === "/edit" },
   ];
-  if (signedIn) {
-    links.push({ href: "/mine", label: "My transcriptions", current: here === "/mine" });
-  }
-  return links;
 }
 
 export type SiteNav = {

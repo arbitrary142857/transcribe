@@ -3,32 +3,50 @@ import { describe, it } from "node:test";
 import { cornerLabel, planNav } from "../dist/ui/site-nav.js";
 
 describe("planNav()", () => {
-  it("offers the same places from every page, and says which one this is", () => {
-    const fromHome = planNav("/", true);
-    const fromEditor = planNav("/edit", true);
+  it("offers the levels and the way to make one, and says which page this is", () => {
+    const fromHome = planNav("/", false);
+    const fromEditor = planNav("/edit", false);
 
     assert.deepEqual(
       fromHome.map((link) => link.href),
-      ["/", "/edit", "/mine"],
-    );
-    assert.deepEqual(
-      fromEditor.map((link) => link.href),
-      ["/", "/edit", "/mine"],
+      ["/", "/edit"],
     );
     assert.deepEqual(
       fromHome.map((link) => link.current),
-      [true, false, false],
+      [true, false],
     );
     assert.deepEqual(
       fromEditor.map((link) => link.current),
-      [false, true, false],
+      [false, true],
     );
   });
 
-  it("leaves out the author's own list for somebody not signed in", () => {
+  it("asks a visitor who is nobody to create a transcription, in those words", () => {
+    // The button on "my transcriptions" says the same thing; somebody signed
+    // out has no such page, so the nav is where the invitation lives.
     assert.deepEqual(
-      planNav("/", false).map((link) => link.href),
-      ["/", "/edit"],
+      planNav("/", false).map((link) => link.label),
+      ["Levels", "Create Transcription"],
+    );
+  });
+
+  it("sends somebody signed in to their own list instead, where the button is", () => {
+    // Two ways to the same editor, one of them a duplicate: the page they
+    // land on carries "+ Create Transcription" itself.
+    assert.deepEqual(
+      planNav("/", true).map((link) => link.href),
+      ["/", "/mine"],
+    );
+    assert.deepEqual(
+      planNav("/", true).map((link) => link.label),
+      ["Levels", "My Transcriptions"],
+    );
+  });
+
+  it("marks the author's own page when that is where you are", () => {
+    assert.deepEqual(
+      planNav("/mine", true).map((link) => link.current),
+      [false, true],
     );
   });
 
@@ -37,7 +55,7 @@ describe("planNav()", () => {
   });
 
   it("is unmoved by a trailing slash or a query, which the dev server adds", () => {
-    assert.equal(planNav("/edit/", true).find((l) => l.href === "/edit")?.current, true);
+    assert.equal(planNav("/edit/", false).find((l) => l.href === "/edit")?.current, true);
     assert.equal(planNav("/mine/", true).find((l) => l.href === "/mine")?.current, true);
   });
 });

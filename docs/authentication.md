@@ -226,9 +226,11 @@ app). Until the answer arrives, the nav corner is empty rather than wrong.
 The corner hands the answer back to the page, which has its own uses for it:
 whether Save will work, and whose cards carry tools (`cardPlan` in
 `level-card.ts` — drawing, never permission). The whole bar is built by
-`site-nav.ts` from one list — Levels, New transcription, and My
-transcriptions once signed in — with the current page marked, so every page
-offers the same places.
+`site-nav.ts` from one list — Levels, and then either Create Transcription
+(signed out) or My Transcriptions (signed in) — with the current page
+marked, so every page offers the same places. Two links either way: signed
+in, the way to the editor is the "+ Create Transcription" button on your own
+page, and a second one in the bar beside it was the same invitation twice.
 
 **The button is Google's.** Google's branding rules for a sign-in button
 that uses its name are required reading and are followed: the words are

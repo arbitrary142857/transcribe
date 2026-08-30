@@ -1,15 +1,18 @@
 /**
- * Which levels the catalog shows: by where the visitor got to on them, and
- * by how hard they are.
+ * Which levels a list shows.
  *
- * Two independent cuts, ANDed by the list. The progress rule has three
- * buckets a level can be in for one person, and a fourth choice that is all
- * of them, decided from the progress record alone so the same rule serves a
- * browser's records and an account's. The heat rule is a range of halves
- * over the *blended* figure — `displayedDifficulty`'s, never the author's
- * word alone — so the filter and the peppers on the card cannot disagree.
+ * Four independent cuts on the catalog, ANDed: the statuses a visitor has
+ * reached on a level, a range of difficulty, whether they hearted it, and
+ * whether it is their own. One cut on the author's own page: which kind of
+ * work a level is. Each is decided from a record or a column, never from a
+ * melody, so the same rule serves a browser's progress and an account's.
  *
- * Pure: the controls that offer the choices live in `segmented.ts` and
+ * The status cuts are a set of switches rather than one choice of four,
+ * because "everything except what I have finished" is a thing to want and a
+ * one-of-four control cannot say it. Turning every switch off shows nothing,
+ * which is what was asked for; it is not read as "no cut made".
+ *
+ * Pure: the controls that offer the choices live in `level-filters.ts` and
  * `heat-range.ts`, and the list that redraws itself is `level-list.ts`.
  * Nothing here is remembered between visits, unlike the Compact preference —
  * a filter is a question asked now, not a way of liking the page.
@@ -22,17 +25,45 @@
 
 import type { PlayProgress } from "../puzzle/progress.js";
 import { DIFFICULTY, displayedDifficulty, starsOfHalf } from "../shared/difficulty.js";
+import type { LevelStatus } from "../shared/transcription.js";
 
-export type ProgressFilter = "all" | "unplayed" | "started" | "solved";
+// ---- what a level is, to a visitor and to its author ----------------------
 
-export type ProgressBucket = Exclude<ProgressFilter, "all">;
+export type ProgressBucket = "unplayed" | "started" | "solved";
 
-export const FILTERS: readonly { value: ProgressFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "unplayed", label: "Unplayed" },
-  { value: "started", label: "In progress" },
-  { value: "solved", label: "Solved" },
+export type WorkBucket = "unfinished" | "complete" | "published";
+
+/** Whether each bucket is shown. Every one of them off shows nothing. */
+export type Chosen<K extends string> = Record<K, boolean>;
+
+/**
+ * The switches, in the order they are drawn, worded exactly as the cards
+ * word them — a filter that said "Solved" beside cards that say
+ * "Transcribed" would be two names for one thing.
+ */
+export const PLAY_STATUSES: readonly { value: ProgressBucket; label: string }[] = [
+  { value: "unplayed", label: "Not Started" },
+  { value: "started", label: "In Progress" },
+  { value: "solved", label: "Transcribed" },
 ];
+
+export const WORK_STATUSES: readonly { value: WorkBucket; label: string }[] = [
+  { value: "unfinished", label: "Unfinished" },
+  { value: "complete", label: "Complete" },
+  { value: "published", label: "Published" },
+];
+
+export const ALL_PLAY_STATUSES: Chosen<ProgressBucket> = {
+  unplayed: true,
+  started: true,
+  solved: true,
+};
+
+export const ALL_WORK_STATUSES: Chosen<WorkBucket> = {
+  unfinished: true,
+  complete: true,
+  published: true,
+};
 
 /**
  * Solved if it has been solved; started if anything is written on the stave;
@@ -45,31 +76,13 @@ export function bucketOf(progress: PlayProgress | undefined): ProgressBucket {
   return progress.pitches.length > 0 ? "started" : "unplayed";
 }
 
-/** The ones to draw, in the order given. */
-export function filterLevels<T extends { progress?: PlayProgress | undefined }>(
-  showing: readonly T[],
-  filter: ProgressFilter,
-): T[] {
-  return filter === "all"
-    ? [...showing]
-    : showing.filter((each) => bucketOf(each.progress) === filter);
-}
-
-/**
- * What to say when a filter leaves nothing. Nothing for "all": an empty
- * catalog is the list's own to explain.
- */
-export function emptyFilterSentence(filter: ProgressFilter): string | undefined {
-  switch (filter) {
-    case "all":
-      return undefined;
-    case "unplayed":
-      return "Every level has been started.";
-    case "started":
-      return "Nothing is in progress.";
-    case "solved":
-      return "Nothing solved yet.";
-  }
+/** The same question asked of the work rather than of the play. */
+export function workBucketOf(level: {
+  status: LevelStatus;
+  unpitchedCount: number;
+}): WorkBucket {
+  if (level.status === "published") return "published";
+  return level.unpitchedCount > 0 ? "unfinished" : "complete";
 }
 
 // ---- the heat rule --------------------------------------------------------
@@ -120,19 +133,100 @@ export function filterByHeat<
   });
 }
 
+// ---- the catalog ----------------------------------------------------------
+
+/** Everything the front page's filter box holds, in one value. */
+export type CatalogFilter = {
+  statuses: Chosen<ProgressBucket>;
+  heat: HeatRange;
+  /** Only the levels this viewer has hearted. */
+  heartedOnly: boolean;
+  /** Whether the viewer's own levels are among everybody else's. */
+  showOwn: boolean;
+};
+
+/** Every cut wide open: how the box opens, and how the page starts. */
+export const WHOLE_CATALOG: CatalogFilter = {
+  statuses: ALL_PLAY_STATUSES,
+  heat: WHOLE_SCALE,
+  heartedOnly: false,
+  showOwn: true,
+};
+
 /**
- * What to say when the two cuts together leave nothing: whichever filter is
- * narrowed gets to explain itself, and when both are, neither can claim to
- * know which one bit.
+ * What the page knows about the viewer that a filter needs: which levels
+ * they have hearted (from `/api/me/upvotes`) and who they are. Both are
+ * absent for somebody signed out, and the two cuts that need them then
+ * simply have nothing to bite on.
  */
-export function emptySentence(
-  filter: ProgressFilter,
-  range: HeatRange,
+export type CatalogView = {
+  hearted: ReadonlySet<string>;
+  viewerId: string | undefined;
+};
+
+type Listed = {
+  level: {
+    id: string;
+    ownerId: string;
+    authorDifficulty?: number | undefined;
+    ratingCount?: number | undefined;
+    ratingHalves?: number | undefined;
+  };
+  progress?: PlayProgress | undefined;
+};
+
+/** The ones to draw, in the order given. */
+export function filterCatalog<T extends Listed>(
+  showing: readonly T[],
+  filter: CatalogFilter,
+  view: CatalogView,
+): T[] {
+  const kept = filterByHeat(showing, filter.heat).filter((each) => {
+    if (!filter.statuses[bucketOf(each.progress)]) return false;
+    if (filter.heartedOnly && !view.hearted.has(each.level.id)) return false;
+    // Nobody signed out has levels of their own, so this cut passes everything.
+    if (!filter.showOwn && view.viewerId !== undefined) {
+      return each.level.ownerId !== view.viewerId;
+    }
+    return true;
+  });
+  return kept;
+}
+
+const allOn = <K extends string>(chosen: Chosen<K>): boolean =>
+  Object.values(chosen).every(Boolean);
+
+/**
+ * What to say when the cuts together leave nothing.
+ *
+ * Whichever cut is the only one narrowed gets to explain itself; when
+ * several are, none of them can claim to know which one bit, so the box as a
+ * whole takes the blame. Nothing at all when no cut was made: an empty
+ * catalog is the list's own to explain.
+ */
+export function catalogEmptySentence(filter: CatalogFilter): string | undefined {
+  const said: string[] = [];
+  if (!allOn(filter.statuses)) said.push("No levels are at those statuses.");
+  if (!isWholeScale(filter.heat)) said.push("Nothing at that difficulty.");
+  if (filter.heartedOnly) said.push("You have not hearted any of these levels.");
+  if (!filter.showOwn) said.push("Only your own levels are here.");
+
+  if (said.length === 0) return undefined;
+  return said.length === 1 ? said[0] : "No levels match the filters.";
+}
+
+// ---- the author's own page ------------------------------------------------
+
+export function filterWork<
+  T extends { level: { status: LevelStatus; unpitchedCount: number } },
+>(showing: readonly T[], statuses: Chosen<WorkBucket>): T[] {
+  return showing.filter((each) => statuses[workBucketOf(each.level)]);
+}
+
+export function workEmptySentence(
+  statuses: Chosen<WorkBucket>,
 ): string | undefined {
-  const heat = isWholeScale(range) ? undefined : "Nothing at that difficulty.";
-  const progress = emptyFilterSentence(filter);
-  if (heat !== undefined && progress !== undefined) {
-    return "No levels match the filters.";
-  }
-  return heat ?? progress;
+  return allOn(statuses)
+    ? undefined
+    : "Nothing of yours is at those statuses.";
 }

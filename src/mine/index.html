@@ -7,7 +7,7 @@
     <title>My transcriptions · Transcribe</title>
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="level-page patterned is-mine">
     <nav class="site-nav">
       <a class="site-name" href="/">Transcribe</a>
       <div id="site-nav" class="site-links">
@@ -17,13 +17,36 @@
     </nav>
 
     <main class="page">
-      <h1 class="page-title">My transcriptions</h1>
-      <p class="page-lede">
-        Drafts nobody else can see, and what you have published.
-      </p>
+      <div class="page-head">
+        <h1 class="page-title">My Transcriptions</h1>
 
-      <!-- Filled in by main.ts, like the front page's. -->
-      <div id="levels-controls" class="level-controls"></div>
+        <!-- The one invitation on this page, and the only way to the editor
+             now that the nav has stopped offering a second one. A link rather
+             than a button: it goes to an address, and should open in a new tab
+             like any other. -->
+        <a class="page-action" href="/edit"
+          ><!-- Phosphor Icons' `plus`, regular, MIT — the same family and the
+               same notice as the shapes in `icons.ts`. Spelled out here
+               because this button is markup rather than something a module
+               builds. Centred on the words by the flex row it sits in. -->
+          <svg
+            class="page-action-plus"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 256 256"
+            fill="currentColor"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M224,128a8,8,0,0,1-8,8H136v80a8,8,0,0,1-16,0V136H40a8,8,0,0,1,0-16h80V40a8,8,0,0,1,16,0v80h80A8,8,0,0,1,224,128Z"
+            />
+          </svg>
+          Create Transcription</a
+        >
+
+        <!-- Filled in by main.ts, like the front page's. -->
+        <div id="levels-controls" class="level-controls"></div>
+      </div>
 
       <ul id="levels" class="level-list"></ul>
       <p id="levels-note" class="page-note" role="status">Loading…</p>

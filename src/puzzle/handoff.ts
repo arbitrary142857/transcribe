@@ -11,8 +11,8 @@
  * When to offer, unprompted: when this account is new to this machine.
  * `transcribe:viewer` holds the id of the last account this browser was asked
  * about. A different answer from /api/me, with at least one readable record
- * held, is the moment — the ✓ badges the visitor had a minute ago have just
- * vanished from the catalog, and a question explains why. Either answer
+ * held, is the moment — the levels that said "Transcribed" a minute ago have
+ * just gone back to "Not Started", and a question explains why. Either answer
  * writes the marker, so the question comes once per account per machine. It
  * is not cleared on sign-out, so records made signed-out afterwards by the
  * same person never raise the question again; the catalog's standing line is

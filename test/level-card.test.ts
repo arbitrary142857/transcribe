@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { cardPlan, keyName, levelStats, levelState } from "../dist/ui/level-card.js";
+import {
+  bylineOf,
+  cardOpening,
+  cardPlan,
+  countLeft,
+  keyName,
+  levelStats,
+  publishBlock,
+} from "../dist/ui/level-card.js";
 import type { UserSummary } from "../dist/shared/session.js";
 import type { TranscriptionSummary } from "../dist/shared/transcription.js";
 
@@ -31,24 +39,13 @@ const level = (
   ...over,
 });
 
-describe("levelState()", () => {
-  it("says nothing about a transcription with every note pitched", () => {
-    // Finished is the ordinary case, and a card should not announce it.
-    assert.equal(levelState(level()), undefined);
-  });
-
-  it("calls a transcription unfinished, and says how much is left", () => {
-    assert.equal(
-      levelState(level({ unpitchedCount: 3 })),
-      "Unfinished · 3 notes need pitches",
-    );
+describe("countLeft()", () => {
+  it("says how much of a transcription is still to find", () => {
+    assert.equal(countLeft(level({ unpitchedCount: 3 })), "3 notes need pitches");
   });
 
   it("counts one note in the singular", () => {
-    assert.equal(
-      levelState(level({ unpitchedCount: 1 })),
-      "Unfinished · 1 note needs a pitch",
-    );
+    assert.equal(countLeft(level({ unpitchedCount: 1 })), "1 note needs a pitch");
   });
 });
 
@@ -145,7 +142,6 @@ describe("cardPlan()", () => {
   it("gives a visitor to the front page the card and nothing else", () => {
     for (const who of [undefined, stranger(), viewer()]) {
       assert.deepEqual(cardPlan(level(), who, "home"), {
-        draft: false,
         edit: undefined,
         publish: undefined,
         delete: false,
@@ -155,7 +151,6 @@ describe("cardPlan()", () => {
 
   it("gives an admin on the front page the pencil to the details box, Unpublish and the trash", () => {
     assert.deepEqual(cardPlan(level(), admin(), "home"), {
-      draft: false,
       edit: "details",
       publish: "unpublish",
       delete: true,
@@ -164,7 +159,6 @@ describe("cardPlan()", () => {
 
   it("sends the author of a draft to the editor, and offers Publish", () => {
     assert.deepEqual(cardPlan(draft(), viewer(), "mine"), {
-      draft: true,
       edit: "editor",
       publish: "publish",
       delete: true,
@@ -173,16 +167,19 @@ describe("cardPlan()", () => {
 
   it("sends the author of a published level to the details box, and offers Unpublish", () => {
     assert.deepEqual(cardPlan(level(), viewer(), "mine"), {
-      draft: false,
       edit: "details",
       publish: "unpublish",
       delete: true,
     });
   });
 
-  it("calls a draft a draft, whoever is looking", () => {
-    assert.equal(cardPlan(draft(), undefined, "home").draft, true);
-    assert.equal(cardPlan(draft(), stranger(), "mine").draft, true);
+  it("still offers Publish on a draft that cannot be published, for the button to say why", () => {
+    // Greyed with a reason, rather than absent: a missing button explains
+    // nothing, and "why can I not publish this" is the question being asked.
+    const unfinished = level({ status: "draft", publishedAt: undefined, unpitchedCount: 4 });
+
+    assert.equal(cardPlan(unfinished, viewer(), "mine").publish, "publish");
+    assert.equal(cardPlan(unfinished, viewer(), "mine").edit, "editor");
   });
 
   it("offers nothing on the author's page to nobody signed in, nor to somebody else", () => {
@@ -196,5 +193,94 @@ describe("cardPlan()", () => {
 
   it("lets an admin act on the author's page as the author would", () => {
     assert.deepEqual(cardPlan(draft(), admin(), "mine"), cardPlan(draft(), viewer(), "mine"));
+  });
+});
+
+describe("cardOpening()", () => {
+  it("opens the level's box from the catalog", () => {
+    assert.equal(cardOpening(level(), "home"), "box");
+  });
+
+  it("opens nothing for a level with no complete answer to play against", () => {
+    // `/api/levels/:id/puzzle` refuses one for the same reason.
+    assert.equal(cardOpening(level({ unpitchedCount: 2 }), "home"), undefined);
+  });
+
+  it("takes the author straight into the editor, drafts finished or not", () => {
+    // No box in between: on this page a card is work, and the thing to do with
+    // work is open it. The pencil goes to the same place.
+    assert.equal(cardOpening(level({ status: "draft", unpitchedCount: 4 }), "mine"), "editor");
+    assert.equal(cardOpening(level({ status: "draft", unpitchedCount: 0 }), "mine"), "editor");
+  });
+
+  it("opens the box for a published level, whose music is frozen anyway", () => {
+    assert.equal(cardOpening(level(), "mine"), "box");
+  });
+});
+
+describe("bylineOf()", () => {
+  it("names the author, and marks nobody in particular", () => {
+    assert.deepEqual(bylineOf(level({ author: "quiet-heron" }), undefined), {
+      name: "quiet-heron",
+      mark: undefined,
+    });
+  });
+
+  it("says Anonymous for an author who asked not to be named", () => {
+    assert.deepEqual(bylineOf(level({ author: undefined }), undefined), {
+      name: "Anonymous",
+      mark: undefined,
+    });
+  });
+
+  it("says Admin for a level the site itself wrote down, whatever the account is called", () => {
+    // No account can be named Admin — it is a reserved username — so the word
+    // comes from the flag on the row rather than from a name.
+    assert.deepEqual(
+      bylineOf(level({ author: "quiet-heron", authorIsAdmin: true }), undefined),
+      { name: "Admin", mark: "admin" },
+    );
+  });
+
+  it("marks the viewer's own levels as theirs, Anonymous or not", () => {
+    const me = viewer({ id: "7k2m9x4p3qwt", username: "quiet-heron" });
+
+    assert.deepEqual(bylineOf(level({ author: "quiet-heron" }), me), {
+      name: "quiet-heron",
+      mark: "you",
+    });
+    assert.deepEqual(bylineOf(level({ author: undefined }), me), {
+      name: "Anonymous",
+      mark: "you",
+    });
+  });
+
+  it("lets Admin win over your own byline, on the site's own levels", () => {
+    const me = viewer({ id: "7k2m9x4p3qwt", isAdmin: true });
+
+    assert.equal(bylineOf(level({ authorIsAdmin: true }), me).mark, "admin");
+  });
+});
+
+describe("publishBlock()", () => {
+  const draft = (over: Partial<TranscriptionSummary> = {}) =>
+    level({ status: "draft", publishedAt: undefined, authorDifficulty: 2.5, ...over });
+
+  it("lets a finished draft with a difficulty go", () => {
+    assert.equal(publishBlock(draft()), undefined);
+  });
+
+  it("asks for the pitches first, since the route and the CHECK both refuse without them", () => {
+    assert.match(publishBlock(draft({ unpitchedCount: 3 }))!, /pitch/iu);
+  });
+
+  it("asks for a difficulty when that is all that is missing", () => {
+    assert.match(publishBlock(draft({ authorDifficulty: undefined }))!, /difficulty/iu);
+  });
+
+  it("names the pitches first when both are missing, being the larger job", () => {
+    const both = draft({ unpitchedCount: 3, authorDifficulty: undefined });
+
+    assert.match(publishBlock(both)!, /pitch/iu);
   });
 });

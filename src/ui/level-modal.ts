@@ -23,10 +23,10 @@ import { formatElapsed } from "../puzzle/stopwatch.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import {
   barsIcon,
+  flagIcon,
   lengthIcon,
   metronomeIcon,
   noteIcon,
-  solversIcon,
 } from "./icons.js";
 import {
   countFigure,
@@ -166,7 +166,9 @@ export function openLevelModal(options: LevelModalOptions): void {
         const solvers = level.solveCount ?? 0;
         figures.append(
           ...(options.upvote ? [options.upvote, " · "] : []),
-          countFigure(solversIcon(), solvers, solversSaid(solvers)),
+          // The card's flag, not the tick this box used to draw: the two
+          // print the same figure and should not be two different glyphs.
+          countFigure(flagIcon(), solvers, solversSaid(solvers), "flag"),
         );
 
         const median = medianFigure("Median completion time", "median");

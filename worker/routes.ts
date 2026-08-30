@@ -142,6 +142,8 @@ export const LEVEL_COLUMNS = `
   owner_id, status, published_at, updated_at, created_at,
   (SELECT CASE WHEN u.anonymous_author = 1 THEN NULL ELSE u.username END
      FROM users u WHERE u.id = transcriptions.owner_id) AS author,
+  (SELECT u.is_admin FROM users u WHERE u.id = transcriptions.owner_id)
+    AS author_is_admin,
   (SELECT COUNT(r.user_id) FROM ratings r JOIN users u ON u.id = r.user_id
     WHERE r.level_id = transcriptions.id AND u.share_stats = 1) AS rating_count,
   (SELECT SUM(r.half) FROM ratings r JOIN users u ON u.id = r.user_id
@@ -186,6 +188,8 @@ type LevelRow = {
   difficulty_half: number | null;
   owner_id: string;
   author: string | null;
+  /** Whether the author is an admin, so a card can say the level is the site's. */
+  author_is_admin: number | null;
   /** How many shared ratings the level has; SUM over none is NULL. */
   rating_count: number;
   rating_halves: number | null;
@@ -226,6 +230,9 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
   unpitchedCount: row.unpitched_count,
   ownerId: row.owner_id,
   author: row.author ?? undefined,
+  // Absent rather than false for everybody else: the byline's ordinary case
+  // is an ordinary author, and it sends nothing.
+  authorIsAdmin: row.author_is_admin ? true : undefined,
   authorDifficulty:
     row.difficulty_half === null || row.difficulty_half === undefined
       ? undefined
@@ -1721,6 +1728,9 @@ export const UPVOTE_SQL = {
 
   // bind: level_id
   forget: `DELETE FROM upvotes WHERE level_id = ?`,
+
+  // bind: user_id
+  mine: `SELECT level_id FROM upvotes WHERE user_id = ?`,
 } as const;
 
 const SIGN_IN_TO_RATE = "Sign in to rate a level.";
@@ -1937,6 +1947,31 @@ api.get("/api/levels/:id/upvote", async (c) => {
   const row = await c.env.DB.prepare(UPVOTE_SQL.read).bind(user.id, id).first();
 
   return c.json({ upvoted: row !== null });
+});
+
+/**
+ * Every level this account has hearted, as a list of ids.
+ *
+ * The catalog asks this once alongside the listing rather than asking after
+ * each level in turn: it draws the heart filled on the cards you have
+ * pressed, and offers a cut of the list down to those. One statement over
+ * one account's own rows, which the table's primary key is `(user_id,
+ * level_id)` for -- no join, and nothing here about anybody else's hearts.
+ *
+ * Kept off the listing query on purpose. `/api/levels` answers a published
+ * catalog with no session lookup at all, which is what makes it the same
+ * work for everybody; this is the one extra question, asked only by a
+ * browser that is signed in.
+ */
+api.get("/api/me/upvotes", async (c) => {
+  const user = await sessionUserOf(c);
+  if (user === undefined) {
+    return c.json({ error: SIGN_IN_TO_UPVOTE }, 401);
+  }
+
+  const { results } = await c.env.DB.prepare(UPVOTE_SQL.mine).bind(user.id).all();
+
+  return c.json({ levels: (results as { level_id: string }[]).map((row) => row.level_id) });
 });
 
 /**

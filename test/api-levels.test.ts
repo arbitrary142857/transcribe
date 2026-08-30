@@ -324,6 +324,57 @@ describe("GET /api/levels", () => {
     assert.equal(asked.length, 1);
     assert.doesNotMatch(asked[0]!.sql, /sessions/i);
   });
+
+  it("says when a level is the site's own, so its byline can read Admin", async () => {
+    const { response } = await get("/api/levels", [
+      list([{ ...ROW, author: "quiet-heron", author_is_admin: 1 }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal(level!.authorIsAdmin, true);
+  });
+
+  it("says nothing at all about an ordinary author, rather than false", async () => {
+    const { response } = await get("/api/levels", [
+      list([{ ...ROW, author: "quiet-heron", author_is_admin: 0 }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal("authorIsAdmin" in level!, false);
+  });
+});
+
+describe("GET /api/me/upvotes", () => {
+  it("hands back the ids of the levels this account has hearted", async () => {
+    const { response, asked } = await get(
+      "/api/me/upvotes",
+      [asOwner(), { when: /FROM upvotes/iu, rows: [{ level_id: "k3m9x2p7qw4t" }, { level_id: "2b4d6f8h0j1k" }] }],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      levels: ["k3m9x2p7qw4t", "2b4d6f8h0j1k"],
+    });
+    // Read off this account's own rows, which the primary key already
+    // orders: no join, and nothing about anybody else's hearts.
+    const read = asked.find((statement) => /FROM upvotes/iu.test(statement.sql))!;
+    assert.deepEqual(read.values, [OWNER_ID]);
+    assert.doesNotMatch(read.sql, /join/i);
+  });
+
+  it("answers an empty list for an account that has hearted nothing", async () => {
+    const { response } = await get("/api/me/upvotes", [asOwner()], SIGNED_IN);
+
+    assert.deepEqual(await response.json(), { levels: [] });
+  });
+
+  it("refuses nobody in particular, since there is no such thing as their hearts", async () => {
+    const { response, asked } = await get("/api/me/upvotes");
+
+    assert.equal(response.status, 401);
+    assert.equal(touched(asked).length, 0);
+  });
 });
 
 describe("GET /api/mine", () => {

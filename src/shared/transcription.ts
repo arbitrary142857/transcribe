@@ -107,6 +107,13 @@ export type TranscriptionSummary = {
   /** The author's word on how hard it is, in stars; nothing if unsaid. */
   authorDifficulty?: number;
   /**
+   * Whether the author is an admin, so a card can say the level is the
+   * site's own. Drawing and never permission, like `UserSummary.isAdmin`:
+   * every admin-gated route asks the database for itself. Absent rather than
+   * false for everybody else, so the byline's ordinary case sends nothing.
+   */
+  authorIsAdmin?: boolean;
+  /**
    * The solvers' words: how many ratings the level has from accounts that
    * share their statistics, and their sum as half-peppers. Aggregated by the
    * listing query at read time and stored nowhere; these are inputs to

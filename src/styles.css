@@ -43,25 +43,64 @@
      spelled out is the tuplet number in `icons.ts`, which is drawn into an svg
      and cannot inherit, and which quotes this stack verbatim. */
   --font-ui: "Jost", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  /* Three surfaces, and the line between them.
+  /* Four surfaces, and the lines between them.
 
-     The tool bands are toned, the score is all but white, and the frame rule
-     that parts one region from another is a good deal darker than the --rule
-     the boxes inside them are drawn with: a region boundary is a bigger fact
-     than a button's edge and should not be the same line. */
-  --band: #f0ebe0;
+     Four steps, lightest where the work is: the page's paper, the bands laid
+     on it, the boxes laid on those, and the sheet the music is printed on,
+     which is the whitest thing on the screen. They were warm and are cool now,
+     the same turn the rest of the site took; what has not changed is the
+     order, which is what lets a region read as a region without being
+     outlined. The frame rule that parts one region from another is a good
+     deal darker than the --rule the boxes inside them are drawn with: a
+     region boundary is a bigger fact than a button's edge and should not be
+     the same line. */
+  --band: #ecebe6;
   /* The fill every tool box shares: the palettes, the playback panel and the
      box it sits in, the reveal button, the piano's bed. One tone, so the
      tools read as one family laid on the bands. */
-  --tool-box: #fcfaf5;
-  --sheet: #fbf9f2;
+  --tool-box: #fbfaf8;
+  /* The paper the music is printed on: near white, and a good deal whiter
+     than it was, so the sheet reads as the one clean surface on a page whose
+     ground is patterned. Not white white — a page of pure #fff beside the
+     staff lines is a screen rather than a sheet. */
+  --sheet: #fdfcf8;
   --frame-rule: #98907f;
-  --page-bg: #ece7dc;
+  /* The paper every page stands on. Cool and near-white: it began warm, and
+     the two lists of levels were drawn on this first — a page of photographs
+     and coloured statuses wants a ground that is not itself a colour. The
+     rest of the site followed rather than keep two grounds.
+
+     The tool bands above are still warm, deliberately: they are furniture on
+     the paper rather than the paper. */
+  --page-bg: #f5f4f1;
+  /* The bar along the top, a step darker than the paper on every page, so the
+     nav reads as a shelf the pages hang under rather than as part of them. */
+  --nav-band: #eae8e2;
   --ink: #1c1a17;
   --rule: #cfc8bd;
-  /* The app's accent: buttons, focus rings, the halo around a selected note. */
-  --note-selected: #b4432c;
+  /* The app's accent: committing buttons, lit toggles, focus rings, the
+     sliders' thumbs and the piano key under your finger.
+
+     Orange rather than the rust it began as. The name is older than the job:
+     nothing about a *note* is drawn in it any more — a selected note is a
+     halo now (--note-halo below), and a verdict is green or amber — so this
+     is the site's colour and nothing else's.
+
+     What it is emphatically not is the colour of a mistake. Being wrong has
+     its own token below, and it kept the rust: an orange "(Required)" beside
+     an orange Save reads as decoration, and orange is already spoken for on
+     the puzzle page, where --note-wrong marks a note that is not right. */
+  --note-selected: #c9640f;
   --note-hovered: #d09a86;
+  /* Out in the world, and yours. Published levels and your own byline share
+     one colour because they are the same kind of fact — where a level stands
+     with everybody else — and it is neither of the two the statuses beside it
+     use, so nothing is confused for finished or for under way. */
+  --indigo: #4338a8;
+  /* Being wrong, wherever it is said in words rather than on the stave: an
+     unreadable meter, an invalid link, a field over its limit, a refusal, and
+     the trash on a card that is about to be pressed. */
+  --wrong: #b4432c;
   /* A note whose rhythm is written but whose pitch is not chosen yet. */
   --note-placeholder: #8d8378;
   /* Trailing rests: the spare bar waiting to be written into, not music yet. */
@@ -760,9 +799,9 @@ main.editor-main {
 /* What cannot be read is said on the box that holds it, in the colour every
    other mistake on this page is said in. */
 .meter-field-input.is-wrong {
-  color: var(--note-selected);
-  border-color: var(--note-selected);
-  box-shadow: inset 0 0 0 1px var(--note-selected);
+  color: var(--wrong);
+  border-color: var(--wrong);
+  box-shadow: inset 0 0 0 1px var(--wrong);
 }
 
 .meter-field-input:disabled {
@@ -897,8 +936,8 @@ main.editor-main {
 }
 
 .setup-link-input[aria-invalid="true"] {
-  border-color: var(--note-selected);
-  box-shadow: inset 0 0 0 1px var(--note-selected);
+  border-color: var(--wrong);
+  box-shadow: inset 0 0 0 1px var(--wrong);
 }
 
 /* ---- What went wrong, wherever it went wrong ---- */
@@ -918,7 +957,7 @@ main.editor-main {
 }
 
 .setup-note.is-wrong {
-  color: var(--note-selected);
+  color: var(--wrong);
 }
 
 /* ---- The section: the timing panel over the video ---- */
@@ -1568,7 +1607,7 @@ main.editor-main {
   font-size: 0.82rem;
   color: #6c6459;
   text-align: center;
-  background: #e9e2d3;
+  background: rgb(28 26 23 / 5%);
   border: 1px solid var(--rule);
   cursor: pointer;
   appearance: none;
@@ -2053,9 +2092,9 @@ main.editor-main {
 /* Saying no to a keystroke: the shake a refused note gives, in the colour the
    page says everything else wrong in. */
 .timing-measures-input.is-shaking {
-  color: var(--note-selected);
-  border-color: var(--note-selected);
-  box-shadow: inset 0 0 0 1px var(--note-selected);
+  color: var(--wrong);
+  border-color: var(--wrong);
+  box-shadow: inset 0 0 0 1px var(--wrong);
 }
 
 /* The lock is a mode, not an action: lit while the tempo is held. */
@@ -2972,6 +3011,20 @@ body.show-keys .keys-note {
   white-space: nowrap;
 }
 
+/* The heart set in a switch's words, at the size of the words around it and
+   sitting on their line rather than above it. */
+.switch-heart {
+  display: inline-flex;
+  vertical-align: -0.14em;
+  color: #cf4f80;
+}
+
+.switch-heart svg {
+  display: block;
+  width: 1.05em;
+  height: 1.05em;
+}
+
 .switch-track {
   position: relative;
   flex: 0 0 auto;
@@ -3135,7 +3188,13 @@ body.show-keys .keys-note {
   justify-content: space-between;
   gap: 0.6rem 1.2rem;
   width: 100%;
-  padding: 0.85rem max(1.5rem, calc((100% - 1200px) / 2 + 1.5rem)) 0.7rem;
+  /* One column width for every page, so the bar is in the same place
+     whichever page you arrive on. It is the document pages' column
+     (`main.page`), which is where the alignment is visible; the editor's own
+     toolbar keeps its narrower one, since the score's width is worked out
+     from it. */
+  padding: 0.85rem max(1.5rem, calc((100% - 1320px) / 2 + 1.5rem)) 0.7rem;
+  background: var(--nav-band);
   border-bottom: 1px solid var(--frame-rule);
 }
 
@@ -3369,7 +3428,7 @@ body.show-keys .keys-note {
 /* "(Required)", in the app's red, a step quieter than the label it follows. */
 .details-required {
   margin-left: 0.35rem;
-  color: var(--note-selected);
+  color: var(--wrong);
   font-size: 0.66rem;
 }
 
@@ -3380,7 +3439,7 @@ body.show-keys .keys-note {
 }
 
 .details-count.is-wrong {
-  color: var(--note-selected);
+  color: var(--wrong);
 }
 
 .details-input {
@@ -3450,7 +3509,7 @@ textarea.details-input {
 }
 
 .details-modal-problem {
-  color: var(--note-selected);
+  color: var(--wrong);
 }
 
 .details-modal-problem:empty {
@@ -3466,7 +3525,9 @@ textarea.details-input {
 main.page {
   align-items: stretch;
   width: 100%;
-  max-width: 1200px;
+  /* A little wider than the 1200 it was: the same four levels to a row, each
+     of them a shade broader, which is where the words got their room back. */
+  max-width: 1320px;
   margin: 0 auto;
   padding: 0.5rem 1.5rem 3rem;
 }
@@ -3474,6 +3535,60 @@ main.page {
 .page-title {
   margin: 0 0 0.25rem;
   font-size: 1.55rem;
+}
+
+/* The head of a page of levels: the name of the list, what you can add to it,
+   and the ways to narrow it — stacked and centred, with air above.
+
+   Air above, specifically. The heading used to sit directly under the nav and
+   read as part of it; a page wants to begin somewhere below the furniture. */
+.page-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  margin: 2.75rem 0 1.9rem;
+}
+
+.page-head .page-title {
+  margin: 0;
+  font-size: 2.6rem;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+
+/* The one thing on the author's page that commits to anything, so it is the
+   one thing in the accent — the same weight the editor's Save has. */
+.page-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.95rem;
+  font-size: 0.92rem;
+  color: #fffaf4;
+  background: var(--note-selected);
+  border: 1px solid var(--note-selected);
+  border-radius: 7px;
+  text-decoration: none;
+}
+
+/* Drawn rather than typed: a `+` in the words sits on the text baseline and
+   reads as punctuation, where the glyph can be centred on the line it labels.
+   Sized in ems, so it follows the words if they ever change size. */
+.page-action-plus {
+  flex: 0 0 auto;
+  width: 0.95em;
+  height: 0.95em;
+}
+
+.page-action:hover {
+  background: #b0570d;
+  border-color: #b0570d;
+}
+
+.page-action:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 2px;
 }
 
 .page-lede {
@@ -3488,45 +3603,267 @@ main.page {
 }
 
 
+
+/* ---- The ground a page stands on ----
+
+   One shape repeated over the page's paper in its own ink at a thirteenth of
+   its strength, and which shape says which page you are on: a globe for
+   everybody's levels, a pair of notes for your own, a pencil on the page where
+   a transcription is begun. It is meant to be recognised without being looked
+   at, so it is faint and it never moves under the content — it scrolls with
+   the page rather than sitting fixed behind it. The two working pages — the
+   editor and the player — have no pattern: they are a place to do something
+   rather than a page to be on, and a texture behind a stave is one thing too
+   many to look at.
+
+   A hexagonal lattice, turned 19.1° off the axes so that none of its three
+   directions runs along an edge of the window, with every shape on it turned
+   19.1° the *other* way. Turned with the lattice, each shape lay along the
+   line it sat in and the rows read as ruling; turned against it, each crosses
+   its own row and the whole thing reads as scattered marks. That angle is why the tile is
+   the size it is. A triangular lattice has pairs of lattice vectors at right
+   angles to each other; take one pair as the sides of the tile and the tile
+   is a rectangle — the only shape `background-repeat` can tile — while the
+   lattice inside it lies at whatever angle that pair happens to make. The
+   smallest such pair that is not at a multiple of 30° (which would only
+   trade "one row horizontal" for "one column vertical") is u = 2a + b and
+   w = 4a − 5b, which lands the lattice at 19.1° and puts fourteen points in a
+   323 × 559 rectangle, 122px apart. The shapes are turned by the same angle,
+   so the whole pattern is one rotated thing rather than upright shapes on a
+   tilted grid. Points near an edge are drawn again on the opposite side so
+   nothing is cut in half, and every shape is a `use` of one defined path, so
+   a tile costs about a kilobyte rather than fourteen copies of an outline.
+
+   `docs/tiles.py` worked the positions out and printed these rules. They are
+   constants here, not something the page computes; run that script again if
+   the spacing, the angle or a shape ever changes.
+
+   The shapes are Phosphor Icons' `globe`, `music-notes` and `pencil`,
+   regular weight, the same family and the same licence as everything in
+   `icons.ts` — see the notice there. They are spelled out here rather than
+   imported because a stylesheet cannot ask a module for a shape. */
+.patterned {
+  background-color: var(--page-bg);
+  background-size: 322.8px 559.1px;
+}
+
+.patterned.is-public {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='322.8' height='559.1' viewBox='0 0 322.8 559.1' fill='%231c1a17' fill-opacity='.075'%3E%3Cdefs%3E%3Cg id='i' transform='rotate(19.11) scale(0.1328) translate(-128 -128)'%3E%3Cpath d='M128,24h0A104,104,0,1,0,232,128,104.12,104.12,0,0,0,128,24Zm88,104a87.61,87.61,0,0,1-3.33,24H174.16a157.44,157.44,0,0,0,0-48h38.51A87.61,87.61,0,0,1,216,128ZM102,168H154a115.11,115.11,0,0,1-26,45A115.27,115.27,0,0,1,102,168Zm-3.9-16a140.84,140.84,0,0,1,0-48h59.88a140.84,140.84,0,0,1,0,48ZM40,128a87.61,87.61,0,0,1,3.33-24H81.84a157.44,157.44,0,0,0,0,48H43.33A87.61,87.61,0,0,1,40,128ZM154,88H102a115.11,115.11,0,0,1,26-45A115.27,115.27,0,0,1,154,88Zm52.33,0H170.71a135.28,135.28,0,0,0-22.3-45.6A88.29,88.29,0,0,1,206.37,88ZM107.59,42.4A135.28,135.28,0,0,0,85.29,88H49.63A88.29,88.29,0,0,1,107.59,42.4ZM49.63,168H85.29a135.28,135.28,0,0,0,22.3,45.6A88.29,88.29,0,0,1,49.63,168Zm98.78,45.6a135.28,135.28,0,0,0,22.3-45.6h35.66A88.29,88.29,0,0,1,148.41,213.6Z'/%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23i' x='0.0' y='0.0'/%3E%3Cuse href='%23i' x='0.0' y='559.1'/%3E%3Cuse href='%23i' x='322.8' y='0.0'/%3E%3Cuse href='%23i' x='322.8' y='559.1'/%3E%3Cuse href='%23i' x='23.1' y='439.3'/%3E%3Cuse href='%23i' x='345.9' y='439.3'/%3E%3Cuse href='%23i' x='46.1' y='319.5'/%3E%3Cuse href='%23i' x='69.2' y='199.7'/%3E%3Cuse href='%23i' x='92.2' y='79.9'/%3E%3Cuse href='%23i' x='115.3' y='519.1'/%3E%3Cuse href='%23i' x='138.3' y='399.3'/%3E%3Cuse href='%23i' x='161.4' y='279.5'/%3E%3Cuse href='%23i' x='184.4' y='159.7'/%3E%3Cuse href='%23i' x='207.5' y='39.9'/%3E%3Cuse href='%23i' x='230.6' y='479.2'/%3E%3Cuse href='%23i' x='253.6' y='359.4'/%3E%3Cuse href='%23i' x='276.7' y='239.6'/%3E%3Cuse href='%23i' x='-23.1' y='119.8'/%3E%3Cuse href='%23i' x='299.7' y='119.8'/%3E%3C/svg%3E");
+}
+
+.patterned.is-mine {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='322.8' height='559.1' viewBox='0 0 322.8 559.1' fill='%231c1a17' fill-opacity='.075'%3E%3Cdefs%3E%3Cg id='i' transform='rotate(19.11) scale(0.1328) translate(-128 -128)'%3E%3Cpath d='M212.92,17.69a8,8,0,0,0-6.86-1.45l-128,32A8,8,0,0,0,72,56V166.08A36,36,0,1,0,88,196V110.25l112-28v51.83A36,36,0,1,0,216,164V24A8,8,0,0,0,212.92,17.69ZM52,216a20,20,0,1,1,20-20A20,20,0,0,1,52,216ZM88,93.75V62.25l112-28v31.5ZM180,184a20,20,0,1,1,20-20A20,20,0,0,1,180,184Z'/%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23i' x='0.0' y='0.0'/%3E%3Cuse href='%23i' x='0.0' y='559.1'/%3E%3Cuse href='%23i' x='322.8' y='0.0'/%3E%3Cuse href='%23i' x='322.8' y='559.1'/%3E%3Cuse href='%23i' x='23.1' y='439.3'/%3E%3Cuse href='%23i' x='345.9' y='439.3'/%3E%3Cuse href='%23i' x='46.1' y='319.5'/%3E%3Cuse href='%23i' x='69.2' y='199.7'/%3E%3Cuse href='%23i' x='92.2' y='79.9'/%3E%3Cuse href='%23i' x='115.3' y='519.1'/%3E%3Cuse href='%23i' x='138.3' y='399.3'/%3E%3Cuse href='%23i' x='161.4' y='279.5'/%3E%3Cuse href='%23i' x='184.4' y='159.7'/%3E%3Cuse href='%23i' x='207.5' y='39.9'/%3E%3Cuse href='%23i' x='230.6' y='479.2'/%3E%3Cuse href='%23i' x='253.6' y='359.4'/%3E%3Cuse href='%23i' x='276.7' y='239.6'/%3E%3Cuse href='%23i' x='-23.1' y='119.8'/%3E%3Cuse href='%23i' x='299.7' y='119.8'/%3E%3C/svg%3E");
+}
+
+.patterned.is-writing {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='322.8' height='559.1' viewBox='0 0 322.8 559.1' fill='%231c1a17' fill-opacity='.075'%3E%3Cdefs%3E%3Cg id='i' transform='rotate(19.11) scale(0.1719) translate(-128 -128)'%3E%3Cpath d='M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM51.31,160,136,75.31,152.69,92,68,176.68ZM48,179.31,76.69,208H48Zm48,25.38L79.31,188,164,103.31,180.69,120Zm96-96L147.31,64l24-24L216,84.68Z'/%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23i' x='0.0' y='0.0'/%3E%3Cuse href='%23i' x='0.0' y='559.1'/%3E%3Cuse href='%23i' x='322.8' y='0.0'/%3E%3Cuse href='%23i' x='322.8' y='559.1'/%3E%3Cuse href='%23i' x='23.1' y='439.3'/%3E%3Cuse href='%23i' x='345.9' y='439.3'/%3E%3Cuse href='%23i' x='46.1' y='319.5'/%3E%3Cuse href='%23i' x='69.2' y='199.7'/%3E%3Cuse href='%23i' x='92.2' y='79.9'/%3E%3Cuse href='%23i' x='115.3' y='519.1'/%3E%3Cuse href='%23i' x='138.3' y='399.3'/%3E%3Cuse href='%23i' x='161.4' y='279.5'/%3E%3Cuse href='%23i' x='184.4' y='159.7'/%3E%3Cuse href='%23i' x='207.5' y='39.9'/%3E%3Cuse href='%23i' x='230.6' y='479.2'/%3E%3Cuse href='%23i' x='253.6' y='359.4'/%3E%3Cuse href='%23i' x='276.7' y='239.6'/%3E%3Cuse href='%23i' x='-23.1' y='119.8'/%3E%3Cuse href='%23i' x='299.7' y='119.8'/%3E%3C/svg%3E");
+}
+
+/* The pattern belongs to the page a transcription is *begun* on, not to the
+   editor that page turns into: `is-framed` is on the body from the moment the
+   working frame goes up, and the ground goes plain under it. The player is
+   framed from the start and so is never patterned at all. */
+.patterned.is-framed {
+  background-image: none;
+}
+
 /* ---- Level cards ----
 
    Everything on a card comes out of its own column in the database. The
    melody is not among them, so nothing here has to remember to leave the
    pitches out. */
 
-/* The controls above the list: the filter at the left, where there is one,
-   and the switch that hides the pictures at the right. */
+/* The controls under the heading: the way to the filters, and the switch that
+   hides the pictures. Centred with the heading they belong to, rather than
+   ranged along the page's edges as they were when they were the page's own
+   furniture. */
 .level-controls {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.75rem;
+  justify-content: center;
+  gap: 0.6rem;
   flex-wrap: wrap;
-  margin: 0.75rem 0 1rem;
+  margin: 0;
+  /* Empty until /api/me answers; it must take no room while it waits, or the
+     heading would shift down as the controls arrive. */
+  min-height: 0;
 }
 
-.level-filter {
-  margin-right: auto;
+.level-controls:empty {
+  display: none;
 }
 
-/* The difficulty cut beside the progress filter: a word and two small
-   selects. The selects are the browser's own; ten numbers need nothing
-   fancier. */
+/* The funnel. Worded as well as drawn: a glyph alone is a guess, and there is
+   room for five letters beside it. */
+.filter-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.95rem 0.45rem 0.8rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.filter-button:hover {
+  background: #f5efe4;
+  border-color: #b3aa9d;
+}
+
+.filter-button:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
+.filter-button-icon {
+  display: flex;
+  color: #8d8378;
+}
+
+.filter-button-icon svg {
+  display: block;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* The switches beside the funnel are the page's own controls rather than a
+   panel's, so they are set at the funnel's size. Scoped to the row: `.switch`
+   itself is shared with the editor's side tools, which are sized to a panel. */
+.level-controls .switch {
+  padding: 0.45rem 0.6rem 0.45rem 0.85rem;
+  font-size: 0.95rem;
+}
+
+.level-controls .switch-track {
+  width: 2.2rem;
+  height: 1.2rem;
+}
+
+.level-controls .switch-knob {
+  width: calc(1.2rem - 4px);
+  height: calc(1.2rem - 4px);
+}
+
+.level-controls .switch.is-on .switch-knob {
+  transform: translateX(calc(2.2rem - 1.2rem));
+}
+
+/* A filter you set and forgot is a catalog that looks emptier than it is, so
+   the button says when it is cutting something. */
+.filter-button.is-narrowed {
+  color: var(--note-selected);
+  border-color: var(--note-selected);
+  background: #fdf3e9;
+}
+
+.filter-button.is-narrowed .filter-button-icon {
+  color: var(--note-selected);
+}
+
+/* The box the funnel opens: a labelled row per cut, nothing to commit to. The
+   list behind redraws as each switch moves, so the × is the only way out it
+   needs. */
+.filter-modal {
+  /* Wide enough that the three statuses hold one line beside each other, and
+     the two switches under them another: each row is one question, and split
+     over two lines it reads as two. `max-width` as well as `width`, or the
+     confirm dialog's 26rem cap would still decide it. */
+  width: min(40rem, 94vw);
+  max-width: min(40rem, 94vw);
+}
+
+.filter-modal-title {
+  font-size: 1.35rem;
+}
+
+/* Everything in the box is centred on its middle: the box is a short stack of
+   choices rather than a form to be read down a left edge, and ranged left it
+   sat in the corner of a box wider than itself. */
+.filter-modal {
+  text-align: center;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-top: 1.05rem;
+}
+
+.filter-row-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+/* A size up from the page's small print: this is a box you are reading rather
+   than a strip you are glancing at. */
+.filter-modal .switch {
+  padding: 0.42rem 0.55rem 0.42rem 0.8rem;
+  font-size: 0.95rem;
+}
+
+.filter-modal .switch-track {
+  width: 2.1rem;
+  height: 1.15rem;
+}
+
+.filter-modal .switch-knob {
+  width: calc(1.15rem - 4px);
+  height: calc(1.15rem - 4px);
+}
+
+.filter-modal .switch.is-on .switch-knob {
+  transform: translateX(calc(2.1rem - 1.15rem));
+}
+
+/* The author's page has one cut and no box to put it in: the three statuses,
+   in the open, where the funnel would otherwise hide them from a list that is
+   only ever a few dozen long. */
+.work-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+/* The difficulty cut inside the filter box: two named ends on one line, each
+   a word and a select. The selects are the browser's own; ten numbers need
+   nothing fancier. */
 .heat-range {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  font-size: 0.82rem;
-  color: #6c6459;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.heat-range-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .heat-range-pick {
-  padding: 0.15rem 0.2rem;
+  padding: 0.2rem 0.25rem;
   border: 1px solid #cfc7b8;
   border-radius: 6px;
   background: #fffdf8;
   color: inherit;
   font: inherit;
+  font-size: 0.95rem;
 }
 
 /* The line about records still in this browser, under whatever the note
@@ -3556,17 +3893,21 @@ main.page {
    The picture used to be what decided this. Two columns blew the 320px still
    YouTube always has up past half again its size, and three was where the
    upscale stopped showing. Four is narrower than the still rather than wider —
-   about 263px at full width — so the picture no longer has an opinion, and what
-   sets the floor now is the words: the title is held to two lines, and below
-   roughly 250px two lines stop holding a useful number of them. That is where
-   the first breakpoint is, not at any width the thumbnail cares about. */
+   about 295px at the page's present width — so the picture has no opinion, and
+   what sets the floor is the words: below roughly 250px a one-line title
+   ellipsises away most of what it was given. That is where the first
+   breakpoint is, not at any width the thumbnail cares about.
+
+   `grid-auto-rows: 1fr` is what makes every card on the page the same height
+   rather than every card in a row. A card with no subtitle is a line shorter
+   than its neighbours, and the line it is short by falls in the middle — the
+   figures along the bottom are pinned there and line up across the whole
+   page, which is the point. `align-content: start` keeps the rows the height
+   of the tallest card rather than stretching them down a tall screen. */
 .level-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  /* Rows take the height of a card and no more. The list is stretched to fill
-     the page by the column it sits in, and a grid's rows stretch with it by
-     default — so with two rows of levels on a tall screen every card grew to
-     fill the space, which is a lot of empty box under three lines of words. */
+  grid-auto-rows: 1fr;
   align-content: start;
   gap: 1.25rem;
   margin: 0;
@@ -3576,10 +3917,8 @@ main.page {
 
 /* Every card the same size, whatever it is called.
 
-   A grid row already stretches its cards to match each other; what would break
-   that is a title running to four lines while its neighbour takes one. So the
-   picture has a fixed ratio, the title is held to two lines and the subtitle to
-   one, and the height stops depending on the words. */
+   The picture has a fixed ratio and the title is held to one line, so a card's
+   height never depends on how much its author wrote. */
 .level-card {
   /* The anchor for the title's stretched hit area below. */
   position: relative;
@@ -3590,6 +3929,10 @@ main.page {
   background: #faf8f4;
   border: 1px solid var(--rule);
   border-radius: 8px;
+  transition:
+    transform 120ms ease-out,
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
 }
 
 /* The box the picture goes in, which holds its shape whether or not there is
@@ -3630,84 +3973,39 @@ main.page {
   object-fit: cover;
 }
 
-/* What has become of this level, said over the picture rather than under the
-   words. A line in the body would either be an empty line on every card that
-   has nothing to say or a taller card for the few that do, and a card is one
-   height. */
-/* The row the pills sit in, pinned to the picture's corner. A row rather
-   than pinning each pill, so that a draft's ✓ sits beside its "Draft" instead
-   of on top of it. */
-.level-badges {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-}
+/* The words. Tighter than they were on every side: the box below a picture is
+   a caption, and it was padded like a panel.
 
-.level-badge {
-  padding: 0.1rem 0.45rem;
-  font-size: 0.72rem;
-  line-height: 1.45;
-  border-radius: 999px;
-  backdrop-filter: blur(2px);
-}
-
-.level-badge-draft {
-  color: #fff7e3;
-  background: rgb(128 92 22 / 88%);
-}
-
-.level-badge-solved {
-  font-size: 0.82rem;
-  padding: 0 0.4rem;
-  color: #eafaf0;
-  background: rgb(38 104 66 / 88%);
-}
-
-.level-badge-unfinished {
-  color: #fdeee9;
-  background: rgb(140 52 33 / 88%);
-}
-
+   A column, so the last line can be pushed to the foot of it — see
+   `.level-foot`. A card with no subtitle has one line fewer and the same
+   height, and the gap falls in the middle where nobody reads it. */
 .level-body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  /* Shallow at the top on purpose: the difficulty row is the first thing in
-     the box and was sitting a whole line below the picture. */
-  padding: 0.5rem 1.15rem 1.1rem;
+  padding: 0.4rem 0.85rem 0.6rem;
 }
 
-/* Clamped on the thing that actually holds the text.
-
-   `.level-open` is a button, and a button is an inline-block: put on the
-   heading around it, the clamp saw one line box — the button — and capping that
-   at two capped nothing, so a title of a hundred characters ran down the page.
-   The heading keeps a clamp of its own for the levels that have no button,
-   where the text is its own child. */
-.level-title,
-.level-open,
-.level-subtitle {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.level-title,
-.level-open {
-  -webkit-line-clamp: 2;
-}
-
-.level-subtitle {
-  -webkit-line-clamp: 1;
-}
-
-.level-card.is-playable:hover {
+/* Under the pointer the card lifts a little and the paper darkens. Darkens,
+   not lightens: this page sits on a pale ground and a card going whiter under
+   the pointer read as it fading out rather than coming forward. */
+.level-card.is-openable:hover {
+  transform: scale(1.02);
   border-color: #b0a89b;
-  background: #fffdf9;
+  background: #f5f1e9;
+  /* Above its neighbours while it is bigger than them. */
+  z-index: 1;
+}
+
+/* With less movement asked for, the paper still darkens; nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  .level-card {
+    transition: background-color 120ms ease-out;
+  }
+
+  .level-card.is-openable:hover {
+    transform: none;
+  }
 }
 
 /* The whole card opens the level's box.
@@ -3724,6 +4022,12 @@ main.page {
   background: none;
   border: 0;
   cursor: pointer;
+  /* The editor's card opens a real address and so is a link; a link is
+     underlined by default, and a title underlined reads as a link in a
+     sentence rather than as the name of the thing. The card lifting and
+     darkening is what says it can be pressed — a rule under the words as
+     well was one signal too many. */
+  text-decoration: none;
 }
 
 .level-open::after {
@@ -3738,28 +4042,44 @@ main.page {
   outline-offset: 2px;
 }
 
-.level-card.is-playable:hover .level-open {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-/* The row above the title: the difficulty at the left, the tools at the
-   right, and one line's height whether or not there are tools, so a card with
-   a pencil is no taller than one without. */
-.level-row {
+/* The first line: how hard the level is at the left, how far it has got at
+   the right. Neither wraps and both are short, so the two never meet — and
+   `justify-content` keeps them at their own ends however long the status
+   word is. */
+.level-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  min-height: 1.9rem;
-  margin-bottom: 0.15rem;
+  gap: 0.5rem;
+  min-height: 1.55rem;
 }
 
-.level-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.6rem;
+/* Where this level stands, in one word and one colour.
+
+   Four tones over two pages: nothing done yet — and a draft still being
+   written — is grey, under way is the site's orange, finished is the green a
+   solved note is marked in, and published takes the orange too, being the
+   other state where something is happening. Indigo is left to the byline,
+   where it says a level is yours. */
+.level-status {
+  flex: 0 0 auto;
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.level-status.is-none {
+  color: #8d8378;
+}
+
+.level-status.is-doing,
+.level-status.is-live {
+  color: var(--note-selected);
+}
+
+.level-status.is-done {
+  color: var(--note-correct);
 }
 
 /* ---- Difficulty, wherever it is drawn ----
@@ -3807,6 +4127,12 @@ main.page {
   clip-path: inset(0 50% 0 0);
 }
 
+/* A draft whose author has not said how hard it is: the row of peppers, faded
+   back so it reads as a question rather than as a rating of nothing. */
+.difficulty.is-unrated {
+  opacity: 0.45;
+}
+
 .difficulty-text {
   margin-left: 0.25rem;
   font-size: 0.82rem;
@@ -3842,7 +4168,20 @@ main.page {
   display: block;
   width: 1em;
   height: 1em;
-  font-size: 1.1em;
+  /* Drawn to the peppers' size beside them: the three figures along a card are
+     one row of marks, and a heart smaller than a pepper read as an afterthought
+     rather than as the same kind of fact. */
+  font-size: 1.28em;
+}
+
+/* The two figures a card ends on, in their own colours — the number beside
+   each stays grey, because it is the glyph that says which fact this is. */
+.level-figure-heart .level-figure-icon {
+  color: #cf4f80;
+}
+
+.level-figure-flag .level-figure-icon {
+  color: var(--note-correct);
 }
 
 button.upvote-line {
@@ -3924,35 +4263,49 @@ button.upvote-line:focus-visible {
   opacity: 0.45;
 }
 
-/* Two lines' worth, always: capped at two so a long title cannot grow the card,
-   and floored at two so a short one cannot shrink it. Between them that is what
-   makes every card on the page exactly as tall as every other. */
+/* The name of the thing: the largest words on the card and the darkest, and
+   the only ones that are neither grey nor coloured.
+
+   One line, ellipsised. Two lines held more of a long title but cost every
+   card the second line whether or not it was used, and a title long enough to
+   need one is rare next to a title short enough not to.
+
+   The size is chosen against the width four columns leave — a shade over a
+   rem — so that almost every title fits before the ellipsis. */
 .level-title {
-  margin: 0;
+  margin: 0.1rem 0 0;
   min-width: 0;
-  height: calc(1.05rem * 1.35 * 2);
-  font-size: 1.05rem;
-  line-height: 1.35;
-  /* Long enough to overflow is normal for a piece of music, so it wraps. */
-  overflow-wrap: anywhere;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* The control inside the heading has to clip too: it is an inline-block, so
+   the heading's ellipsis would see one line box the width of the whole title
+   and never trim it. */
 .level-open {
-  line-height: 1.35;
+  display: block;
+  max-width: 100%;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Quiet until reached for: a card is for reading first and editing second.
 
-   Raised above the title's stretched hit area, or the card's play link would
-   swallow every press meant for the pencil. */
-/* The tools sit together at the head's right, and their gap is theirs rather
-   than the head's — which is between the title and the pair of them. */
+   Raised above the title's stretched hit area, or the card's own press would
+   swallow every one meant for the pencil. They share the bottom line with the
+   figures, at its right; pushed there rather than spaced, so that a card with
+   no tools still has its figures at the left. */
 .level-tools {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 0.15rem;
-  /* Pushed right even when a draft shows no difficulty at the row's left. */
   margin-left: auto;
 }
 
@@ -3965,8 +4318,8 @@ button.upvote-line:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.9rem;
-  height: 1.9rem;
+  width: 1.7rem;
+  height: 1.7rem;
   padding: 0;
   font: inherit;
   color: #8d8378;
@@ -3993,18 +4346,27 @@ button.upvote-line:focus-visible {
   font-size: 0.78rem;
 }
 
-/* Greyed with its reason in the tooltip, for a draft still missing pitches. */
-.level-tool:disabled {
+/* Greyed, for a draft that is not ready to be published. `aria-disabled`
+   rather than `disabled`: the button is kept alive so that pressing it can
+   say why — see `createLevelCard`. The cursor still says it will not go. */
+.level-tool:disabled,
+.level-tool[aria-disabled="true"] {
   color: #b8b0a4;
   background: none;
   border-color: transparent;
   cursor: not-allowed;
 }
 
+.level-tool[aria-disabled="true"]:hover {
+  color: #b8b0a4;
+  background: none;
+  border-color: transparent;
+}
+
 /* Throwing the level away is the one thing on this card that cannot be undone,
    so it says so on the way to being pressed rather than only in the dialog. */
 .level-delete:hover {
-  color: var(--note-selected);
+  color: var(--wrong);
   background: #f8e9e4;
   border-color: #dcb3a7;
 }
@@ -4014,16 +4376,54 @@ button.upvote-line:focus-visible {
   height: 1.15rem;
 }
 
-/* Exactly one line, whether or not there is a subtitle to put in it. Drawn
-   empty rather than left out, so the words below the picture take the same room
-   on every card. */
-.level-subtitle {
-  margin: 0.2rem 0 0;
-  height: calc(0.9rem * 1.45);
+/* The three quiet lines under the title, at one size and one colour.
+
+   They were three different greys at two sizes, which read as three kinds of
+   thing; they are one kind — what this level is, whose it is, when it was
+   touched — and only the title is meant to be louder than them.
+
+   The subtitle is only there when there is one. It used to be drawn empty so
+   that every card kept the same height; the bottom line is pinned to the foot
+   now, so a card with nothing to put here is the same height with one line
+   fewer. */
+.level-subtitle,
+.level-byline,
+.level-when {
+  margin: 0.25rem 0 0;
   color: #6c6459;
-  font-size: 0.9rem;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The site's own levels, and your own, are the two worth picking out of a
+   page of names. The site's take the accent; yours take the indigo the
+   Published status uses — the same fact in both places, that this level is
+   yours out among everybody's — and neither is the green that means solved
+   or the orange that means under way. */
+.level-byline-name.is-admin {
+  color: var(--note-selected);
+}
+
+.level-byline-name.is-you {
+  color: var(--indigo);
+}
+
+/* The last line, always: what the level has earned at the left, and whatever
+   may be done to it at the right.
+
+   `margin-top: auto` is what pins it to the foot of the card, and with every
+   row of the grid the same height that puts the figures on one line across
+   the whole page — whatever number of lines the cards above them used. */
+.level-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.55rem;
+  min-height: 1.7rem;
 }
 
 /* ---- The footer every page shares ----
@@ -4084,7 +4484,7 @@ button.upvote-line:focus-visible {
 }
 
 .account-verdict.is-wrong {
-  color: var(--note-selected);
+  color: var(--wrong);
 }
 
 /* The name box and its Save side by side, the box taking the room. */
@@ -4137,26 +4537,6 @@ button.upvote-line:focus-visible {
   font-size: 0.9em;
 }
 
-/* The byline, last, and always one line: every card says somebody. */
-.level-author {
-  margin: 0.35rem 0 0;
-  height: calc(0.82rem * 1.45);
-  color: #8d8378;
-  font-size: 0.82rem;
-  line-height: 1.45;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.level-facts {
-  margin: 0.65rem 0 0;
-  color: #8d8378;
-  font-size: 0.8rem;
-  /* Bar counts and tempos line up down the column rather than wandering. */
-  font-variant-numeric: tabular-nums;
-}
-
 /* ---- Compact: the same cards without their pictures ----
 
    The picture is not hidden, it is never built — so the four sharper sizes are
@@ -4165,35 +4545,10 @@ button.upvote-line:focus-visible {
    of the same weight, so a rule here would win by source order alone and freeze
    the count on a narrow screen. Compact is a change of card, not of grid. */
 
-/* The subtitle's line, shared with whatever the card has to say about itself.
-   The badges cannot go on the title's line: that is two lines and fixed, and it
-   is the field somebody can put a hundred characters in, so a pill up there
-   would be squeezed out by exactly the card that most needs to carry one. */
-.level-note {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-}
-
-/* The words give way, the badge does not. */
-.level-note .level-subtitle {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* Off the picture and into the flow. Still positioned and still raised, because
-   the title's `::after` is stretched over the whole card and would otherwise
-   swallow the pointer before the badge could explain itself. */
-.level-badge-inline {
-  flex: 0 0 auto;
-  /* Nothing behind it to blur now that it is on the card's own paper. */
-  backdrop-filter: none;
-}
-
 /* The words are the whole card now, so they sit in it rather than under
    something. */
 .level-card.is-compact .level-body {
-  padding: 0.8rem 1rem 0.85rem;
+  padding: 0.6rem 0.9rem 0.65rem;
 }
 
 
@@ -5004,20 +5359,9 @@ button.upvote-line:focus-visible {
   color: #8d8378;
 }
 
-/* ---- A level you have finished ---- */
-
-.level-card.is-solved {
-  border-color: #a9ceb6;
-  background: #f6fbf7;
-}
-
-/* Hover is three classes and the solved rule above is two, so without this the
-   pointer paints a finished level back to white — which reads as the card
-   forgetting. It keeps its green and deepens instead. */
-.level-card.is-solved.is-playable:hover {
-  border-color: #8dbfa0;
-  background: #eef7f1;
-}
+/* A finished level used to be a green card with a ✓ pinned to its picture.
+   Both are gone: the first line says "Transcribed" in the same green, which
+   is one mark instead of three for one fact. */
 
 /* ---- A level's own box ---- */
 

@@ -595,7 +595,9 @@ export function lengthIcon(): string {
  * shape passed through `phosphor()` is Phosphor Icons' (phosphoricons.com):
  * `pepper` and `heart` in their `regular` and `fill` weights, two weights of
  * one silhouette each, which is what lets a display lay the filled shape
- * under the outlined one; `check-circle` regular for the solved-by figure;
+ * under the outlined one; `flag-checkered` regular for the solved-by figure,
+ * on a card and in a level's box alike; `funnel` regular for the filter
+ * button;
  * and the player's controls above — `play`, `pause`, `skip-back` and
  * `music-notes` in `fill`, `repeat`, `arrow-counter-clockwise`, `metronome`,
  * `lock-simple` open and closed, `speaker-high`, `speaker-slash`, `eraser`
@@ -653,11 +655,26 @@ export function heartFillIcon(): string {
   );
 }
 
-/** A check in a circle: how many players have solved the level. */
-export function solversIcon(): string {
+/**
+ * A chequered flag: how many players have finished the level.
+ *
+ * A tick in a circle stood here for a while and said the wrong thing: a tick
+ * is a mark for being *correct*, and this figure counts the people who got to
+ * the end. A finishing flag says that and nothing else.
+ */
+export function flagIcon(): string {
   return (
     PHOSPHOR_VIEW +
-    `<path d="M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z"/>` +
+    `<path d="M227.32,48.75A8,8,0,0,0,218.76,50c-28,24.22-51.72,12.48-79.21-1.13C111.07,34.76,78.78,18.79,42.76,50A8,8,0,0,0,40,56V224a8,8,0,0,0,16,0V179.77c26.79-21.16,49.87-9.75,76.45,3.41,28.49,14.09,60.77,30.06,96.79-1.13a8,8,0,0,0,2.76-6V56A8,8,0,0,0,227.32,48.75ZM216,71.6v40.65c-14,11.06-27,13.22-40,10.88V79.34A60.05,60.05,0,0,0,216,71.6Zm-56,3.76v43c-6.66-2.67-13.43-6-20.45-9.48-8.82-4.37-18-8.91-27.55-12.18v-43c6.66,2.66,13.43,6,20.45,9.48C141.27,67.55,150.46,72.09,160,75.36ZM96,48.91V92.69a60.06,60.06,0,0,0-40,7.75V59.78C70,48.72,83,46.57,96,48.91ZM86.58,152A60.06,60.06,0,0,0,56,160.43V119.78c14-11.06,27-13.22,40-10.88v43.8A65.61,65.61,0,0,0,86.58,152ZM112,156.67v-43c6.66,2.66,13.43,6,20.45,9.48,8.82,4.37,18,8.9,27.55,12.17v43c-6.66-2.67-13.43-6-20.45-9.48C130.73,164.47,121.54,159.94,112,156.67Zm64,26.45v-43.8a65.61,65.61,0,0,0,9.42.72A60.11,60.11,0,0,0,216,131.57v40.68C202,183.31,189,185.46,176,183.12Z"/>` +
+    `</svg>`
+  );
+}
+
+/** A funnel: the button that opens the box of filters. */
+export function funnelIcon(): string {
+  return (
+    PHOSPHOR_VIEW +
+    `<path d="M230.6,49.53A15.81,15.81,0,0,0,216,40H40A16,16,0,0,0,28.19,66.76l.08.09L96,139.17V216a16,16,0,0,0,24.87,13.32l32-21.34A16,16,0,0,0,160,194.66V139.17l67.74-72.32.08-.09A15.8,15.8,0,0,0,230.6,49.53ZM40,56h0Zm106.18,74.58A8,8,0,0,0,144,136v58.66L112,216V136a8,8,0,0,0-2.16-5.47L40,56H216Z"/>` +
     `</svg>`
   );
 }

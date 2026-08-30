@@ -64,6 +64,30 @@ export function pepperGlyphs(stars: number): HTMLElement[] {
   return peppersToDraw(stars).map(pepperGlyph);
 }
 
+/**
+ * The difficulty of a draft whose author has not said one yet.
+ *
+ * Five empty peppers, faded, and `??` where the figure goes. Nothing was
+ * drawn here at all until the author's page began showing drafts as work in
+ * hand: an empty gap read as a card that had lost its difficulty, where a row
+ * of pale peppers reads as one waiting to be given.
+ */
+export function createUnratedDifficulty(): HTMLElement {
+  const element = document.createElement("span");
+  element.className = "difficulty is-unrated";
+  element.setAttribute("role", "img");
+  const label = "Difficulty not set";
+  element.setAttribute("aria-label", label);
+  element.title = label;
+
+  const text = document.createElement("span");
+  text.className = "difficulty-text";
+  text.setAttribute("aria-hidden", "true");
+  text.textContent = "??";
+  element.append(...pepperGlyphs(0), text);
+  return element;
+}
+
 /** The rating as a card or a box shows it: the peppers and their figure. */
 export function createDifficulty(displayed: DisplayedDifficulty): HTMLElement {
   const element = document.createElement("span");

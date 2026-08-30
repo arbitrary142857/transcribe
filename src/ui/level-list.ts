@@ -9,6 +9,14 @@
  * and the trash. Everything but which of those a card carries is the same on
  * both, so it lives here once, and the page says only which page it is.
  *
+ * What differs beyond the tools is what a card is *for*. On the catalog it is
+ * a puzzle: it says how far you have got, who wrote it down, and it opens the
+ * level's box. On the author's page it is work: it says how far *it* has got,
+ * when you last touched it, and it opens the editor — no box in between,
+ * because there is nothing to decide about your own draft. A published level
+ * is the exception, its music frozen, and its card opens the box like the
+ * catalog's.
+ *
  * Everything shown comes out of columns rather than out of a melody: neither
  * listing route reads that one, so the pitches are not merely absent from
  * these pages, they never left the database.
@@ -27,24 +35,30 @@ import type { TranscriptionSummary } from "../shared/transcription.js";
 import { editDetails } from "./details-modal.js";
 import { googleButton } from "./google-button.js";
 import {
+  bylineOf,
+  cardOpening,
   cardPlan,
   countLeft,
   createLevelCard,
+  publishBlock,
   type CardPage,
   type LevelCardOptions,
 } from "./level-card.js";
 import { readCompact, writeCompact } from "./level-density.js";
-import { createHeatRange } from "./heat-range.js";
 import {
-  FILTERS,
-  WHOLE_SCALE,
-  emptySentence,
-  filterByHeat,
-  filterLevels,
-  type HeatRange,
-  type ProgressFilter,
+  ALL_WORK_STATUSES,
+  WHOLE_CATALOG,
+  catalogEmptySentence,
+  filterCatalog,
+  filterWork,
+  workEmptySentence,
+  type CatalogFilter,
+  type Chosen,
+  type WorkBucket,
 } from "./level-filter.js";
+import { createCatalogFilters, createWorkFilters } from "./level-filters.js";
 import { openLevelModal } from "./level-modal.js";
+import { playStatus, workStatus } from "./level-status.js";
 import {
   createHandoffLine,
   offerMergeOnArrival,
@@ -54,7 +68,6 @@ import { openModal } from "./modal.js";
 import { browserFetch } from "./page-boot.js";
 import { solvedContribution } from "./rating-prompt.js";
 import { upvoteLine } from "./upvote-line.js";
-import { createSegmented } from "./segmented.js";
 import { createSwitch } from "./switch.js";
 
 export type LevelListOptions = {
@@ -103,9 +116,15 @@ export function createLevelList(options: LevelListOptions): LevelList {
    */
   let showing: { level: TranscriptionSummary; progress?: PlayProgress }[] = [];
   let compact = readCompact(storage);
-  let filter: ProgressFilter = "all";
-  let heat: HeatRange = { ...WHOLE_SCALE };
+  let filter: CatalogFilter = WHOLE_CATALOG;
+  let work: Chosen<WorkBucket> = ALL_WORK_STATUSES;
   let user: UserSummary | undefined;
+
+  /**
+   * Which levels this account's heart stands on. Empty for somebody signed
+   * out, who has none — and the two cuts that read it then cut nothing.
+   */
+  let hearted: ReadonlySet<string> = new Set();
 
   /**
    * What this browser still holds from before somebody signed in — only ever
@@ -116,56 +135,70 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
   function render(): void {
     list.classList.toggle("is-compact", compact);
-    // The two cuts AND: inside the range, and where the visitor got to.
-    const shown = filterByHeat(filterLevels(showing, filter), heat);
+    const shown =
+      page === "home"
+        ? filterCatalog(showing, filter, { hearted, viewerId: user?.id })
+        : filterWork(showing, work);
     list.replaceChildren(
       ...shown.map((each) => cardFor(each.level, each.progress)),
     );
     if (showing.length === 0) {
       sayEmpty();
+    } else if (shown.length === 0) {
+      const why =
+        page === "home" ? catalogEmptySentence(filter) : workEmptySentence(work);
+      say(why ?? "");
     } else {
-      say(shown.length === 0 ? (emptySentence(filter, heat) ?? "") : "");
+      say("");
     }
   }
 
-  // The filters are the front page's: "my transcriptions" is a list of work,
-  // not of puzzles, and solved-ness means little there.
-  if (page === "home") {
-    const which = createSegmented({
-      label: "Which levels to show",
-      choices: FILTERS,
-      value: filter,
-      onChange(next) {
-        filter = next;
-        render();
-      },
-    });
-    which.element.classList.add("level-filter");
-    controls.append(which.element);
+  /**
+   * The controls above the list, drawn once the server has said who is
+   * looking — two of the catalog's cuts are about the viewer's own doings and
+   * are not offered to nobody. Redrawn from scratch on every load, so a card
+   * publishing or being thrown away cannot leave two of anything behind.
+   */
+  function drawControls(): void {
+    const parts: HTMLElement[] = [];
+    if (page === "home") {
+      parts.push(
+        createCatalogFilters({
+          filter,
+          signedIn: user !== undefined,
+          onChange(next) {
+            filter = next;
+            render();
+          },
+        }).element,
+      );
+    } else {
+      parts.push(
+        createWorkFilters({
+          statuses: work,
+          onChange(next) {
+            work = next;
+            render();
+          },
+        }).element,
+      );
+    }
 
-    controls.append(
-      createHeatRange({
-        value: heat,
-        onChange(next) {
-          heat = next;
+    parts.push(
+      createSwitch({
+        label: "Compact View",
+        title: "Hide the pictures and fit more levels on the screen",
+        checked: compact,
+        onChange(on) {
+          compact = on;
+          writeCompact(storage, on);
           render();
         },
       }).element,
     );
-  }
 
-  controls.append(
-    createSwitch({
-      label: "Compact",
-      title: "Hide the pictures and fit more levels on the screen",
-      checked: compact,
-      onChange(on) {
-        compact = on;
-        writeCompact(storage, on);
-        render();
-      },
-    }).element,
-  );
+    controls.replaceChildren(...parts);
+  }
 
   /**
    * The sentence about the list, and under it the line about this browser's
@@ -214,22 +247,43 @@ export function createLevelList(options: LevelListOptions): LevelList {
     note.classList.add("is-asking");
   }
 
+  /**
+   * The levels this account has hearted, in one question asked beside the
+   * listing. A refusal or a fall is no hearts rather than no list: the cards
+   * simply draw their hearts hollow.
+   */
+  async function readHearts(): Promise<ReadonlySet<string>> {
+    if (user === undefined) return new Set();
+    try {
+      const response = await fetch("/api/me/upvotes", {
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return new Set();
+      const said = (await response.json()) as { levels?: unknown };
+      const levels = Array.isArray(said.levels) ? said.levels : [];
+      return new Set(levels.filter((id): id is string => typeof id === "string"));
+    } catch {
+      return new Set();
+    }
+  }
+
   async function load(): Promise<void> {
     try {
       user = await viewer;
       store = progressStoreFor(user, { fetch: browserFetch, local });
 
-      // The question about this browser's records is asked while the levels
-      // are on their way, and settled before their progress is read, so the
-      // list opens showing what was just brought in.
-      const [response, trouble] = await Promise.all([
+      // The question about this browser's records, and the one about this
+      // account's hearts, are asked while the levels are on their way.
+      const [response, trouble, hearts] = await Promise.all([
         fetch(SOURCE[page], { headers: { accept: "application/json" } }),
         page === "home"
           ? offerMergeOnArrival({ user, storage, local, fetch: browserFetch })
           : undefined,
+        readHearts(),
       ]);
       if (response.status === 401 && page === "mine") {
         list.replaceChildren();
+        controls.replaceChildren();
         askToSignIn();
         return;
       }
@@ -243,7 +297,9 @@ export function createLevelList(options: LevelListOptions): LevelList {
       const progress = await store.readMany(levels.map((level) => level.id));
       showing = levels.map((level) => ({ level, progress: progress.get(level.id) }));
       held = page === "home" && user !== undefined ? await local.readAll() : [];
+      hearted = hearts;
 
+      drawControls();
       render();
       if (trouble !== undefined) say(trouble);
     } catch (error) {
@@ -288,6 +344,39 @@ export function createLevelList(options: LevelListOptions): LevelList {
     }
   }
 
+  /** The level's own box, as the catalog opens it. */
+  function openBox(
+    level: TranscriptionSummary,
+    progress: PlayProgress | undefined,
+  ): void {
+    const solvedAt = progress?.solvedAt;
+    openLevelModal({
+      level,
+      instructions: level.instructions,
+      play: true,
+      started: (progress?.pitches.length ?? 0) > 0,
+      solvedIn:
+        solvedAt === undefined || progress === undefined
+          ? undefined
+          : { elapsedMs: progress.elapsedMs, checkCount: progress.checkCount },
+      // Rating and hearting a level are revisitable from its box; the
+      // builders decide for themselves what this viewer may do.
+      contribute: solvedContribution({
+        level,
+        viewer: user,
+        solved: solvedAt !== undefined,
+        // The author's door: the same details box the pencil opens,
+        // with the same refresh behind it.
+        onEditDetails: () => void retitle(level),
+      }),
+      upvote: upvoteLine({
+        level,
+        viewer: user,
+        solved: solvedAt !== undefined,
+      }),
+    });
+  }
+
   /**
    * One card, wired to what this page lets the viewer do with it.
    *
@@ -298,13 +387,20 @@ export function createLevelList(options: LevelListOptions): LevelList {
     level: TranscriptionSummary,
     progress: PlayProgress | undefined,
   ): HTMLLIElement {
-    const solvedAt = progress?.solvedAt;
-    const started = (progress?.pitches.length ?? 0) > 0;
     const plan = cardPlan(level, user, page);
+    const opening = cardOpening(level, page);
+    const editing = `/edit?level=${encodeURIComponent(level.id)}`;
+
+    const open: LevelCardOptions["open"] =
+      opening === "editor"
+        ? { href: editing }
+        : opening === "box"
+          ? { run: () => openBox(level, progress) }
+          : undefined;
 
     const edit: LevelCardOptions["edit"] =
       plan.edit === "editor"
-        ? { href: `/edit?level=${encodeURIComponent(level.id)}` }
+        ? { href: editing }
         : plan.edit === "details"
           ? { run: () => void retitle(level) }
           : undefined;
@@ -314,16 +410,10 @@ export function createLevelList(options: LevelListOptions): LevelList {
         ? {
             label: "Publish",
             run: () => void publishLevel(level),
-            // A level still missing pitches or a difficulty cannot be
-            // published; the server says so too, but the button may as well
-            // say it first. Only a draft from before the stepper defaulted
-            // the difficulty can lack one.
-            blocked:
-              level.unpitchedCount > 0
-                ? countLeft(level)
-                : level.authorDifficulty === undefined
-                  ? "Set a difficulty in the details first."
-                  : undefined,
+            // The server refuses a draft that is unfinished or unrated; the
+            // button says which of the two it is before anybody waits for a
+            // refusal. See `publishBlock`.
+            blocked: publishBlock(level),
           }
         : plan.publish === "unpublish"
           ? { label: "Unpublish", run: () => void unpublishLevel(level) }
@@ -331,37 +421,13 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
     return createLevelCard(level, {
       compact,
-      draft: plan.draft,
-      solved: solvedAt !== undefined,
-      onOpen: () =>
-        openLevelModal({
-          level,
-          instructions: level.instructions,
-          play: true,
-          started,
-          solvedIn:
-            solvedAt === undefined || progress === undefined
-              ? undefined
-              : {
-                  elapsedMs: progress.elapsedMs,
-                  checkCount: progress.checkCount,
-                },
-          // Rating and hearting a level are revisitable from its box; the
-          // builders decide for themselves what this viewer may do.
-          contribute: solvedContribution({
-            level,
-            viewer: user,
-            solved: solvedAt !== undefined,
-            // The author's door: the same details box the pencil opens,
-            // with the same refresh behind it.
-            onEditDetails: () => void retitle(level),
-          }),
-          upvote: upvoteLine({
-            level,
-            viewer: user,
-            solved: solvedAt !== undefined,
-          }),
-        }),
+      status: page === "home" ? playStatus(progress) : workStatus(level),
+      statusTitle:
+        page === "mine" && level.unpitchedCount > 0 ? countLeft(level) : undefined,
+      byline: page === "home" ? bylineOf(level, user) : undefined,
+      editedAt: page === "mine" ? level.updatedAt : undefined,
+      hearted: hearted.has(level.id),
+      open,
       edit,
       publish,
       onDelete: plan.delete ? () => void removeLevel(level) : undefined,

@@ -51,11 +51,25 @@ nothing rather than the wrong answer. Authorization answers: 401 signed out
 stranger on a draft. Published levels are playable by anybody with no
 session lookup; the lookup happens only once a row turns out to be a draft.
 
-**The pages.** `/` is the public catalog (for an admin only, every card
-carries the details pencil, Unpublish and the trash); `/mine` is
-the author's list (Draft badge; pencil to the editor for a draft, to a
-details box for a published level; Publish/Unpublish as a worded button on
-the card; trash). Save stays in the editor and gives a new transcription its
+**The pages.** `/` is the public catalog, "Public Levels" (for an admin only,
+every card carries the details pencil, Unpublish and the trash); `/mine` is
+the author's list, "My Transcriptions" (pencil to the editor for a draft, to
+a details box for a published level; Publish/Unpublish as a worded button on
+the card, greyed with its reason while a draft is unfinished or unrated;
+trash). What a card
+says about itself is one word on its first line rather than a badge over its
+picture: Not Started / In Progress / Transcribed on the catalog, from the
+viewer's progress; Unfinished / Complete / Published on the author's page,
+from the level's own columns (`level-status.ts`). Grey for nothing done,
+orange for under way and for public, green for finished; indigo is the
+byline's, where it says a level is yours. A card on the author's page
+opens the *editor* — a draft is work, and there is nothing to decide about
+your own — except a published one, whose music is frozen and which opens its
+box like the catalog's. The catalog's cuts live behind a funnel button
+(statuses, a difficulty range, only what you have hearted, and whether your
+own levels are among everybody's); the author's page shows its three status
+switches in the open. Neither is remembered between visits; Compact is.
+Save stays in the editor and gives a new transcription its
 address by `replaceState`. Sign-in-to-save stashes the whole editor in
 `localStorage` (`transcribe:draft`) across the redirect: one-shot, one
 address, ignored after a day, with an `intent` of `save` (from the button)

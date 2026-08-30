@@ -9,11 +9,14 @@
 
 import { beatsPerMinute, tempoMapOf } from "../playback/tempo-map.js";
 import { displayedDifficulty } from "../shared/difficulty.js";
-import { authorLabel, type UserSummary } from "../shared/session.js";
+import { ANONYMOUS, type UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
-import { createDifficulty } from "./difficulty.js";
-import { heartIcon, pencilIcon, solversIcon, trashIcon } from "./icons.js";
+import { createDifficulty, createUnratedDifficulty } from "./difficulty.js";
+import { flagIcon, heartFillIcon, heartIcon, pencilIcon, trashIcon } from "./icons.js";
 import { keyLabelOfFifths } from "./key-label.js";
+import { lastEdited } from "./last-edited.js";
+import type { StatusWord } from "./level-status.js";
+import { pageTooltip } from "./tooltip.js";
 import { THUMBNAIL_SIZE, sharpenThumbnail, thumbnailUrl } from "./youtube.js";
 
 /** The key written the way it is spoken: `D♭ major`, `A minor`. */
@@ -32,10 +35,18 @@ export const solversSaid = (count: number): string =>
  * A small icon-and-number pair: the hearts on a level, the players who
  * solved it. Exported because the level's box prints the same figures the
  * card does, and the two must not drift.
+ *
+ * `kind` colours it — a heart is pink and a finishing flag is green — and is
+ * the only thing that varies between them beyond the glyph.
  */
-export function countFigure(icon: string, count: number, said: string): HTMLElement {
+export function countFigure(
+  icon: string,
+  count: number,
+  said: string,
+  kind?: string,
+): HTMLElement {
   const figure = document.createElement("span");
-  figure.className = "level-figure";
+  figure.className = kind ? `level-figure level-figure-${kind}` : "level-figure";
   figure.setAttribute("role", "img");
   figure.setAttribute("aria-label", said);
   figure.title = said;
@@ -129,25 +140,10 @@ export function levelStats(level: TranscriptionSummary): LevelStat[] {
 }
 
 /**
- * What is still missing, or nothing if the answer is complete.
+ * How much is left, for the tooltip on an unfinished level's status.
  *
- * Read off a column rather than out of the melody, which is the whole reason
- * the column exists: the listing cannot open the answer to find out whether it
- * is finished. Finished is the ordinary case and says nothing — a card only
- * speaks up when there is work left.
- */
-export function levelState(level: TranscriptionSummary): string | undefined {
-  if (level.unpitchedCount === 0) return undefined;
-  return level.unpitchedCount === 1
-    ? "Unfinished · 1 note needs a pitch"
-    : `Unfinished · ${level.unpitchedCount} notes need pitches`;
-}
-
-/**
- * How much is left, without the word the badge already carries.
- *
- * The badge reads "Unfinished"; its tooltip should add the count rather than
- * say the same word again.
+ * The status word reads "Unfinished"; what it hovers to say is the count,
+ * rather than the same word again.
  */
 export const countLeft = (level: TranscriptionSummary): string =>
   level.unpitchedCount === 1
@@ -156,6 +152,29 @@ export const countLeft = (level: TranscriptionSummary): string =>
 
 /** Which list the card is in: everybody's, or the viewer's own. */
 export type CardPage = "home" | "mine";
+
+/**
+ * What pressing a card does, or nothing at all.
+ *
+ * On the catalog it opens the level's box — the room to decide whether to
+ * play something — and a level still missing pitches opens nothing, because
+ * there is no complete answer to mark an attempt against and
+ * `/api/levels/:id/puzzle` refuses it for the same reason.
+ *
+ * On the author's own page a card is work rather than a puzzle, so it opens
+ * the editor with no box in between, finished or not. The exception is a
+ * published level, whose music is frozen: the editor could change nothing
+ * about it, so its card opens the box like the catalog's.
+ */
+export type CardOpen = "box" | "editor";
+
+export function cardOpening(
+  level: TranscriptionSummary,
+  page: CardPage,
+): CardOpen | undefined {
+  if (page === "mine") return level.status === "published" ? "box" : "editor";
+  return level.unpitchedCount === 0 ? "box" : undefined;
+}
 
 /**
  * What a card shows and offers, decided before anything is drawn.
@@ -169,10 +188,13 @@ export type CardPage = "home" | "mine";
  * published already. On your own page it is the pencil — into the editor
  * while a level is a draft, into the details box once it is published and
  * its music is frozen — the way across that line, and the trash.
+ *
+ * Every draft carries Publish, including one that cannot be published yet:
+ * greyed, with `publishBlock` below as its reason. A button that is missing
+ * explains nothing, and "why can I not publish this" is exactly the question
+ * somebody looking at an unfinished draft is asking.
  */
 export type CardPlan = {
-  /** Say so on the card: this is nobody's but the author's yet. */
-  draft: boolean;
   edit: "editor" | "details" | undefined;
   publish: "publish" | "unpublish" | undefined;
   delete: boolean;
@@ -183,28 +205,80 @@ export function cardPlan(
   viewer: UserSummary | undefined,
   page: CardPage,
 ): CardPlan {
-  const draft = level.status === "draft";
-  const nothing: CardPlan = { draft, edit: undefined, publish: undefined, delete: false };
+  const nothing: CardPlan = { edit: undefined, publish: undefined, delete: false };
   if (viewer === undefined) return nothing;
 
   const theirs = viewer.isAdmin || viewer.id === level.ownerId;
   if (page === "home") {
     return viewer.isAdmin
-      ? { draft, edit: "details", publish: "unpublish", delete: true }
+      ? { edit: "details", publish: "unpublish", delete: true }
       : nothing;
   }
   if (!theirs) return nothing;
-  return draft
-    ? { draft, edit: "editor", publish: "publish", delete: true }
-    : { draft, edit: "details", publish: "unpublish", delete: true };
+  if (level.status === "draft") {
+    return { edit: "editor", publish: "publish", delete: true };
+  }
+  return { edit: "details", publish: "unpublish", delete: true };
 }
 
-/** What a card may be asked to do, beyond opening its box. */
+/**
+ * Why this draft cannot be published yet, or nothing if it can.
+ *
+ * Both conditions are the server's, said here first so the answer arrives
+ * before the press rather than after it: the publish route refuses an
+ * unfinished level and so does the table's own CHECK, and it refuses one with
+ * no difficulty because every published level has to carry a figure for
+ * solvers' ratings to lean on.
+ *
+ * The pitches come first when both are missing. It is the larger job by a
+ * long way, and naming the difficulty first would send somebody to set one
+ * only to be stopped again.
+ */
+export function publishBlock(level: TranscriptionSummary): string | undefined {
+  if (level.unpitchedCount > 0) return "Transcribe all the pitches first!";
+  if (level.authorDifficulty === undefined) return "Set a difficulty first!";
+  return undefined;
+}
+
+/**
+ * Who wrote a level down, and whether that is worth marking.
+ *
+ * Three cases and an order between them. The site's own levels say "Admin" —
+ * the word rather than the account's name, since no account may be called
+ * that (it is a reserved username) and the fact worth carrying is that this
+ * one came from the site. Your own levels say your name, marked, so your work
+ * is findable in a page of everybody's — Anonymous included, which is still
+ * you. Everybody else is a name and nothing more.
+ */
+export type Byline = { name: string; mark: "admin" | "you" | undefined };
+
+export function bylineOf(
+  level: TranscriptionSummary,
+  viewer: UserSummary | undefined,
+): Byline {
+  if (level.authorIsAdmin === true) return { name: "Admin", mark: "admin" };
+  const name = level.author ?? ANONYMOUS;
+  return viewer !== undefined && viewer.id === level.ownerId
+    ? { name, mark: "you" }
+    : { name, mark: undefined };
+}
+
+/** What a card may be asked to do, beyond naming its level. */
 export type LevelCardOptions = {
-  solved: boolean;
-  /** Mark it as a draft: the author's alone, for now. */
-  draft?: boolean;
-  onOpen: () => void;
+  /** The word at the top right, and what it hovers to explain. */
+  status: StatusWord;
+  statusTitle?: string;
+  /**
+   * Pressing the card: somewhere to go, or something to do here. Absent, and
+   * the card is words alone — a level with no answer to play against.
+   */
+  open?: { href: string } | { run: () => void };
+  /** The byline, on the page where a level might be anybody's. */
+  byline?: Byline;
+  /** When it was last touched, on the page where they are all yours. */
+  editedAt?: number;
+  /** Whether this viewer's heart stands on it, so the glyph is filled. */
+  hearted?: boolean;
   /**
    * The pencil: somewhere to go, or something to do here. Absent, and the
    * card carries no pencil — which on the front page is everybody but an
@@ -213,7 +287,8 @@ export type LevelCardOptions = {
   edit?: { href: string } | { run: () => void };
   /**
    * The small worded button that moves a level across the line between
-   * draft and published. `blocked` draws it greyed, and says why.
+   * draft and published. `blocked` greys it and is what it says when pressed
+   * anyway.
    */
   publish?: { label: string; run: () => void; blocked?: string };
   /** Throw this level away. Absent, and the card carries no trash. */
@@ -230,6 +305,36 @@ export type LevelCardOptions = {
 };
 
 /**
+ * Say something above a control, rather than beside the pointer.
+ *
+ * The pointer is the right anchor for a refusal raised deep inside a click
+ * handler; for a word about the thing under the pointer, the thing itself is
+ * steadier — and it is the only anchor a keyboard has.
+ */
+function say(control: HTMLElement, message: string): void {
+  const box = control.getBoundingClientRect();
+  pageTooltip().say(message, { x: box.left + box.width / 2, y: box.top });
+}
+
+/** The two glyph-and-number pairs every card ends on. */
+function figuresOf(level: TranscriptionSummary, hearted: boolean): HTMLElement {
+  const figures = document.createElement("span");
+  figures.className = "level-figures";
+  const upvotes = level.upvoteCount ?? 0;
+  const solvers = level.solveCount ?? 0;
+  figures.append(
+    countFigure(
+      hearted ? heartFillIcon() : heartIcon(),
+      upvotes,
+      hearted ? `${heartsSaid(upvotes)}, yours among them` : heartsSaid(upvotes),
+      "heart",
+    ),
+    countFigure(flagIcon(), solvers, solversSaid(solvers), "flag"),
+  );
+  return figures;
+}
+
+/**
  * Built from elements with their text set, never from markup.
  *
  * That is not house style for its own sake: a title is written by whoever
@@ -237,29 +342,21 @@ export type LevelCardOptions = {
  * characters rather than running it. Nothing on this page may become
  * innerHTML.
  *
- * A card carries the least that distinguishes one level from another — what it
- * is called, who wrote it down, how hard they say it is, and whether you have
- * finished it. Everything else it used to print in a row of dot-separated
- * facts is in the level's own box now, one press away, where there is room
- * to lay it out and to say what each number means.
+ * Every card has the same five slots, whatever page it is on and whoever is
+ * looking: the picture; a line with the difficulty at its left and where this
+ * level has got to at its right; the title, one line, ellipsised; the
+ * subtitle, when there is one; a line about the level — who wrote it down, or
+ * when you last touched it; and, pinned to the bottom, the figures it has
+ * earned and whatever this viewer may do to it. The last line is pinned
+ * rather than stacked so that a card without a subtitle is exactly as tall as
+ * one with a subtitle and its figures still line up across the row — which is
+ * the whole of what keeps the grid even.
  *
- * Every card has the same shape, whoever is looking: the picture, then a row
- * with the difficulty at its left and the tools at its right (the tools are
- * absent for everybody but an author or an admin, and the row keeps its
- * height without them), then the title, the subtitle, and a byline. The
- * byline always says somebody — "by Anonymous" when the author has no name
- * to show — so no card is a different height for having a quieter author.
- *
- * The card opens that box and the pencil opens the editor, and the two are
+ * The card opens something and the pencil opens the editor, and the two are
  * told apart the only way that keeps a keyboard and a screen reader working:
  * the title is the control, its `::after` is stretched over the whole card,
- * and the pencil is raised above that. Nesting one inside the other would be
+ * and the tools are raised above that. Nesting one inside the other would be
  * neither valid nor reachable by tab.
- *
- * A level still missing pitches does not open a box at all. There is no
- * complete answer to mark an attempt against, which is the same thing
- * `/api/levels/:id/puzzle` says by refusing it — so the pencil is the only way
- * in, and the card already says why.
  */
 export function createLevelCard(
   level: TranscriptionSummary,
@@ -268,29 +365,6 @@ export function createLevelCard(
   const item = document.createElement("li");
   item.className = "level-card";
   if (options.compact) item.classList.add("is-compact");
-  if (options.solved) item.classList.add("is-solved");
-  if (options.draft) item.classList.add("is-draft");
-
-  // What has become of this level. Over the picture where there is one, and on
-  // the subtitle's line where there is not — never on the title's, which is held
-  // to two lines and is the one thing on the card long enough to want them.
-  const badges: HTMLElement[] = [];
-  const badge = (kind: string, text: string, why: string): void => {
-    const span = document.createElement("span");
-    span.className = `level-badge level-badge-${kind}`;
-    if (options.compact) span.classList.add("level-badge-inline");
-    span.textContent = text;
-    span.title = why;
-    badges.push(span);
-  };
-
-  // Draft first, because it is the fact about the level that changes what the
-  // rest mean. The ✓ has to leave the title anyway — see `.level-open` below.
-  if (options.draft) badge("draft", "Draft", "Only you can see this level");
-  if (options.solved) badge("solved", "✓", "Solved");
-  if (levelState(level) !== undefined) {
-    badge("unfinished", "Unfinished", countLeft(level));
-  }
 
   if (!options.compact) {
     // The video this was written down from, as a picture, in a box of its own.
@@ -319,74 +393,97 @@ export function createLevelCard(
     });
     sharpenThumbnail(art, level.videoId);
     frame.append(art);
-
-    // In a row of their own rather than each pinned to the corner, or a
-    // draft's ✓ would sit on top of its "Draft".
-    if (badges.length > 0) {
-      const row = document.createElement("div");
-      row.className = "level-badges";
-      row.append(...badges);
-      frame.append(row);
-    }
-
     item.append(frame);
   }
 
-  // The row above the title: how hard the level is, how it has been
-  // received, and what this viewer may do to it. The difficulty comes
-  // through `displayedDifficulty`, which is the only thing that knows what
-  // the figure is made of. Nothing is drawn for a draft without one; the
-  // row's min-height keeps the card's shape.
-  const row = document.createElement("div");
-  row.className = "level-row";
+  // The words, padded away from the edge — the picture above is not, so the
+  // padding belongs to this rather than to the card.
+  const body = document.createElement("div");
+  body.className = "level-body";
+
+  // The first line: how hard it is at the left, how far it has got at the
+  // right. Both are short and neither wraps, so they never meet in the middle.
+  const top = document.createElement("div");
+  top.className = "level-top";
   const displayed = displayedDifficulty(level);
-  if (displayed !== undefined) {
-    row.append(createDifficulty(displayed));
-  }
+  top.append(
+    displayed === undefined ? createUnratedDifficulty() : createDifficulty(displayed),
+  );
 
-  // The hearts and the solvers, zeros included: a fresh level honestly has
-  // none of either. Drafts carry no figures — nobody else can play one.
-  if (level.status === "published") {
-    const figures = document.createElement("span");
-    figures.className = "level-figures";
-    const upvotes = level.upvoteCount ?? 0;
-    const solvers = level.solveCount ?? 0;
-    figures.append(
-      countFigure(heartIcon(), upvotes, heartsSaid(upvotes)),
-      countFigure(solversIcon(), solvers, solversSaid(solvers)),
-    );
-    row.append(figures);
-  }
-
-  const head = document.createElement("div");
-  head.className = "level-head";
+  const status = document.createElement("span");
+  status.className = `level-status is-${options.status.tone}`;
+  status.textContent = options.status.text;
+  if (options.statusTitle !== undefined) status.title = options.statusTitle;
+  top.append(status);
+  body.append(top);
 
   const title = document.createElement("h2");
   title.className = "level-title";
 
-  if (level.unpitchedCount === 0) {
+  if (options.open === undefined) {
+    title.textContent = level.title;
+  } else if ("href" in options.open) {
+    // A real address — the editor — so it opens in a new tab like any link.
+    const open = document.createElement("a");
+    open.className = "level-open";
+    open.href = options.open.href;
+    open.textContent = level.title;
+    title.append(open);
+    item.classList.add("is-openable");
+  } else {
     // A button rather than a link, because what it opens is a box on this page
     // rather than an address. The cost is that a level can no longer be opened
     // in a new tab from here; `/play?level=…` is still a real address, and the
     // box is what leads to it.
-    //
-    // The two-line clamp lives on this, not on the heading around it. A button
-    // is an inline-block, so the heading saw a single line box — the button —
-    // and clamping it at two clamped nothing at all, which is how a title of a
-    // hundred characters came to run down the whole page.
+    const { run } = options.open;
     const open = document.createElement("button");
     open.type = "button";
     open.className = "level-open";
     open.textContent = level.title;
-    open.addEventListener("click", options.onOpen);
+    open.addEventListener("click", run);
     title.append(open);
-    item.classList.add("is-playable");
-  } else {
-    title.textContent = level.title;
+    item.classList.add("is-openable");
+  }
+  body.append(title);
+
+  // Only when there is one. The bottom line is pinned to the foot of the card,
+  // so the space a missing subtitle leaves falls between the lines rather than
+  // shortening the card.
+  if (level.subtitle !== undefined && level.subtitle !== "") {
+    const subtitle = document.createElement("p");
+    subtitle.className = "level-subtitle";
+    subtitle.textContent = level.subtitle;
+    body.append(subtitle);
   }
 
-  // All raised above the title's stretched `::after` by `.level-tool`, and
-  // grouped so that the gap between them is theirs rather than the head's.
+  if (options.byline !== undefined) {
+    const line = document.createElement("p");
+    line.className = "level-byline";
+    const who = document.createElement("span");
+    who.className =
+      options.byline.mark === undefined
+        ? "level-byline-name"
+        : `level-byline-name is-${options.byline.mark}`;
+    who.textContent = options.byline.name;
+    line.append("Transcribed by ", who);
+    body.append(line);
+  }
+
+  if (options.editedAt !== undefined) {
+    const when = document.createElement("p");
+    when.className = "level-when";
+    when.textContent = lastEdited(options.editedAt, Date.now());
+    body.append(when);
+  }
+
+  // The last line, always last: what the level has earned, and what may be
+  // done to it. All of the tools are raised above the title's stretched
+  // `::after` by `.level-tool`, or a press meant for one of them would open
+  // the level instead.
+  const foot = document.createElement("div");
+  foot.className = "level-foot";
+  foot.append(figuresOf(level, options.hearted === true));
+
   const tools = document.createElement("div");
   tools.className = "level-tools";
 
@@ -412,18 +509,6 @@ export function createLevelCard(
     tools.append(edit);
   }
 
-  if (options.publish) {
-    const { label, run, blocked } = options.publish;
-    const move = document.createElement("button");
-    move.type = "button";
-    move.className = "level-tool level-tool-text level-publish";
-    move.textContent = label;
-    move.disabled = blocked !== undefined;
-    move.title = blocked ?? label;
-    move.addEventListener("click", run);
-    tools.append(move);
-  }
-
   if (options.onDelete) {
     const remove = document.createElement("button");
     remove.type = "button";
@@ -435,42 +520,51 @@ export function createLevelCard(
     tools.append(remove);
   }
 
-  if (tools.childElementCount > 0) row.append(tools);
-  head.append(title);
+  // Last of the three, and the only one that is a word: no icon says
+  // "publish" plainly, and a lock would read as "locked".
+  //
+  // `aria-disabled` rather than `disabled`, with the press refused below.
+  // A disabled button receives no mouse events at all, so it can be neither
+  // pointed at nor asked anything — and the whole point of keeping this one
+  // on a draft that cannot go is that it answers when you press it. The same
+  // way round the editor's dead actions and the piano's dead keys work.
+  if (options.publish) {
+    const { label, run, blocked } = options.publish;
+    const move = document.createElement("button");
+    move.type = "button";
+    move.className = "level-tool level-tool-text level-publish";
+    move.textContent = label;
+    move.setAttribute("aria-disabled", String(blocked !== undefined));
+    move.addEventListener("click", (event) => {
+      if (blocked !== undefined) {
+        // Nothing else on the card may hear it either: the title's hit area
+        // is stretched over the whole thing.
+        event.preventDefault();
+        say(move, blocked);
+        return;
+      }
+      run();
+    });
 
-  // The words, padded away from the edge — the picture above is not, so the
-  // padding belongs to this rather than to the card.
-  const body = document.createElement("div");
-  body.className = "level-body";
-  body.append(row, head);
-
-  // Always drawn, empty or not. The slot is one line tall either way, so a
-  // level with no subtitle makes a card exactly as tall as one with a subtitle
-  // — which is the whole of what keeps the grid even.
-  const subtitle = document.createElement("p");
-  subtitle.className = "level-subtitle";
-  subtitle.textContent = level.subtitle ?? "";
-
-  if (options.compact) {
-    // The badges share this line rather than the title's. The title is two
-    // lines, fixed, and it is the field somebody can put a hundred characters
-    // in; a pill beside it would be squeezed out by exactly the level that
-    // most needs to say it is unfinished. This line is its own row, so the
-    // title cannot reach it, and the subtitle gives way to the badge rather
-    // than the other way round.
-    const note = document.createElement("div");
-    note.className = "level-note";
-    note.append(subtitle, ...badges);
-    body.append(note);
-  } else {
-    body.append(subtitle);
+    if (blocked === undefined) {
+      move.title = label;
+    } else {
+      // The page's own tooltip on hover rather than the browser's `title`,
+      // which waits about a second before it says anything — long enough that
+      // somebody has moved on before the answer arrives. No `title` at all
+      // then, or both would show and the slow one would arrive second.
+      move.addEventListener("pointerenter", () => say(move, blocked));
+      move.addEventListener("pointerleave", () => pageTooltip().say(undefined));
+      // A keyboard reaches it too: it is `aria-disabled`, not `disabled`, so
+      // it still takes focus.
+      move.addEventListener("focus", () => say(move, blocked));
+      move.addEventListener("blur", () => pageTooltip().say(undefined));
+    }
+    tools.append(move);
   }
 
-  // Who wrote it down, last. Always a line, always somebody.
-  const author = document.createElement("p");
-  author.className = "level-author";
-  author.textContent = authorLabel(level.author);
-  body.append(author);
+  if (tools.childElementCount > 0) foot.append(tools);
+  body.append(foot);
 
   item.append(body);
   return item;

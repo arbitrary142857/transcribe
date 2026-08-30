@@ -8,7 +8,7 @@
     <title>Transcribe</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
+  <body class="level-page patterned is-public">
     <nav class="site-nav">
       <a class="site-name" href="/" aria-current="page">Transcribe</a>
       <div id="site-nav" class="site-links">
@@ -18,15 +18,16 @@
     </nav>
 
     <main class="page">
-      <h1 class="page-title">Levels</h1>
-      <p class="page-lede">
-        Melodies people have picked off a recording and written down.
-      </p>
+      <div class="page-head">
+        <h1 class="page-title">Public Levels</h1>
 
-      <!-- Filled in by home.ts. Empty in the markup rather than a checkbox
-           swapped out later, so it never flashes as one shape and settles as
-           another. -->
-      <div id="levels-controls" class="level-controls"></div>
+        <!-- Filled in by home.ts, once /api/me has said who is looking: two of
+             the cuts behind the funnel are about the viewer's own doings and
+             are not offered to nobody. Empty in the markup rather than a
+             control swapped out later, so it never flashes as one shape and
+             settles as another. -->
+        <div id="levels-controls" class="level-controls"></div>
+      </div>
 
       <ul id="levels" class="level-list"></ul>
       <p id="levels-note" class="page-note" role="status">Loading…</p>
