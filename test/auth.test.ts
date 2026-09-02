@@ -525,9 +525,37 @@ describe("GET /api/auth/callback", () => {
     assert.equal(response.status, 302);
     const tries = asked.filter((each) => /set username/i.test(each.sql));
     assert.equal(tries.length, 3);
-    // The third try carries a number, which is what makes it a different name.
-    assert.match(tries[2]!.values[0] as string, /-\d+$/);
+    // All three are plain pairs: the numbers are for a pair that has been
+    // refused three times over, not for the second try.
+    assert.doesNotMatch(tries[2]!.values[0] as string, /-\d+$/u);
     assert.notEqual(asked.find((each) => /insert into sessions/i.test(each.sql)), undefined);
+  });
+
+  it("numbers the pair it drew last, once three plain names have been refused", async () => {
+    const taken: Answer = {
+      when: /set username/iu,
+      throws: (nth) =>
+        nth < 3
+          ? new Error("D1_ERROR: UNIQUE constraint failed: users.username: SQLITE_CONSTRAINT")
+          : undefined,
+    };
+    const { db, asked } = stubDatabase([taken, anyFirst({ id: "7k2m9x4p3qwt", username: null })]);
+
+    const response = await api.request(
+      `/api/auth/callback?code=abc&state=${STATE}`,
+      { headers: FLIGHT },
+      envOf(db, stubGoogle({ body: { id_token: idTokenOf() } }).fetch),
+    );
+
+    assert.equal(response.status, 302);
+    const tries = asked
+      .filter((each) => /set username/i.test(each.sql))
+      .map((each) => each.values[0] as string);
+    assert.equal(tries.length, 4);
+    // Three digits, hung on the very pair the third try was refused for: the
+    // suffix exists to rescue that pair, so it has to be that pair's.
+    assert.match(tries[3]!, /^[a-z]+-[a-z]+-\d{3}$/u);
+    assert.equal(tries[3]!.replace(/-\d{3}$/u, ""), tries[2]!);
   });
 
   it("stores a hash of the session token, never the token", async () => {

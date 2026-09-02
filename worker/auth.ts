@@ -30,7 +30,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { newId } from "../src/shared/id.js";
-import { mintName } from "../src/shared/names.js";
+import { mintNames, randomBelow } from "../src/shared/names.js";
 import {
   cleanUsername,
   usernameProblem,
@@ -590,26 +590,30 @@ auth.delete("/api/me", async (c) => {
 
 // ---- small parts -------------------------------------------------------------
 
-/** How many names are tried for an account before it is left unnamed. */
-const NAME_TRIES = 5;
-
 /** What D1 says when the unique index on a name refuses one. */
 const isUniqueRefusal = (error: unknown): boolean =>
   error instanceof Error && /UNIQUE constraint failed/u.test(error.message);
 
 /**
- * Run `write` with a minted name, and with another when the index refuses
- * it, a few times; then give up quietly, answering whether a name was
- * written. An unnamed account is shown as Anonymous and named at its next
- * sign-in, which is a better outcome than a sign-in that fails over a word.
+ * Run `write` with each minted name in turn until one is not refused, and
+ * answer whether any was written.
+ *
+ * Uniqueness is the index's and never a lookup: two sign-ins landing at the
+ * same instant would both be told a name was free and one of them would be
+ * wrong, where a caught `UNIQUE constraint failed` cannot be. `mintNames`
+ * decides what to try and in what order — plain pairs, then the last of them
+ * numbered.
+ *
+ * Running out gives up quietly. An unnamed account is shown as Anonymous and
+ * named at its next sign-in, which is a better outcome than a sign-in that
+ * fails over a word.
  */
 async function withMintedName(
   write: (username: string) => Promise<void>,
 ): Promise<boolean> {
-  const pick = (n: number) => Math.floor(Math.random() * n);
-  for (let attempt = 0; attempt < NAME_TRIES; attempt++) {
+  for (const name of mintNames(randomBelow)) {
     try {
-      await write(mintName(pick, attempt));
+      await write(name);
       return true;
     } catch (error) {
       if (!isUniqueRefusal(error)) throw error;
