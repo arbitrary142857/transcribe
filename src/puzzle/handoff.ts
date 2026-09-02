@@ -148,7 +148,7 @@ export function forgetQuestion(count: number): Question {
   return {
     title: "Forget this browser's progress?",
     body: [
-      `Progress on ${tunes(count)} played without signing in will be removed from this browser. Your account is not touched.`,
+      `Progress on ${tunes(count)} played without signing in will be removed from this browser.`,
       "This cannot be undone.",
     ],
     confirm: "Forget it",

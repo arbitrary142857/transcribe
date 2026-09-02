@@ -23,8 +23,14 @@ export type SwitchOptions = {
    * words are not all words: "Show ♥ Tunes Only" draws its heart from
    * `icons.ts` rather than setting an emoji, so that the site's heart is the
    * same heart everywhere it appears. Give `spoken` with it.
+   *
+   * Nothing at all where the setting is already named beside the switch, as
+   * on the account page: the track alone, with no pill around it, since a
+   * bordered button holding one small graphic reads as a control that has
+   * lost its words. `spoken` is then what a screen reader is told, and is
+   * required — a switch that announces itself as "switch" is no switch.
    */
-  label: string | HTMLElement;
+  label?: string | HTMLElement;
   /**
    * What to call the switch where the label cannot say it: a drawn glyph is
    * hidden from a screen reader, so without this the heart switch would
@@ -57,18 +63,24 @@ export function createSwitch({
   knob.className = "switch-knob";
   track.append(knob);
 
-  const text = document.createElement("span");
-  text.className = "switch-label";
-  if (typeof label === "string") {
-    text.textContent = label;
-  } else {
-    text.append(label);
-  }
   if (spoken !== undefined) button.setAttribute("aria-label", spoken);
 
-  // The words first and the switch after, which is the order the sentence runs
-  // in: the thing, then whether it is on.
-  button.append(text, track);
+  if (label === undefined) {
+    // The track alone: the words are already beside it on the page.
+    button.classList.add("is-bare");
+    button.append(track);
+  } else {
+    const text = document.createElement("span");
+    text.className = "switch-label";
+    if (typeof label === "string") {
+      text.textContent = label;
+    } else {
+      text.append(label);
+    }
+    // The words first and the switch after, which is the order the sentence
+    // runs in: the thing, then whether it is on.
+    button.append(text, track);
+  }
 
   function draw(): void {
     button.setAttribute("aria-checked", String(on));

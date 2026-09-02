@@ -3652,10 +3652,13 @@ main.page {
    constants here, not something the page computes; run that script again if
    the spacing, the angle or a shape ever changes.
 
-   The shapes are Phosphor Icons' `globe`, `music-notes` and `pencil`,
-   regular weight, the same family and the same licence as everything in
-   `icons.ts` — see the notice there. They are spelled out here rather than
-   imported because a stylesheet cannot ask a module for a shape. */
+   The shapes are Phosphor Icons' `globe`, `music-notes` and `pencil` in the
+   regular weight and `user` in the fill, the same family and the same licence
+   as everything in `icons.ts` — see the notice there. The account's is filled
+   because the outline is not: a head drawn as a ring above an open arc reads
+   at this size as a lollipop, where the silhouette reads as a person at once.
+   They are spelled out here rather than imported because a stylesheet cannot
+   ask a module for a shape. */
 .patterned {
   background-color: var(--page-bg);
   background-size: 322.8px 559.1px;
@@ -3671,6 +3674,10 @@ main.page {
 
 .patterned.is-writing {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='322.8' height='559.1' viewBox='0 0 322.8 559.1' fill='%231c1a17' fill-opacity='.075'%3E%3Cdefs%3E%3Cg id='i' transform='rotate(19.11) scale(0.1719) translate(-128 -128)'%3E%3Cpath d='M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM51.31,160,136,75.31,152.69,92,68,176.68ZM48,179.31,76.69,208H48Zm48,25.38L79.31,188,164,103.31,180.69,120Zm96-96L147.31,64l24-24L216,84.68Z'/%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23i' x='0.0' y='0.0'/%3E%3Cuse href='%23i' x='0.0' y='559.1'/%3E%3Cuse href='%23i' x='322.8' y='0.0'/%3E%3Cuse href='%23i' x='322.8' y='559.1'/%3E%3Cuse href='%23i' x='23.1' y='439.3'/%3E%3Cuse href='%23i' x='345.9' y='439.3'/%3E%3Cuse href='%23i' x='46.1' y='319.5'/%3E%3Cuse href='%23i' x='69.2' y='199.7'/%3E%3Cuse href='%23i' x='92.2' y='79.9'/%3E%3Cuse href='%23i' x='115.3' y='519.1'/%3E%3Cuse href='%23i' x='138.3' y='399.3'/%3E%3Cuse href='%23i' x='161.4' y='279.5'/%3E%3Cuse href='%23i' x='184.4' y='159.7'/%3E%3Cuse href='%23i' x='207.5' y='39.9'/%3E%3Cuse href='%23i' x='230.6' y='479.2'/%3E%3Cuse href='%23i' x='253.6' y='359.4'/%3E%3Cuse href='%23i' x='276.7' y='239.6'/%3E%3Cuse href='%23i' x='-23.1' y='119.8'/%3E%3Cuse href='%23i' x='299.7' y='119.8'/%3E%3C/svg%3E");
+}
+
+.patterned.is-account {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='322.8' height='559.1' viewBox='0 0 322.8 559.1' fill='%231c1a17' fill-opacity='.075'%3E%3Cdefs%3E%3Cg id='i' transform='rotate(19.11) scale(0.1328) translate(-128 -128)'%3E%3Cpath d='M230.93,220a8,8,0,0,1-6.93,4H32a8,8,0,0,1-6.92-12c15.23-26.33,38.7-45.21,66.09-54.16a72,72,0,1,1,73.66,0c27.39,8.95,50.86,27.83,66.09,54.16A8,8,0,0,1,230.93,220Z'/%3E%3C/g%3E%3C/defs%3E%3Cuse href='%23i' x='0.0' y='0.0'/%3E%3Cuse href='%23i' x='0.0' y='559.1'/%3E%3Cuse href='%23i' x='322.8' y='0.0'/%3E%3Cuse href='%23i' x='322.8' y='559.1'/%3E%3Cuse href='%23i' x='23.1' y='439.3'/%3E%3Cuse href='%23i' x='345.9' y='439.3'/%3E%3Cuse href='%23i' x='46.1' y='319.5'/%3E%3Cuse href='%23i' x='69.2' y='199.7'/%3E%3Cuse href='%23i' x='92.2' y='79.9'/%3E%3Cuse href='%23i' x='115.3' y='519.1'/%3E%3Cuse href='%23i' x='138.3' y='399.3'/%3E%3Cuse href='%23i' x='161.4' y='279.5'/%3E%3Cuse href='%23i' x='184.4' y='159.7'/%3E%3Cuse href='%23i' x='207.5' y='39.9'/%3E%3Cuse href='%23i' x='230.6' y='479.2'/%3E%3Cuse href='%23i' x='253.6' y='359.4'/%3E%3Cuse href='%23i' x='276.7' y='239.6'/%3E%3Cuse href='%23i' x='-23.1' y='119.8'/%3E%3Cuse href='%23i' x='299.7' y='119.8'/%3E%3C/svg%3E");
 }
 
 /* The pattern belongs to the page a transcription is *begun* on, not to the
@@ -4524,34 +4531,144 @@ main.page {
   text-underline-offset: 0.2em;
 }
 
-/* ---- The account's own page ---- */
+/* ---- The account's own page ----
 
-.account-page .page-lede {
-  margin-bottom: 1.25rem;
+   One tall box, and a row in it for each thing this person may change about
+   themselves. It was five bordered panels down a forty-rem column, which made
+   five sections of one short page look like five pages of an application.
+
+   Narrow on purpose, if not as narrow as it began: nothing here is wider than
+   a sentence and a control, and a settings form stretched across a desktop
+   leaves its labels and its switches a hand's width apart with nothing in
+   between to carry the eye. What sets the width now is the descriptions —
+   wide enough that each of them holds a line fewer than it did.
+
+   `main.page` sets the width for every page, element-and-class, so this has
+   to be at least as specific to narrow it — and to hang the box further below
+   the nav than a page of cards wants to be, since one box floating under the
+   bar needs the air to read as a sheet laid on the page rather than as
+   something stuck to the shelf above it. */
+main.account-page {
+  max-width: 44rem;
+  /* One box on an otherwise empty page, so it sits in the middle of what the
+     nav and the footer leave rather than hanging from the top. `main` is
+     already a column that grows to fill the page — every page's is, for the
+     footer's sake — so this only says where in it the box goes. Once the box
+     is taller than that space, which the browser-progress row can make it,
+     there is no free space to centre in and the page simply scrolls.
+
+     The padding is the floor under that: what keeps the box clear of the nav
+     when there is nothing left to centre. */
+  justify-content: center;
+  padding-top: 3rem;
 }
 
-.account-panel {
-  margin: 0 0 1rem;
-  padding: 1.1rem 1.25rem 1.2rem;
-  max-width: 40rem;
+.account-box {
+  padding: 1.4rem 1.5rem 1.5rem;
 }
 
-.account-heading {
-  margin: 0 0 0.5rem;
-  font-size: 1.05rem;
+/* The box names itself, centred, at the size a page title would be — because
+   it is one: there is no heading outside the box for it to defer to. */
+.account-title {
+  margin: 0 0 1.5rem;
+  font-size: 2rem;
+  text-align: center;
 }
 
-.account-note {
+/* No rule between the rows: what parts them is the air and the weight of the
+   question at the top of each, which on a page this short is enough. A line
+   between every pair would draw five boxes inside one box. */
+.account-row + .account-row {
+  margin-top: 1.5rem;
+}
+
+/* The question, and immediately after it whatever answers it. Ranged right,
+   the controls sat a hand's width from the words that named them with nothing
+   in between to carry the eye across; beside them, each pair reads as one
+   thing. Centred on the cross axis, so a label sits level with the middle of
+   its control rather than with the top of it. */
+.account-row-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.account-label {
+  flex: 0 0 auto;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* What answering the question does, said once: smaller than the question and
+   a step back from it in colour, so the page reads as five questions with
+   notes rather than as ten things to take in. A step back, not two — this is
+   the only place the page explains itself, and grey enough to be skipped is
+   grey enough to be missed. */
+.account-about {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #55504a;
+}
+
+/* Empty until something is refused, and taking no room while it is. The
+   switches save as they flip, so this is where a server that is not there, or
+   a session that expired in another tab, gets to say so. */
+.account-trouble {
   margin: 0.35rem 0 0;
-  color: #6c6459;
-  font-size: 0.92rem;
+  font-size: 0.85rem;
+  color: var(--wrong);
 }
 
+.account-trouble:empty {
+  display: none;
+}
+
+/* ---- The name ----
+
+   The count sits in the row, immediately after the box it counts, where it
+   reads as a fact about the box rather than as a label over it. */
+.account-count {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: #8d8378;
+}
+
+.account-count.is-wrong {
+  color: var(--wrong);
+}
+
+/* Sized to what may be typed into it. Twenty-four characters is the cap, and
+   a box three times that wide invites a name three times too long and then
+   refuses it. */
+.account-input {
+  width: 12rem;
+  padding: 0.28rem 0.5rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: #fffdf9;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.account-input:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
+/* No room held for it: it appears when there is a word to say and pushes the
+   rest of the page down as it does. Holding a blank line open for it left a
+   gap under the name that read as a missing row. */
 .account-verdict {
   margin: 0.3rem 0 0;
-  min-height: 1.3em;
-  font-size: 0.88rem;
-  color: #8d8378;
+  font-size: 0.85rem;
+  color: #6c6459;
+}
+
+.account-verdict:empty {
+  display: none;
 }
 
 .account-verdict.is-good {
@@ -4562,25 +4679,118 @@ main.page {
   color: var(--wrong);
 }
 
-/* The name box and its Save side by side, the box taking the room. */
-.account-name-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
+/* ---- The switches ----
 
-.account-name-row .details-field {
-  flex: 1 1 auto;
-  margin: 0;
-}
-
-.account-save {
+   The track alone, with no pill around it: the setting is already named in
+   bold beside it, and a bordered button holding one small graphic reads as a
+   control that has lost its words. */
+.switch.is-bare {
   flex: 0 0 auto;
+  padding: 0;
+  background: none;
+  border: 0;
 }
 
-.account-delete {
-  margin-top: 0.75rem;
+.switch.is-bare:hover {
+  background: none;
+}
+
+.switch.is-bare .switch-track {
+  width: 2.3rem;
+  height: 1.3rem;
+}
+
+.switch.is-bare .switch-knob {
+  width: calc(1.3rem - 4px);
+  height: calc(1.3rem - 4px);
+}
+
+.switch.is-bare.is-on .switch-knob {
+  transform: translateX(calc(2.3rem - 1.3rem));
+}
+
+/* ---- The two buttons that are not the accent ---- */
+
+/* Every button in this box is drawn to the height of the name field beside
+   them: the shared `.account-button` padding is a dialog's, and a settings row
+   of full-height buttons reads as a toolbar. */
+.account-box .account-button {
+  padding: 0.32rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+/* Beside the accented one, and quiet: forgetting this browser's records is
+   the lesser of the two answers and should not compete with bringing them in. */
+.account-button.is-quiet {
+  color: var(--ink);
+  background: #fffdf9;
+  border-color: var(--rule);
+}
+
+.account-button.is-quiet:hover {
+  background: #f5efe4;
+}
+
+/* ---- The one thing that cannot be undone ----
+
+   Its own box inside the box: a pale red ground and a thin dark red edge, so
+   that the row reads as a different kind of thing from the settings above it
+   without being shouted.
+
+   Inset by the same margin left, right and below, which is not set here but
+   falls out of `.account-box`'s own padding being equal on those three sides —
+   the box spans the content width and is the last thing in it. */
+.account-danger {
+  margin-top: 1.5rem;
+  padding: 0.9rem 1rem 1rem;
+  background: rgb(180 67 44 / 7%);
+  border: 1px solid #8e3623;
+  border-radius: 8px;
+}
+
+/* It is the whole of its box, so it brings no spacing of its own. */
+.account-danger .account-row {
+  margin-top: 0;
+}
+
+/* The one control on the page that is not beside the words that name it: it
+   is pushed to the far edge of its own box, where nothing can be pressed by
+   reaching for something else.
+
+   Smaller than the buttons above, and deliberately: at their size it stood a
+   good deal taller than the heading beside it and made this row taller than
+   the four above, which drew the eye by size rather than by colour. It clears
+   the heading's line by three pixels now — enough to read as a button and not
+   enough to make the row a different height from the others. */
+.account-danger .account-row-head .account-delete {
+  margin-left: auto;
+}
+
+.account-box .account-delete {
+  padding: 0.22rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* The one button on the site that undoes everything. Red rather than the
+   accent: the accent is what the site asks you to press, and this is not. */
+.account-delete,
+/* Only while it can be pressed: greyed out, it should look greyed out, and
+   this rule sits after the shared `:disabled` one and would otherwise win. */
+.account-delete-modal .modal-confirm:not(:disabled) {
+  background: var(--wrong);
+  border-color: var(--wrong);
+}
+
+.account-delete:hover,
+.account-delete-modal .modal-confirm:hover:not(:disabled) {
+  background: #9a3927;
+  border-color: #9a3927;
+}
+
+/* The box that asks for the name in writing. */
+.account-delete-modal .account-confirm {
+  width: 100%;
+  margin-top: 0.2rem;
 }
 
 /* ---- A page of prose: the privacy page ---- */

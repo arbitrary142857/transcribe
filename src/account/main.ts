@@ -18,7 +18,7 @@ try {
   const user = await viewer;
   if (user === undefined) {
     showTrouble(host, "Sign in to see your account.", {
-      heading: "Your account",
+      heading: "Account Settings",
       signIn: "/account",
     });
   } else {

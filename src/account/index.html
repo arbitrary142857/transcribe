@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Your account · Transcribe</title>
+    <title>Account Settings · Transcribe</title>
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="patterned is-account">
     <nav class="site-nav">
       <a class="site-name" href="/">Transcribe</a>
       <div id="site-nav" class="site-links">
@@ -16,12 +16,8 @@
     </nav>
 
     <main class="page account-page">
-      <h1 class="page-title">Your account</h1>
-      <p class="page-lede">
-        Your name, how you are shown, and what is yours to take away.
-      </p>
-
-      <!-- Filled in by main.ts once /api/me has said who is here. -->
+      <!-- No heading out here: the page is one box, and the box names itself.
+           Filled in by main.ts once /api/me has said who is here. -->
       <div id="account"></div>
     </main>
 
