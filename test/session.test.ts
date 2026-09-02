@@ -86,7 +86,15 @@ describe("usernameProblem()", () => {
   });
 
   it("refuses a reserved name in any case", () => {
-    for (const name of ["anonymous", "Anonymous", "ANONYMOUS", "admin", "Transcribe"]) {
+    for (const name of [
+      "anonymous",
+      "Anonymous",
+      "ANONYMOUS",
+      "admin",
+      "Transcribe",
+      "tuneup",
+      "Tune-Up",
+    ]) {
       assert.notEqual(usernameProblem(name), undefined, `allowed ${name}`);
     }
   });

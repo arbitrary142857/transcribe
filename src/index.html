@@ -2,35 +2,43 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!-- A document rather than a control surface, so unlike the editor this one
-         lets the page be zoomed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Transcribe</title>
+    <title>tune up</title>
+    <!-- The mark, at every size a browser wants one: an svg scales, so there
+         is one file rather than a ladder of pngs. It lives in `src/public`,
+         which Vite copies to the output root untouched, so this address is
+         the address — nothing here is hashed and nothing has to be looked up
+         to write it down. -->
+    <link rel="icon" href="/tune-up-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="level-page patterned is-public">
+  <!-- Plain ground, not one of the patterned ones. The patterns say which
+       kind of page you are on — globes for the catalog, notes for your own,
+       a pencil for the editor — and home is not one kind among them; the
+       mark in the middle wants nothing behind it. -->
+  <body class="home-page">
     <nav class="site-nav">
-      <a class="site-name" href="/" aria-current="page">Transcribe</a>
+      <!-- The logo is the door home, as it is on every other page, and one
+           object: the mark and the name are inside the one anchor, so the
+           whole lockup is the click. It is never marked current — not even
+           here — because it is the corner of the bar rather than one of the
+           places in it, and the bar under a tab is how those say where you
+           are. -->
+      <a class="site-logo" href="/">
+        <img class="site-logo-mark" src="/tune-up-icon.svg" alt="" width="450" height="450" />
+        <span class="site-logo-name">tune up</span>
+      </a>
       <div id="site-nav" class="site-links">
-        <!-- Filled in by site-nav.ts: the same places from every page, the
-             one you are on marked, and the corner that knows who you are. -->
+        <!-- Filled in by home.ts, as on every page. Nothing in the row is
+             marked here: home is the wordmark's, not the row's. -->
       </div>
     </nav>
 
-    <main class="page">
-      <div class="page-head">
-        <h1 class="page-title">Public Tunes</h1>
-
-        <!-- Filled in by home.ts, once /api/me has said who is looking: two of
-             the cuts behind the funnel are about the viewer's own doings and
-             are not offered to nobody. Empty in the markup rather than a
-             control swapped out later, so it never flashes as one shape and
-             settles as another. -->
-        <div id="levels-controls" class="level-controls"></div>
+    <main class="home-main">
+      <div class="home-mark">
+        <img src="/tune-up-icon.svg" alt="" width="450" height="450" />
+        <p class="home-wordmark">tune up</p>
       </div>
-
-      <ul id="levels" class="level-list"></ul>
-      <p id="levels-note" class="page-note" role="status">Loading…</p>
     </main>
 
     <footer class="site-foot"><a href="/about">About</a> · <a href="/privacy">Privacy</a></footer>

@@ -21,14 +21,15 @@
  * button was one more thing to know about, and the row of links costs less
  * than the knowing did.
  *
- * Signing in keeps you where you are: the link carries this page's address
- * back. A page with work in hand can give the nav something to do on the way
- * out — the editor stashes its melody. Signing out goes home: the page you
- * were on may well be one you can no longer open.
+ * Signing in keeps you where you are: the corner's "Sign In" opens the box in
+ * `sign-in-offer.ts`, whose one door carries this page's address back. A page
+ * with work in hand can give the nav something to do on the way out — the
+ * editor stashes its melody. Signing out goes home: the page you were on may
+ * well be one you can no longer open.
  */
 
 import { readMe, type UserSummary } from "../shared/session.js";
-import { googleButton } from "./google-button.js";
+import { openSignInOffer } from "./sign-in-offer.js";
 
 export type NavLink = { href: string; label: string; current: boolean };
 
@@ -48,12 +49,17 @@ export const cornerLabel = (user: UserSummary): string =>
  * sits, so a second way to the editor in the bar beside it would be the same
  * invitation twice. Signed out there is no such list, so the invitation is
  * the nav's to make, and it is worded as the button words it.
+ *
+ * Home is not among them. The wordmark to the left of this row is the door
+ * to it — on every page, so it is already the one thing in the bar that is
+ * always the same — and a second door beside it would be the row saying what
+ * the corner has said. Which is why `/` marks nothing here.
  */
 export function planNav(pathname: string, signedIn: boolean): NavLink[] {
   // The dev server answers `/edit` with `/edit/`; the two are one page.
   const here = pathname.length > 1 ? pathname.replace(/\/$/u, "") : pathname;
   return [
-    { href: "/", label: "Tunes", current: here === "/" },
+    { href: "/tunes", label: "Tunes", current: here === "/tunes" },
     signedIn
       ? { href: "/mine", label: "My Transcriptions", current: here === "/mine" }
       : { href: "/edit", label: "Create Transcription", current: here === "/edit" },
@@ -83,11 +89,32 @@ export function mountSiteNav(host: HTMLElement): SiteNav {
 
 const pageLink = (link: NavLink): HTMLAnchorElement => {
   const a = document.createElement("a");
+  a.className = "nav-tab";
   a.href = link.href;
   a.textContent = link.label;
   if (link.current) a.setAttribute("aria-current", "page");
   return a;
 };
+
+/**
+ * The corner's way in: a word in the bar's own voice, not Google's button.
+ *
+ * Google's button belongs on a page that is asking for it, at the size its
+ * rules describe; in the corner of a bar of quiet words it was the loudest
+ * thing on every page, and it said nothing about what signing in is for. So
+ * the corner says "Sign In" and the button lives in the box that opens, beside
+ * the reasons.
+ */
+function signInText(next: string, beforeGo: () => boolean): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "nav-word session-in";
+  button.textContent = "Sign In";
+  button.addEventListener("click", () => {
+    void openSignInOffer({ next, beforeGo });
+  });
+  return button;
+}
 
 async function hydrate(
   host: HTMLElement,
@@ -116,14 +143,14 @@ async function hydrate(
   const links = planNav(window.location.pathname, user !== undefined).map(pageLink);
 
   if (user === undefined) {
-    host.replaceChildren(...links, googleButton({ next: here, compact: true, beforeGo }));
+    host.replaceChildren(...links, signInText(here, beforeGo));
     return undefined;
   }
 
   // The name is the way to the account's own page: the same grey as the
   // links, and the one place on every page that says usernames exist.
   const name = document.createElement("a");
-  name.className = "session-name";
+  name.className = "nav-tab session-name";
   name.href = "/account";
   name.textContent = cornerLabel(user);
   if (window.location.pathname.replace(/\/$/u, "") === "/account") {
@@ -132,7 +159,7 @@ async function hydrate(
 
   const out = document.createElement("button");
   out.type = "button";
-  out.className = "session-out";
+  out.className = "nav-word session-out";
   out.textContent = "Sign out";
   out.addEventListener("click", () => {
     out.disabled = true;

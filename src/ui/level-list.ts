@@ -1,7 +1,7 @@
 /**
  * A list of levels, drawn as cards, with everything that can be done to one.
  *
- * Two pages hold one: the front page, which lists what is published and
+ * Two pages hold one: the catalog at /tunes, which lists what is published and
  * offers nothing to anybody but an admin (for whom every card carries the
  * pencil, Unpublish and the trash — the site's moderation, such as it is),
  * and "my transcriptions", which lists one author's drafts and published
@@ -83,7 +83,7 @@ export type LevelList = {
 };
 
 const SOURCE: Record<CardPage, string> = {
-  home: "/api/tunes",
+  tunes: "/api/tunes",
   mine: "/api/mine",
 };
 
@@ -126,7 +126,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
   /**
    * What this browser still holds from before somebody signed in — only ever
-   * on the front page, with somebody signed in, and only while records remain.
+   * on the catalog, with somebody signed in, and only while records remain.
    * The standing line under the list offers them.
    */
   let held: PlayProgress[] = [];
@@ -134,7 +134,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
   function render(): void {
     list.classList.toggle("is-compact", compact);
     const shown =
-      page === "home"
+      page === "tunes"
         ? filterCatalog(showing, filter, { hearted, viewerId: user?.id })
         : filterWork(showing, work);
     list.replaceChildren(
@@ -144,7 +144,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
       sayEmpty();
     } else if (shown.length === 0) {
       const why =
-        page === "home" ? catalogEmptySentence(filter) : workEmptySentence(work);
+        page === "tunes" ? catalogEmptySentence(filter) : workEmptySentence(work);
       say(why ?? "");
     } else {
       say("");
@@ -159,7 +159,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
    */
   function drawControls(): void {
     const parts: HTMLElement[] = [];
-    if (page === "home") {
+    if (page === "tunes") {
       parts.push(
         createCatalogFilters({
           filter,
@@ -227,7 +227,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
   /** The list emptying is worth saying, or the page just goes blank. */
   function sayEmpty(): void {
-    if (page === "home") {
+    if (page === "tunes") {
       say("No tunes yet.");
       return;
     }
@@ -274,7 +274,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
       // account's hearts, are asked while the levels are on their way.
       const [response, trouble, hearts] = await Promise.all([
         fetch(SOURCE[page], { headers: { accept: "application/json" } }),
-        page === "home"
+        page === "tunes"
           ? offerMergeOnArrival({ user, storage, local, fetch: browserFetch })
           : undefined,
         readHearts(),
@@ -294,7 +294,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
       // account, one local read per level for a browser.
       const progress = await store.readMany(levels.map((level) => level.id));
       showing = levels.map((level) => ({ level, progress: progress.get(level.id) }));
-      held = page === "home" && user !== undefined ? await local.readAll() : [];
+      held = page === "tunes" && user !== undefined ? await local.readAll() : [];
       hearted = hearts;
 
       drawControls();
@@ -404,10 +404,10 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
     return createLevelCard(level, {
       compact,
-      status: page === "home" ? playStatus(progress) : workStatus(level),
+      status: page === "tunes" ? playStatus(progress) : workStatus(level),
       statusTitle:
         page === "mine" && level.unpitchedCount > 0 ? countLeft(level) : undefined,
-      byline: page === "home" ? bylineOf(level, user) : undefined,
+      byline: page === "tunes" ? bylineOf(level, user) : undefined,
       editedAt: page === "mine" ? level.updatedAt : undefined,
       hearted: hearted.has(level.id),
       open,

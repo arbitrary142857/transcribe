@@ -226,27 +226,55 @@ app). Until the answer arrives, the nav corner is empty rather than wrong.
 The corner hands the answer back to the page, which has its own uses for it:
 whether Save will work, and whose cards carry tools (`cardPlan` in
 `level-card.ts` — drawing, never permission). The whole bar is built by
-`site-nav.ts` from one list — Levels, and then either Create Transcription
+`site-nav.ts` from one list — Tunes, and then either Create Transcription
 (signed out) or My Transcriptions (signed in) — with the current page
 marked, so every page offers the same places. Two links either way: signed
 in, the way to the editor is the "+ Create Transcription" button on your own
 page, and a second one in the bar beside it was the same invitation twice.
+Home is not in that list: the logo is the door to it, on every page.
+
+Each link is a tab — a region of the bar, not a piece of text. Hovering
+anywhere in the region colours the words in the accent and lays a thin bar of
+the same accent along the bottom edge of the nav; on the page you are on that
+bar is black and stays, and the words do not recolour under the pointer, there
+being nowhere to go. Orange is the invitation and black is the fact, so
+arriving is the bar settling rather than the bar appearing. The name in the
+corner is a tab like the others; Sign In and Sign out take the colour and
+never the bar, because a bar means "this is where you are" and neither is a
+place. Nothing in the bar is ever underlined — `text-decoration` on hover is
+a second mark saying what the bar already says, in a shape that hugs the
+letters instead of spanning the region.
 
 **The button is Google's.** Google's branding rules for a sign-in button
 that uses its name are required reading and are followed: the words are
 "Sign in with Google", the four-colour G is never resized against them or
 recoloured, and it sits on white (`google-button.ts`; the G is an inline SVG
-constant in `icons.ts`, so no asset is loaded from anywhere). The nav corner
-uses the icon-only shape the same rules allow. The one liberty taken is the
-font — the site's own rather than Google Sans — which every site that does
-not load Google's script takes.
+constant in `icons.ts`, so no asset is loaded from anywhere). The one liberty
+taken is the font — the site's own rather than Google Sans — which every site
+that does not load Google's script takes.
+
+It only ever stands on something that is asking for it. The nav corner used to
+carry an icon-only form of it, where it was the loudest thing on every page and
+said nothing about what signing in was for; the corner says "Sign In" in the
+bar's own voice now, and that opens the box in `sign-in-offer.ts`. The icon-only
+shape is gone from the codebase.
+
+That box asks nothing, so it has no "Not now": an × in the corner, the backdrop
+and Escape are the ways out, and the button is the only control in it, centred
+under everything it is the answer to. Above it are the three things an account
+gets you — writing and publishing tunes of your own, upvoting and rating public
+ones, and progress kept across browsers and devices — and then the other half of
+an honest ask: that an account can be fully deleted at any time, with a link to
+the privacy page rather than a summary of it here. The box is wider than every
+other dialog on the site for one reason: each perk is one sentence and should be
+one line.
 
 **Signing in keeps you where you are; signing out goes home.** Every sign-in
 link carries the page's own address as `next`. The editor goes further: the
 nav's sign-in is given a hook that stashes the melody first (see below), so
 signing in from the corner mid-transcription loses nothing. Sign-out always
-lands on `/`, because the page you were on — a draft, say — may be one you
-can no longer open. And the Google URL carries `prompt=select_account`:
+lands on `/`, the home page, because the page you were on — a draft, say —
+may be one you can no longer open. And the Google URL carries `prompt=select_account`:
 signing out of this site does not sign anybody out of Google, and without it
 a visitor who signed out would be sent straight back in as whoever they
 were, Google seeing one account and one consent already given.
@@ -336,7 +364,8 @@ moment. `chose_username` records whether the person has since picked their
 own; until they do, `/mine` and the profile page say once, quietly, that the
 name was picked for them. A chosen name is held to `usernameProblem`
 (`src/shared/session.ts`, shared with the page): 2–24 characters, letters and
-digits of any script plus `_` and `-`, not `anonymous`/`admin`/`transcribe`,
+digits of any script plus `_` and `-`, not
+`anonymous`/`admin`/`transcribe`/`tuneup`/`tune-up`,
 unique whatever its case (the column is `COLLATE NOCASE`), and never empty.
 The name is a fact about the user, not the level: every byline reads it from
 `users` at listing time, so a rename renames them all.

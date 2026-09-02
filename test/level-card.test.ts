@@ -79,7 +79,7 @@ describe("cardPlan()", () => {
 
   it("gives a visitor to the front page the card and nothing else", () => {
     for (const who of [undefined, stranger(), viewer()]) {
-      assert.deepEqual(cardPlan(level(), who, "home"), {
+      assert.deepEqual(cardPlan(level(), who, "tunes"), {
         edit: undefined,
         publish: undefined,
         delete: false,
@@ -88,7 +88,7 @@ describe("cardPlan()", () => {
   });
 
   it("gives an admin on the front page the pencil to the details box, Unpublish and the trash", () => {
-    assert.deepEqual(cardPlan(level(), admin(), "home"), {
+    assert.deepEqual(cardPlan(level(), admin(), "tunes"), {
       edit: "details",
       publish: "unpublish",
       delete: true,
@@ -136,12 +136,12 @@ describe("cardPlan()", () => {
 
 describe("cardOpening()", () => {
   it("opens the level's box from the catalog", () => {
-    assert.equal(cardOpening(level(), "home"), "box");
+    assert.equal(cardOpening(level(), "tunes"), "box");
   });
 
   it("opens nothing for a level with no complete answer to play against", () => {
     // `/api/tunes/:id/puzzle` refuses one for the same reason.
-    assert.equal(cardOpening(level({ unpitchedCount: 2 }), "home"), undefined);
+    assert.equal(cardOpening(level({ unpitchedCount: 2 }), "tunes"), undefined);
   });
 
   it("takes the author straight into the editor, drafts finished or not", () => {

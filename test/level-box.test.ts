@@ -29,7 +29,7 @@ const flawless = progress({ ...solved, checkCount: 1 });
 /** The catalog's box, opened on a tune nobody has touched. */
 const plan = (over: Partial<Parameters<typeof levelBoxPlan>[0]> = {}) =>
   levelBoxPlan({
-    page: "home",
+    page: "tunes",
     opening: "browse",
     own: false,
     maySpeak: false,
@@ -55,7 +55,7 @@ describe("levelBoxPlan()", () => {
   });
 
   it("closes rather than travels, from either list", () => {
-    for (const page of ["home", "mine"] as const) {
+    for (const page of ["tunes", "mine"] as const) {
       assert.deepEqual(plan({ page }).buttons[0], {
         label: "Close",
         act: "close",

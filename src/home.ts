@@ -1,22 +1,10 @@
 /**
- * The level list: what is published, for everybody.
+ * The home page: the mark, the name, and the nav around them.
  *
- * All of the drawing and the doing is in `createLevelList`, shared with the
- * page that lists one author's own; this page only says which page it is.
+ * Nothing is fetched and nothing is drawn here — the page is in the markup —
+ * so this is only the bar along the top, which every page mounts for itself.
  */
 
-import { createLevelList } from "./ui/level-list.js";
 import { mountSiteNav } from "./ui/site-nav.js";
 
-const { viewer } = mountSiteNav(document.getElementById("site-nav")!);
-
-void createLevelList({
-  elements: {
-    list: document.getElementById("levels")!,
-    note: document.getElementById("levels-note")!,
-    controls: document.getElementById("levels-controls")!,
-  },
-  storage: window.localStorage,
-  viewer,
-  page: "home",
-}).load();
+mountSiteNav(document.getElementById("site-nav")!);

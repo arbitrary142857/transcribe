@@ -1,9 +1,8 @@
 /**
- * My transcriptions: one author's drafts and published levels.
+ * The tune list at /tunes: what is published, for everybody.
  *
- * The same list as the catalog, drawn from `/api/mine` instead, with the
- * pencil, the move between draft and published, and the trash on every card —
- * since every card here is the viewer's own.
+ * All of the drawing and the doing is in `createLevelList`, shared with the
+ * page that lists one author's own; this page only says which page it is.
  */
 
 import { createLevelList } from "../ui/level-list.js";
@@ -19,5 +18,5 @@ void createLevelList({
   },
   storage: window.localStorage,
   viewer,
-  page: "mine",
+  page: "tunes",
 }).load();

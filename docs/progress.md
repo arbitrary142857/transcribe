@@ -162,7 +162,7 @@ in again -- and a silent merge would hand B's records to A.
 The question is asked when an account is **new to this machine**:
 `localStorage["transcribe:viewer"]` holds the id of the last account this
 browser was asked about, and when `/api/me` answers with a different one and
-the browser holds at least one readable record, `/` and `/play` open a modal
+the browser holds at least one readable record, `/tunes` and `/play` open a modal
 -- bring it in, or leave it here. Either answer writes the marker, so the
 question is asked once per account per machine. While somebody is signed in
 and records remain in the browser, the catalog's note line offers the same
@@ -184,7 +184,7 @@ could never be taken.
 
 ## The catalog
 
-`/` reads progress once (`GET /api/progress` for an account, one local read
+`/tunes` reads progress once (`GET /api/progress` for an account, one local read
 per level otherwise) and draws each card's status word — Not Started (no
 record, or no pitches), In Progress (pitches, no solve), Transcribed
 (solved) — along with "Resume" and "Play again" in the level's box. The same

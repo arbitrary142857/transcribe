@@ -76,7 +76,7 @@ export const countLeft = (level: TranscriptionSummary): string =>
     : `${level.unpitchedCount} notes need pitches`;
 
 /** Which list the card is in: everybody's, or the viewer's own. */
-export type CardPage = "home" | "mine";
+export type CardPage = "tunes" | "mine";
 
 /**
  * What pressing a card does, or nothing at all.
@@ -109,7 +109,7 @@ export function cardOpening(
  * page that is nothing, except to an admin, for whom it is the way to tidy
  * up: the pencil to the details box, Unpublish — the author's own Unpublish,
  * handing the level back to them as a draft under a new id — and the trash.
- * Never Publish there, because the front page lists nothing that is not
+ * Never Publish there, because the catalog lists nothing that is not
  * published already. On your own page it is the pencil — into the editor
  * while a level is a draft, into the details box once it is published and
  * its music is frozen — the way across that line, and the trash.
@@ -134,7 +134,7 @@ export function cardPlan(
   if (viewer === undefined) return nothing;
 
   const theirs = viewer.isAdmin || viewer.id === level.ownerId;
-  if (page === "home") {
+  if (page === "tunes") {
     return viewer.isAdmin
       ? { edit: "details", publish: "unpublish", delete: true }
       : nothing;
@@ -206,7 +206,7 @@ export type LevelCardOptions = {
   hearted?: boolean;
   /**
    * The pencil: somewhere to go, or something to do here. Absent, and the
-   * card carries no pencil — which on the front page is everybody but an
+   * card carries no pencil — which on the catalog is everybody but an
    * admin.
    */
   edit?: { href: string } | { run: () => void };

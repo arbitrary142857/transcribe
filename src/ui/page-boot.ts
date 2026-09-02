@@ -82,7 +82,9 @@ export function showTrouble(
 
   const back = document.createElement("p");
   const link = document.createElement("a");
-  link.href = "/";
+  // The catalog rather than home: what failed was opening one tune, and the
+  // remedy is the list the others are on.
+  link.href = "/tunes";
   link.textContent = "Back to the tunes";
   back.append(link);
 

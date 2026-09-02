@@ -86,7 +86,7 @@ async function readProgress(
     local,
     fetch: browserFetch,
   });
-  // The records are still in this browser, and the front page offers them
+  // The records are still in this browser, and the catalog offers them
   // again; this page has nowhere to say so.
   if (trouble !== undefined) console.error(trouble);
 

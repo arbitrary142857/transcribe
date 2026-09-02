@@ -2,12 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <!-- A document rather than a control surface, so unlike the editor this one
+         lets the page be zoomed. -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Account Settings · tune up</title>
+    <title>Tunes · tune up</title>
     <link rel="icon" href="/tune-up-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body class="patterned is-account">
+  <body class="level-page patterned is-public">
     <nav class="site-nav">
       <a class="site-logo" href="/">
         <img class="site-logo-mark" src="/tune-up-icon.svg" alt="" width="450" height="450" />
@@ -19,10 +21,20 @@
       </div>
     </nav>
 
-    <main class="page account-page">
-      <!-- No heading out here: the page is one box, and the box names itself.
-           Filled in by main.ts once /api/me has said who is here. -->
-      <div id="account"></div>
+    <main class="page">
+      <div class="page-head">
+        <h1 class="page-title">Public Tunes</h1>
+
+        <!-- Filled in by main.ts, once /api/me has said who is looking: two of
+             the cuts behind the funnel are about the viewer's own doings and
+             are not offered to nobody. Empty in the markup rather than a
+             control swapped out later, so it never flashes as one shape and
+             settles as another. -->
+        <div id="levels-controls" class="level-controls"></div>
+      </div>
+
+      <ul id="levels" class="level-list"></ul>
+      <p id="levels-note" class="page-note" role="status">Loading…</p>
     </main>
 
     <footer class="site-foot"><a href="/about">About</a> · <a href="/privacy">Privacy</a></footer>

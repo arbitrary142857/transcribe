@@ -77,11 +77,22 @@ export const authorLabel = (author: string | undefined): string =>
 export const USERNAME = { min: 2, max: 24 } as const;
 
 /**
- * Names nobody may take: the word a byline uses for nobody, and two that
- * would read as the site speaking. Compared in lower case, because the
- * column is NOCASE and so is a reader.
+ * Names nobody may take: the word a byline uses for nobody, and the ones that
+ * would read as the site speaking. Compared in lower case, because the column
+ * is NOCASE and so is a reader.
+ *
+ * The site's name is here in both of its spellings, and so is the name it had
+ * before: a byline reading "by tuneup" should not be able to be a person, and
+ * an account that took "transcribe" while that was the name would still read
+ * as the site to anybody who was here then.
  */
-export const RESERVED_USERNAMES: readonly string[] = ["anonymous", "admin", "transcribe"];
+export const RESERVED_USERNAMES: readonly string[] = [
+  "anonymous",
+  "admin",
+  "transcribe",
+  "tuneup",
+  "tune-up",
+];
 
 /**
  * Letters and digits from any script, the underscore and the hyphen. The

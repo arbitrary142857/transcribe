@@ -449,7 +449,7 @@ function wayOut(
     link.textContent = button.label;
     link.href =
       button.act === "catalog"
-        ? "/"
+        ? "/tunes"
         : `/play?tune=${encodeURIComponent(options.level.id)}`;
     if (button.act === "play") {
       // The puzzle page opens this box for itself when somebody arrives cold;

@@ -2379,6 +2379,72 @@ main.editor-main {
   color: #4c463e;
 }
 
+/* Points under the message, where a box is making several parallel ones —
+   what an account gets you, and so far only that. Set as the body is, with the
+   markers pulled in to the box's own text edge rather than left hanging in the
+   default indent. */
+.modal-list {
+  margin: 0 0 0.9rem;
+  padding-left: 1.15rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #4c463e;
+}
+
+.modal-list li + li {
+  margin-top: 0.4rem;
+}
+
+.modal-list::marker,
+.modal-list li::marker {
+  color: var(--note-selected);
+}
+
+/* ---- The box the corner's "Sign In" opens ----
+
+   Wider than every other box here, and for one reason: each perk is one
+   sentence and should be one line. A perk that wraps reads as two, and three
+   of them wrapping reads as six. The width is what the longest of the three
+   needs; `max-width` still gives way to a narrow window, where wrapping is the
+   only honest thing left to do.
+
+   It asks nothing — the × is the way out — so there is no button row at the
+   foot, only the one way in, centred under everything it is the answer to. */
+.signin-modal {
+  max-width: 44rem;
+}
+
+/* Bigger than the type in the boxes that ask questions. Those interrupt
+   something and want reading fast; this one is the site introducing itself to
+   somebody who has never signed in, and is the only reading on the screen. */
+.signin-modal .modal-body,
+.signin-modal .modal-list {
+  font-size: 1.05rem;
+}
+
+/* The name of the thing, at the size a page is named rather than a dialog:
+   this box is an invitation, and the other boxes here are questions. */
+.signin-modal .modal-title {
+  margin-bottom: 0.8rem;
+  font-size: 1.5rem;
+}
+
+/* The sentence that is not a perk: an account can be undone, and the page that
+   says so in full is a link rather than a summary. */
+.signin-note {
+  margin-bottom: 0;
+}
+
+.signin-note a {
+  color: var(--note-selected);
+}
+
+.signin-way {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.2rem;
+}
+
 .modal-buttons {
   display: flex;
   justify-content: flex-end;
@@ -3167,63 +3233,165 @@ body.show-keys .keys-note {
 
 /* ---- The bar across the top of every page ----
 
-   Lined up with the editor's toolbar rather than with the window, so the
-   wordmark sits over the controls below it instead of out at the edge. On the
-   editor this scrolls away and the sticky toolbar takes the top back, which is
-   why it can afford to be here at all. */
+   A logo at one end and a row of tabs at the other. The tabs are the site's
+   own sections, and each is a region rather than a piece of text: hovering
+   anywhere in the region colours the words and lays a thin bar along the
+   bottom edge of the bar, and the page you are on keeps that bar lit for as
+   long as you are there.
+
+   Nothing in this bar is ever underlined. `text-decoration` under a word on
+   hover is a different mark from the tab's bar — it hugs the letters instead
+   of spanning the region, and having both would say the same thing twice in
+   two shapes. The bar is the only mark the nav makes.
+
+   Lined up with the editor's toolbar rather than with the window, so the logo
+   sits over the controls below it instead of out at the edge. On the editor
+   this scrolls away and the sticky toolbar takes the top back, which is why
+   it can afford to be here at all. */
 
 /* The site's bar, ruled off at the bottom like every other boundary between
    regions here — the toolbar's, the keyboard band's, the side panel's — so the
    frame below it reads as a region rather than as the nav's own overflow.
 
-   The rule wants the whole window while the links want their 1200px column, so
-   the bar runs edge to edge and the column is made out of its padding instead
-   of out of a width: the content box comes to exactly what `max-width: 1200px`
-   with 1.5rem of padding used to give, and the border is the window's. `max`
-   holds the plain padding on a window narrower than the column. */
+   The rule wants the whole window while the content wants its 1200px column,
+   so the bar runs edge to edge and the column is made out of its padding
+   instead of out of a width: the content box comes to exactly what
+   `max-width: 1200px` with 1.5rem of padding used to give, and the border is
+   the window's. `max` holds the plain padding on a window narrower than the
+   column.
+
+   The height is the bar's own and the vertical padding is nought, because a
+   tab has to reach the bottom edge to draw its bar there. Every child stretches
+   to the full height, which is what makes a tab's hover region the tall strip
+   it is rather than the line of text inside it. */
 .site-nav {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: stretch;
   justify-content: space-between;
-  gap: 0.6rem 1.2rem;
+  gap: 0 1.2rem;
   width: 100%;
+  min-height: 3.5rem;
   /* One column width for every page, so the bar is in the same place
      whichever page you arrive on. It is the document pages' column
      (`main.page`), which is where the alignment is visible; the editor's own
      toolbar keeps its narrower one, since the score's width is worked out
      from it. */
-  padding: 0.85rem max(1.5rem, calc((100% - 1320px) / 2 + 1.5rem)) 0.7rem;
+  padding: 0 max(1.5rem, calc((100% - 1320px) / 2 + 1.5rem));
   background: var(--nav-band);
   border-bottom: 1px solid var(--frame-rule);
 }
 
-.site-name {
-  color: var(--ink);
-  font-size: 1.05rem;
-  font-weight: 700;
+/* ---- The logo: the mark and the name, as one thing to click ----
+
+   The same lockup the home page draws large, at the size of a bar. One anchor
+   around both halves, so the whole of it — the icon, the gap, the word — is
+   the door home rather than the four letters being it.
+
+   No hover of its own. It is a mark, not a tab: it has no bar to light,
+   because home is not one of the sections the tabs are, and a colour change
+   under the pointer would be a second language for "this is a link" in a bar
+   that already has one. */
+.site-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   text-decoration: none;
 }
 
+.site-logo-mark {
+  width: 2rem;
+  height: 2rem;
+}
+
+.site-logo-name {
+  color: var(--note-selected);
+  /* 0.7 of the mark beside it, the same proportion the home page's large
+     lockup is set at, so the two are one thing at two sizes. */
+  font-size: 1.4rem;
+  font-weight: 800;
+  /* Tight, as the home page sets it: this is a wordmark, not running text. */
+  letter-spacing: -0.02em;
+}
+
+/* ---- The tabs ----
+
+   Content-sized and spaced apart, so each bar is the width of its own words
+   and their padding and the bars do not run together into one rule. */
 .site-links {
   display: flex;
-  gap: 1.1rem;
-  font-size: 0.85rem;
+  align-items: stretch;
+  gap: 1.4rem;
+  font-size: 0.95rem;
 }
 
-.site-links a {
-  color: #6c6459;
+/* A tab is a page: a link, and a bar under it while you are on it.
+
+   The bar is declared here and merely transparent until it is wanted, rather
+   than added on hover, so nothing in the row moves by two pixels when the
+   pointer arrives. */
+.nav-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 0.9rem;
+  color: var(--ink);
   text-decoration: none;
+  /* A tab is one region and its bar is that region's width, so a label that
+     broke over two lines would be drawing a two-line region. The row wraps
+     instead, as a row. */
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
 }
 
-.site-name:hover,
-.site-links a:hover {
-  text-decoration: underline;
+/* Under the pointer the bar is the accent, with the words: an offer, in the
+   colour this site makes offers in. */
+.nav-tab:hover {
+  color: var(--note-selected);
+  border-bottom-color: var(--note-selected);
 }
 
-/* Where you already are is a label, not a door. */
-.site-name[aria-current="page"]:hover {
-  text-decoration: none;
+/* Where you already are: the bar goes black and stays, and the words do not
+   change under the pointer. Orange is the invitation and black is the fact, so
+   arriving is the bar settling rather than the bar appearing. */
+.nav-tab[aria-current="page"] {
+  border-bottom-color: var(--ink);
+}
+
+.nav-tab[aria-current="page"]:hover {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
+/* ---- Words in the bar that are not pages ----
+
+   Sign In and Sign out do something rather than go somewhere, so they take the
+   hover colour and never the bar: a bar means "this is where you are", and
+   neither of these is a place. The transparent border keeps them on the same
+   line as the tabs beside them. */
+.nav-word {
+  display: flex;
+  align-items: center;
+  padding: 0 0.9rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.nav-word:hover {
+  color: var(--note-selected);
+}
+
+/* The site's ring rather than the browser's, drawn inside the region: a tab is
+   as tall as the bar, and a ring offset outwards from one would be a ring
+   around the nav. */
+.nav-tab:focus-visible,
+.nav-word:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: -3px;
 }
 
 /* ---- Who is signed in, in the corner every page shares ----
@@ -3236,46 +3404,48 @@ body.show-keys .keys-note {
   display: contents;
 }
 
-/* The name is the door to the account's page: a link like the ones beside
-   it, drawn the same grey. */
-.session-name {
-  color: #6c6459;
-  text-decoration: none;
+/* A window too narrow for the row beside the logo. The row wraps under it
+   whatever happens; this keeps it to one line of its own by giving back the
+   padding the tabs can spare, rather than letting four labels become eight. */
+@media (max-width: 620px) {
+  .site-nav {
+    min-height: 3.4rem;
+  }
+
+  .site-logo-mark {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .site-logo-name {
+    font-size: 1.1rem;
+  }
+
+  .site-links {
+    gap: 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .nav-tab,
+  .nav-word {
+    padding: 0 0.45rem;
+  }
 }
 
-.session-name:hover {
-  text-decoration: underline;
-}
-
-/* A button dressed as the links beside it, because it belongs to the nav,
-   not to a form. */
-.session-out {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: #6c6459;
-  cursor: pointer;
-}
-
-.session-out:hover {
-  text-decoration: underline;
-}
-
-/* The page you are on: the same link as on every other page, marked rather
-   than missing, so the bar reads the same wherever you are. */
-.site-links a[aria-current="page"] {
-  color: var(--ink);
-  text-decoration: underline;
-  text-underline-offset: 0.3em;
-}
+/* The name is the door to the account's page, and so a tab like the others:
+   `.nav-tab` carries the whole of how it looks. The class remains because the
+   account page reaches for it by name to write a new name into the corner. */
 
 /* ---- Sign in with Google, as Google asks it to be drawn ----
 
    The light theme: white, a grey hairline, dark words, and the four-colour G
-   at its standard size beside them. The compact form is the icon-only shape
-   the same rules allow, for the corner of the nav. Nothing here recolours the
-   G; nothing may. */
+   at its standard size beside them. Nothing here recolours the G; nothing may.
+
+   It stands on a page that is asking for it — the box the corner's "Sign In"
+   opens, the editor's "sign in to save", the empty list that needs somebody.
+   It used to ride in the corner of the nav as an icon-only disc, where it was
+   the loudest thing on every page; the corner says a word now and this is what
+   the word opens. */
 
 .google-signin {
   display: inline-flex;
@@ -3309,25 +3479,6 @@ body.show-keys .keys-note {
 .google-signin-glyph svg {
   width: 100%;
   height: 100%;
-}
-
-.google-signin.is-compact {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 50%;
-}
-
-.google-signin.is-compact .google-signin-glyph {
-  width: 18px;
-  height: 18px;
-}
-
-/* The corner's links are grey text; the G is not, and should not look like
-   one of them. The nav's own link rule must not paint it. */
-.site-links a.google-signin {
-  color: #1f1f1f;
 }
 
 .level-trouble-signin {
@@ -3528,6 +3679,60 @@ textarea.details-input {
 
 .details-modal-problem:empty {
   display: none;
+}
+
+
+/* ---- The home page ----
+
+   The mark and the name, once, in the middle of an empty page. Everything
+   else the site can do is a link in the bar above it; this page's whole job
+   is to say what the place is called.
+
+   `main` is `flex: 1 0 auto` in a body that is a flex column, so it holds
+   whatever height the nav and the footer leave; centring inside it puts the
+   mark between them rather than in the middle of the document, which on a
+   window short enough to scroll are two different places.
+
+   One size drives both halves. The icon's is the clamp and the words are a
+   fraction of it, so the pair keeps its proportion at every width instead of
+   two clamps drifting apart and leaving the words taller than the mark on
+   some phone. 0.7 is where the lowercase "tune up" comes to about the height
+   of the square beside it — the letters have no capitals to measure against,
+   so this is set by eye and not by a cap height. The nav's small lockup is
+   set at the same 0.7, so the two are one thing at two sizes. */
+
+body.home-page {
+  background: var(--page-bg);
+}
+
+main.home-main {
+  justify-content: center;
+  padding-bottom: 4rem;
+}
+
+.home-mark {
+  --mark: clamp(4rem, 16vw, 7rem);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--mark) * 0.22);
+}
+
+.home-mark img {
+  width: var(--mark);
+  height: var(--mark);
+}
+
+/* The one place on the site set in the accent at size. It is a wordmark
+   rather than a heading — the page has no sections for it to head — so it is
+   a <p>, and the <title> is what says what the page is. */
+.home-wordmark {
+  margin: 0;
+  font-size: calc(var(--mark) * 0.7);
+  font-weight: 800;
+  line-height: 1;
+  /* Tight, the way a wordmark is set and running text is not. */
+  letter-spacing: -0.02em;
+  color: var(--note-selected);
 }
 
 

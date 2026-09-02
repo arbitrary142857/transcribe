@@ -135,7 +135,7 @@ export function filterByHeat<
 
 // ---- the catalog ----------------------------------------------------------
 
-/** Everything the front page's filter box holds, in one value. */
+/** Everything the catalog's filter box holds, in one value. */
 export type CatalogFilter = {
   statuses: Chosen<ProgressBucket>;
   heat: HeatRange;

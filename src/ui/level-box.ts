@@ -21,7 +21,7 @@ import type { TranscriptionSummary } from "../shared/transcription.js";
 import { bucketOf } from "./level-filter.js";
 
 /** Which page the box was opened on, which decides where its way back goes. */
-export type BoxPage = "home" | "mine" | "play";
+export type BoxPage = "tunes" | "mine" | "play";
 
 /**
  * What opened it.
@@ -92,7 +92,7 @@ const WAY_BACK: Record<BoxPage, string> = {
   // From either list it closes rather than goes, and says so: you are already
   // on the page it would name, and a button that promises a journey it does
   // not make is worse for being specific about it.
-  home: "Close",
+  tunes: "Close",
   mine: "Close",
   play: "Back to Public Tunes",
 };

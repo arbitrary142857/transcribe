@@ -4,15 +4,15 @@ import { cornerLabel, planNav } from "../dist/ui/site-nav.js";
 
 describe("planNav()", () => {
   it("offers the tunes and the way to make one, and says which page this is", () => {
-    const fromHome = planNav("/", false);
+    const fromTunes = planNav("/tunes", false);
     const fromEditor = planNav("/edit", false);
 
     assert.deepEqual(
-      fromHome.map((link) => link.href),
-      ["/", "/edit"],
+      fromTunes.map((link) => link.href),
+      ["/tunes", "/edit"],
     );
     assert.deepEqual(
-      fromHome.map((link) => link.current),
+      fromTunes.map((link) => link.current),
       [true, false],
     );
     assert.deepEqual(
@@ -25,7 +25,7 @@ describe("planNav()", () => {
     // The button on "my transcriptions" says the same thing; somebody signed
     // out has no such page, so the nav is where the invitation lives.
     assert.deepEqual(
-      planNav("/", false).map((link) => link.label),
+      planNav("/tunes", false).map((link) => link.label),
       ["Tunes", "Create Transcription"],
     );
   });
@@ -34,11 +34,11 @@ describe("planNav()", () => {
     // Two ways to the same editor, one of them a duplicate: the page they
     // land on carries "+ Create Transcription" itself.
     assert.deepEqual(
-      planNav("/", true).map((link) => link.href),
-      ["/", "/mine"],
+      planNav("/tunes", true).map((link) => link.href),
+      ["/tunes", "/mine"],
     );
     assert.deepEqual(
-      planNav("/", true).map((link) => link.label),
+      planNav("/tunes", true).map((link) => link.label),
       ["Tunes", "My Transcriptions"],
     );
   });
@@ -50,12 +50,21 @@ describe("planNav()", () => {
     );
   });
 
+  it("marks nothing on the home page, which the wordmark is the way to", () => {
+    // Home is not one of the nav's own places: the wordmark in the corner is
+    // the door to it, and a row that marked nothing would be a row with a
+    // link nobody could see they were already on.
+    assert.equal(planNav("/", false).some((link) => link.current), false);
+    assert.equal(planNav("/", true).some((link) => link.current), false);
+  });
+
   it("calls a level being played no page of the nav's", () => {
     assert.equal(planNav("/play", true).some((link) => link.current), false);
   });
 
   it("is unmoved by a trailing slash or a query, which the dev server adds", () => {
     assert.equal(planNav("/edit/", false).find((l) => l.href === "/edit")?.current, true);
+    assert.equal(planNav("/tunes/", false).find((l) => l.href === "/tunes")?.current, true);
     assert.equal(planNav("/mine/", true).find((l) => l.href === "/mine")?.current, true);
   });
 });

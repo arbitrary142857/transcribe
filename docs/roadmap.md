@@ -12,15 +12,17 @@ update the status table when a phase lands.
 | --- | --- | --- |
 | 1 | Sign in with Google; sessions; `/api/me` | Shipped 2026-08-20 (`dc0528e`) |
 | 2 | Levels have owners; drafts and publishing; `/mine`; sign-in-to-save | Shipped 2026-08-21 (`4b81daf` server, `c1b9c1c` client) |
-| 3 | Progress kept on the server, per account; merge offered at sign-in; filters on `/` | Shipped 2026-08-21 (`3b6d72e` server, then client) |
+| 3 | Progress kept on the server, per account; merge offered at sign-in; filters on the catalog | Shipped 2026-08-21 (`3b6d72e` server, then client) |
 | 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
-| 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of `/` | Shipped 2026-08-22; no admin page, by decision |
+| 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of the catalog | Shipped 2026-08-22; no admin page, by decision |
 | 6 | Difficulty from solvers' ratings blended with the author's word (`share_stats` honoured at read time), peppers and the stepper, the range filter, `/about`; hearts, the grown-up solved box, solver counts and median times | Difficulty committed 2026-08-25 (`177c17b`); hearts and play figures built 2026-08-25; error reports remain |
 | — | The tune's box redrawn; the pepper picker; "level" → "tune" everywhere public, URLs included; drafts unplayable | Committed 2026-09-02 (`0687f75`) |
+| — | A home page at `/`; the catalog moved to `/tunes`; the site renamed "tune up"; the mark as favicon | Built 2026-09-02 |
+| — | The nav redrawn: the logo as one object, tabs with a bar rather than an underline, and "Sign In" opening a box that says why | Built 2026-09-02 |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
-(before any note) is not stashed across a sign-in; the nav's visual design.
+(before any note) is not stashed across a sign-in.
 
 ## Settled decisions
 
@@ -52,8 +54,9 @@ nothing rather than the wrong answer. Authorization answers: 401 signed out
 stranger on a draft. Published levels are playable by anybody with no
 session lookup; the lookup happens only once a row turns out to be a draft.
 
-**The pages.** `/` is the public catalog, "Public Levels" (for an admin only,
-every card carries the details pencil, Unpublish and the trash); `/mine` is
+**The pages.** `/` is the home page — the mark, the name, and nothing else;
+`/tunes` is the public catalog, "Public Tunes" (for an admin only, every
+card carries the details pencil, Unpublish and the trash); `/mine` is
 the author's list, "My Transcriptions" (pencil to the editor for a draft, to
 a details box for a published level; Publish/Unpublish as a worded button on
 the card, greyed with its reason while a draft is unfinished or unrated;
@@ -146,8 +149,8 @@ nothing. Three decisions moved from the sketch above this once said:
 
 On the client: the account store (`account-progress.ts`) falls back to
 local storage when a save or read cannot reach the server, so nothing typed
-is lost; the hand-off (`handoff.ts`, drawn by `merge-offer.ts`) asks on `/`
-and `/play` and stands as a line under the catalog afterwards; the catalog
+is lost; the hand-off (`handoff.ts`, drawn by `merge-offer.ts`) asks on
+`/tunes` and `/play` and stands as a line under the catalog afterwards; the catalog
 reads progress with one request (`readMany`) and filters All · Unplayed ·
 In progress · Solved, not remembered between visits.
 
@@ -187,7 +190,7 @@ it counts as choosing it.
 ## Phase 5, as built
 
 The moderation view this phase once promised was dropped, by decision: the
-site's moderation is the catalog itself. An admin on `/` has, on every
+site's moderation is the catalog itself. An admin on `/tunes` has, on every
 card, the three tools the author has on `/mine` for a published level — the
 pencil to the details box, Unpublish and the trash — and nothing else
 anywhere. `cardPlan` in `src/ui/level-card.ts` is the one place that says
