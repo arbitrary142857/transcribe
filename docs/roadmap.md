@@ -16,7 +16,7 @@ update the status table when a phase lands.
 | 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
 | 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of `/` | Shipped 2026-08-22; no admin page, by decision |
 | 6 | Difficulty from solvers' ratings blended with the author's word (`share_stats` honoured at read time), peppers and the stepper, the range filter, `/about`; hearts, the grown-up solved box, solver counts and median times | Difficulty committed 2026-08-25 (`177c17b`); hearts and play figures built 2026-08-25; error reports remain |
-| — | The tune's box redrawn; the pepper picker; "level" → "tune" everywhere public, URLs included; drafts unplayable | Built 2026-09-02; awaiting click-through |
+| — | The tune's box redrawn; the pepper picker; "level" → "tune" everywhere public, URLs included; drafts unplayable | Committed 2026-09-02 (`0687f75`) |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
