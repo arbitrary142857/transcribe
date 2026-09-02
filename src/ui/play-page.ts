@@ -38,12 +38,11 @@ import {
   type TranscriptionRecord,
 } from "../shared/transcription.js";
 import { ANONYMOUS, type UserSummary } from "../shared/session.js";
-import { editDetails } from "./details-modal.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
 import { keepingScroll } from "./score-overlay.js";
-import { solvedContribution } from "./rating-prompt.js";
-import { upvoteLine } from "./upvote-line.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
+import { arrivedCold } from "./arrival.js";
+import type { BoxOpening } from "./level-box.js";
 import { openLevelModal } from "./level-modal.js";
 import { createPanelActions, type PanelActions } from "./panel-actions.js";
 import { CHECKING_MS, stillToWait } from "./pacing.js";
@@ -200,8 +199,36 @@ export function createPlayPage(
     watch = pauseStopwatch(watch, performance.now());
   }
 
-  const onVisibility = () => {
+  /**
+   * Whether a box is standing over the puzzle.
+   *
+   * The clock does not run under one. Reading what the tune is, or what its
+   * author wants known, is not transcribing it — the same reason the clock
+   * stops when the tab goes away, and the same admission: this is a clock kept
+   * by the page for the player's own interest, and it will move behind the
+   * check route on the day times are compared between people.
+   */
+  let reading = false;
+
+  function holdClock(): void {
     if (solved) return;
+    reading = true;
+    watch = pauseStopwatch(watch, performance.now());
+  }
+
+  function releaseClock(): void {
+    reading = false;
+    // Not while the tab is away: the box may well have been closed by a
+    // keystroke in another window, and starting the clock on a page nobody is
+    // looking at is exactly what the visibility rule exists to prevent.
+    if (solved || document.visibilityState === "hidden") return;
+    watch = resumeStopwatch(watch, performance.now());
+  }
+
+  const onVisibility = () => {
+    // Under a box the clock is already stopped and must stay stopped: coming
+    // back to the tab is not coming back to the work.
+    if (solved || reading) return;
     watch =
       document.visibilityState === "hidden"
         ? pauseStopwatch(watch, performance.now())
@@ -368,7 +395,7 @@ export function createPlayPage(
 
     const attempt = attemptOf(melody);
     try {
-      const response = await fetch(`/api/levels/${level.id}/check`, {
+      const response = await fetch(`/api/tunes/${level.id}/check`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -382,7 +409,7 @@ export function createPlayPage(
         // be checked" in front of it.
         await settle();
         checking = false;
-        report = "This level has been taken down.";
+        report = "This tune has been taken down.";
         showBar();
         return;
       }
@@ -452,7 +479,7 @@ export function createPlayPage(
         // The solved box, once the burst has had its moment. Only on the
         // check that solved it: reopening an already-solved level restores
         // `solved` quietly, and this branch is never reached again.
-        setTimeout(() => openAbout(true), EFFECT_MS + 500);
+        setTimeout(() => openAbout("solving"), EFFECT_MS + 500);
       }
 
       save();
@@ -493,27 +520,35 @@ export function createPlayPage(
   // ---- the bar -----------------------------------------------------------
 
   /**
-   * The same box the level list opens, with the ways onward instead of the
-   * way in: you are already here, so a Play button would offer the page you
-   * are standing on. Once solved it carries the viewer's part — the rating
-   * prompt and the heart, or the author's note — and the solving check
-   * opens it unasked, celebrating; the info button reopens it quietly.
+   * How far this puzzle has got, as the box reads it.
+   *
+   * `progressNow` counts the note the puzzle gave away, because the check
+   * route is sent every pitch on the stave; the box must not, or a tune opened
+   * a moment ago would offer to be *continued*. Nobody wrote that note.
    */
-  function openAbout(celebrate = false): void {
+  const boxProgress = (): PlayProgress => ({
+    ...progressNow(),
+    pitches: [...attemptOf(melody)]
+      .filter(([index]) => !given.has(index))
+      .map(([index, midi]) => ({ index, midi })),
+  });
+
+  /**
+   * The same box the lists open, opened three ways from here: by arriving at a
+   * puzzle without having come through a list, by the (i) beside the title,
+   * and by the check that solved it. `levelBoxPlan` knows what each offers;
+   * all this page adds is that the clock stops while any of them is up.
+   */
+  function openAbout(opening: BoxOpening): void {
+    holdClock();
     openLevelModal({
       level: record,
       instructions: record.instructions,
-      celebrate,
-      wayOut: true,
-      solvedIn: solved ? { elapsedMs: elapsed(), checkCount } : undefined,
-      contribute: solvedContribution({
-        level: record,
-        viewer,
-        solved,
-        // No list to refresh here: the box redraws next time it opens.
-        onEditDetails: () => void editDetails(record).catch(console.error),
-      }),
-      upvote: upvoteLine({ level: record, viewer, solved }),
+      page: "play",
+      opening,
+      viewer,
+      progress: boxProgress(),
+      onClose: releaseClock,
     });
   }
 
@@ -526,7 +561,7 @@ export function createPlayPage(
   );
   // The (i) rides the title on the sheet, as a footnote mark does: the box it
   // opens is about the piece, so it belongs with the piece's name.
-  head = createSheetHead(elements.sheetHead, { onAbout: () => openAbout() });
+  head = createSheetHead(elements.sheetHead, { onAbout: () => openAbout("info") });
   createSideTools(elements.sideTools);
   steps = createHistoryPair(elements.pitchHistory, {
     onUndo: () => step(history.undo()),
@@ -564,4 +599,10 @@ export function createPlayPage(
   });
 
   mount();
+
+  // Somebody who reached this page without going through a list has not seen
+  // what they are about to play. The box says it, and the clock waits.
+  if (arrivedCold(window.sessionStorage, level.id)) {
+    openAbout("arrival");
+  }
 }

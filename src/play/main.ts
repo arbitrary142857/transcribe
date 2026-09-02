@@ -45,7 +45,7 @@ const local = createLocalProgressStore(window.localStorage);
  * is looked up.
  */
 function askedLevelId(): string | undefined {
-  const asked = new URLSearchParams(window.location.search).get("level");
+  const asked = new URLSearchParams(window.location.search).get("tune");
   return asked !== null && isTranscriptionId(asked) ? asked : undefined;
 }
 
@@ -54,14 +54,14 @@ async function readLevel(): Promise<
 > {
   const asked = askedLevelId();
   if (asked === undefined) {
-    return { trouble: "That address does not name a level." };
+    return { trouble: "That address does not name a tune." };
   }
 
   // `/puzzle`, never `/source`: the second is the editor's door and hands over
   // the answer. This one has had every pitch but the first taken out of it
   // before it left the server.
   const record = await fetchLevel<TranscriptionRecord>(
-    `/api/levels/${asked}/puzzle`,
+    `/api/tunes/${asked}/puzzle`,
   );
   return "trouble" in record ? record : { id: asked, record };
 }

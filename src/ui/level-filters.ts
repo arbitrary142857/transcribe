@@ -34,7 +34,7 @@ import { openInfoModal } from "./modal.js";
 import { createSwitch } from "./switch.js";
 
 /**
- * "Show ♥ Levels Only", with the site's own heart in it.
+ * "Show ♥ Tunes Only", with the site's own heart in it.
  *
  * The heart is the card's heart — the filled weight, in the same pink — so
  * the switch and the figure it cuts the list by are visibly the same thing.
@@ -48,7 +48,7 @@ function heartedLabel(): HTMLElement {
   heart.setAttribute("aria-hidden", "true");
   heart.innerHTML = heartFillIcon();
 
-  words.append("Show ", heart, " Levels Only");
+  words.append("Show ", heart, " Tunes Only");
   return words;
 }
 
@@ -78,7 +78,7 @@ function statusSwitches<K extends string>(
   return statuses.map((status) =>
     createSwitch({
       label: status.label,
-      title: `Show levels that are ${status.label}`,
+      title: `Show tunes that are ${status.label}`,
       checked: held[status.value],
       onChange(on) {
         held = { ...held, [status.value]: on };
@@ -108,8 +108,8 @@ export function createCatalogFilters(options: {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "filter-button";
-  button.title = "Choose which levels to show";
-  button.setAttribute("aria-label", "Filter levels");
+  button.title = "Choose which tunes to show";
+  button.setAttribute("aria-label", "Filter tunes");
 
   const glyph = document.createElement("span");
   glyph.className = "filter-button-icon";
@@ -133,7 +133,7 @@ export function createCatalogFilters(options: {
       fill() {
         const heading = document.createElement("h2");
         heading.className = "modal-title filter-modal-title";
-        heading.textContent = "Filter Levels";
+        heading.textContent = "Filter Tunes";
 
         // No words above either row: "Min Difficulty" and the status names
         // are their own labels, and a heading over each said the same thing
@@ -160,12 +160,12 @@ export function createCatalogFilters(options: {
             switchRow(
               createSwitch({
                 label: heartedLabel(),
-                spoken: "Show only levels you have hearted",
+                spoken: "Show only tunes you have hearted",
                 checked: filter.heartedOnly,
                 onChange: (on) => settle({ ...filter, heartedOnly: on }),
               }).element,
               createSwitch({
-                label: "Show My Levels",
+                label: "Show My Tunes",
                 checked: filter.showOwn,
                 onChange: (on) => settle({ ...filter, showOwn: on }),
               }).element,

@@ -25,11 +25,11 @@ printed and the peppers drawn cannot disagree.
 Everything is stored in halves — an integer 1–10 — in two places only:
 
 - `transcriptions.difficulty_half`: the author's word. Publishing requires
-  it (`POST /api/levels/:id/publish` refuses without it), a published
+  it (`POST /api/tunes/:id/publish` refuses without it), a published
   level's details edit may move but not clear it, and migration 0006 gave
   the middle of the scale (5 halves) to any level published before the
-  rule. The editor's stepper starts every new level at 2.5, so an unrated
-  draft is a legacy case, drawn as nothing.
+  rule. The editor starts every new level at 2.5, so an unrated draft is a
+  legacy case, drawn as nothing.
 - `ratings` (migration 0006): one row per (player, level) — user_id,
   level_id, half, created_at, updated_at, PK (user_id, level_id). The
   upsert (`RATING_SQL.rate`) moves `half` and `updated_at` and keeps
@@ -46,7 +46,7 @@ word alone.
 
 ## Who may rate, and when
 
-`PUT /api/levels/:id/rating` (body `{ stars }`, halves 0.5–5) refuses, in
+`PUT /api/tunes/:id/rating` (body `{ stars }`, halves 0.5–5) refuses, in
 order: an id that could not name a level (404, nothing asked); nobody
 signed in (401, before the body is read); a body that is not a rating
 (400); a level that is not there — or a draft, to a stranger (404, the
@@ -57,19 +57,21 @@ somebody who has not solved it (`progress.solved_at`, 403). One rating per
 player per level, changed by rating again, taken back by
 `DELETE …/rating`; `GET …/rating` answers the caller's own (204 for none).
 
-The prompt (`src/ui/rating-prompt.ts`) mirrors those gates client-side and
+The prompt (`src/ui/rating-prompt.ts`) mirrors those gates client-side —
+through `maySpeak` in `src/ui/level-box.ts`, the one copy of the gate — and
 is simply absent for anybody the server would refuse. It lives in the
-level's box: opened by the solving check (a beat after the burst), the play
-bar's info button, and any solved level's card. The stepper opens
-provisional at 2.5 — or at the rating already given, fetched after the box
-draws — and every press PUTs the new figure.
+level's box, beside the heart: opened by the solving check (a beat after
+the burst), the play page's info button, and any solved level's card. The
+picker opens empty, or at the rating already given, fetched after the box
+draws; a press PUTs the new figure and the × beside it DELETEs the proposal,
+with no Save between. Pressing the figure that already stands sends nothing.
 
 ## Hearts and play figures
 
 The same read-time discipline, three more figures:
 
 - **Hearts** (`upvotes`, migration 0007): one row per (player, level),
-  nothing but the pair and its moment. `PUT /api/levels/:id/upvote` walks
+  nothing but the pair and its moment. `PUT /api/tunes/:id/upvote` walks
   the rating route's refusal ladder minus the body (the request is the
   whole statement); the insert conflicts into silence, so pressing twice
   is one heart; `DELETE` takes it back; `GET` answers `{ upvoted }` for
@@ -80,7 +82,7 @@ The same read-time discipline, three more figures:
   the author knows the answer, so their solves say nothing about the
   level. (Ratings and upvotes never hold the author's rows; their routes
   refuse them.)
-- **Median times**: `GET /api/levels/:id/stats` answers
+- **Median times**: `GET /api/tunes/:id/stats` answers
   `{ medianSolveMs?, medianFlawlessMs? }`, computed in the worker from
   `PROGRESS_SQL.solveTimes` (sharing players' solves, never the author's)
   and `medianOf` in `src/shared/stats.ts`. Flawless means solved on one
@@ -90,12 +92,13 @@ The same read-time discipline, three more figures:
   the absence as a dash. Visibility follows the level: published figures
   are everybody's with no session lookup; a draft's are its author's.
 
-The solved box is where a player speaks: the difficulty proposal (a
-stepper with explicit **Save proposal** / **Remove proposal** buttons —
-nothing reaches the database but those) and the heart (one press, the
-filling heart is the feedback). The author gets neither; their box says
-the level is theirs and opens the details box, where their word — the
-blend's anchor — is set.
+The solved box is where a player speaks: the difficulty proposal and the
+heart, both immediate — a press is the whole gesture, and pressing again
+takes it back. (The proposal was behind explicit Save/Remove buttons while
+the control was a stepper, which could not say "none"; the picker can, so
+the buttons went.) The author gets neither: their box says the tune is
+theirs, and their word — the blend's anchor — is set in the details box,
+which the box's own **Edit Details** opens from either list.
 
 ## How it forgets
 
@@ -117,11 +120,26 @@ Every path out is the absence of stored aggregates:
 outline and fill weights of one silhouette, inlined in `src/ui/icons.ts`
 with the MIT notice). The border is always visible; the fill silhouette is
 laid *under* the raised outline and clipped to 0/50/100% of the glyph's
-width. Entering a difficulty — the author's in the details panel and box,
-the solver's in the prompt — is `src/ui/difficulty-stepper.ts`: minus,
-peppers and the number, plus, in half steps, clamped to the scale, with no
-way to clear (a published level must keep a word; a solver changes their
-mind rather than unsaying it).
+width. Entering a difficulty — the author's in the details panel and box, the
+solver's in the prompt — is `src/ui/difficulty-picker.ts`: the row of
+peppers itself, pressed where you mean. The pointer's place along the row is
+read as a count in halves (`starsAtFraction`, measured from the first glyph's
+left edge to the last one's right, never from the padded box), and the
+peppers under it show that figure **at full strength** — what says "you are
+choosing" is the row lifting on to a soft ground, not any transparency.
+Pressing the figure that already stands does nothing; taking a proposal back
+is the **×** beside the row, which is drawn wherever `clearable` (greyed while
+there is nothing to remove) and is the keyboard's Delete as well. Arrows step
+by a half, Home and End go to the ends. This reverses the earlier "never
+clicking on the pepper row": that decision was made when there was no hover
+preview, which is the whole of what makes pressing a row legible.
+
+Clearing is offered everywhere the picker is but one — `clearable: false` in
+a published tune's details box, so the × is simply not drawn there — and
+refused by `detailsProblem(details, "published")`: **"This tune is published, so it
+needs a difficulty!"**, greying Save Changes in the details box, with the
+route's own 409 behind it. A draft may sit without a word and is stopped at
+the Publish button instead.
 
 ## What proves it
 

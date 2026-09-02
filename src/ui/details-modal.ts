@@ -36,10 +36,13 @@ export async function editDetails(level: TranscriptionSummary): Promise<boolean>
 
   const agreed = await openFormModal({
     title: "Edit the details",
-    confirm: "Save",
+    // "Save Changes" rather than "Save": nothing typed into this box has
+    // reached the database yet, the picker's presses included, and the button
+    // is where that happens.
+    confirm: "Save Changes",
     cancel: "Cancel",
     className: "details-modal",
-    valid: detailsProblem(details) === undefined,
+    valid: detailsProblem(details, level.status) === undefined,
     fill(form) {
       const problem = document.createElement("p");
       problem.className = "modal-body details-modal-problem";
@@ -53,7 +56,11 @@ export async function editDetails(level: TranscriptionSummary): Promise<boolean>
           instructions: instructions.input.value,
           difficulty,
         };
-        const wrong = detailsProblem(details);
+        // The tune's own status decides one of the rules: a published tune
+        // keeps a difficulty, and the picker can now take one away. The server
+        // refuses the same save; this is the box saying so first, in the same
+        // red the rest of the app is wrong in.
+        const wrong = detailsProblem(details, level.status);
         problem.textContent = wrong ?? "";
         form.setValid(wrong === undefined);
       };
@@ -79,17 +86,23 @@ export async function editDetails(level: TranscriptionSummary): Promise<boolean>
       subtitle.show(details.subtitle ?? "");
       instructions.show(details.instructions ?? "");
 
-      const stars = difficultyRow(difficulty, (next) => {
-        difficulty = next;
-        report();
-      });
+      const stars = difficultyRow(
+        difficulty,
+        (next) => {
+          difficulty = next;
+          report();
+        },
+        // A published tune keeps a difficulty, so there is nothing here to
+        // offer a way of removing it with.
+        level.status !== "published",
+      );
 
       return [title.row, subtitle.row, instructions.row, stars, problem];
     },
   });
   if (!agreed) return false;
 
-  const response = await fetch(`/api/levels/${encodeURIComponent(level.id)}`, {
+  const response = await fetch(`/api/tunes/${encodeURIComponent(level.id)}`, {
     method: "PUT",
     headers: { "content-type": "application/json", accept: "application/json" },
     // The words alone. No melody means the music is as it was.

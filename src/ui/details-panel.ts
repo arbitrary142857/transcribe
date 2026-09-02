@@ -19,7 +19,7 @@ import {
   LIMITS,
   type TranscriptionDetails,
 } from "../shared/transcription.js";
-import { createDifficultyStepper, type DifficultyStepper } from "./difficulty-stepper.js";
+import { createDifficultyPicker, type DifficultyPicker } from "./difficulty-picker.js";
 import { limitTyping } from "./text-entry.js";
 
 export type FieldOptions = {
@@ -129,15 +129,23 @@ export function createField(options: FieldOptions, onInput: () => void): Field {
 
 /**
  * The difficulty, as a row of the details like the three text boxes: the
- * same label style, and the pepper stepper where a box would be.
+ * same label style, and the pepper picker where a box would be.
  *
- * Exported for the details modal, which wants the same row.
+ * Exported for the details modal, which wants the same row. Nothing here is
+ * sent by pressing a pepper: like the three boxes above it, this row is state
+ * being edited, and Save is what reaches the database.
  */
 export function difficultyRow(
   value: number | undefined,
-  onChange: (value: number) => void,
-): HTMLElement & { picker: DifficultyStepper } {
-  const row = document.createElement("div") as HTMLDivElement & { picker: DifficultyStepper };
+  onChange: (value: number | undefined) => void,
+  /**
+   * Whether this row may be left empty — false only for a published tune,
+   * which must keep a difficulty, and where the × would offer a save the
+   * server refuses.
+   */
+  clearable = true,
+): HTMLElement & { picker: DifficultyPicker } {
+  const row = document.createElement("div") as HTMLDivElement & { picker: DifficultyPicker };
   row.className = "details-field details-difficulty";
 
   const label = document.createElement("span");
@@ -148,7 +156,7 @@ export function difficultyRow(
   head.className = "details-head";
   head.append(label);
 
-  const picker = createDifficultyStepper({ value, onChange });
+  const picker = createDifficultyPicker({ value, onChange, clearable });
   row.append(head, picker.element);
   row.picker = picker;
   return row;

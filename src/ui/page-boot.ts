@@ -65,7 +65,7 @@ export function showTrouble(
 
   const heading = document.createElement("h1");
   heading.className = "page-title";
-  heading.textContent = options.heading ?? "That level could not be opened";
+  heading.textContent = options.heading ?? "That tune could not be opened";
 
   const said = document.createElement("p");
   said.className = "page-lede";
@@ -83,7 +83,7 @@ export function showTrouble(
   const back = document.createElement("p");
   const link = document.createElement("a");
   link.href = "/";
-  link.textContent = "Back to the levels";
+  link.textContent = "Back to the tunes";
   back.append(link);
 
   panel.append(back);
@@ -113,7 +113,7 @@ export async function fetchLevel<T>(path: string): Promise<T | Trouble> {
   }
 
   if (response.status === 404) {
-    return { trouble: "There is no level with that address." };
+    return { trouble: "There is no tune with that address." };
   }
   if (!response.ok) {
     const said = (await response.json().catch(() => ({}))) as {

@@ -309,6 +309,12 @@ export function openFormModal(options: FormModalOptions): Promise<boolean> {
 export function openInfoModal(options: {
   className?: string;
   fill: (close: () => void) => readonly Node[];
+  /**
+   * Called once the box has gone, however it went — a button, the ×, Escape,
+   * the backdrop. The puzzle page starts its clock again here, so it has to
+   * hear about every way out rather than about the ones with buttons on them.
+   */
+  onClose?: () => void;
 }): void {
   openShell({
     className: options.className,
@@ -317,6 +323,6 @@ export function openInfoModal(options: {
     // There is no answer to give, so the caller is handed a plain `close` and
     // the shell's yes/no is filled in here rather than at every call site.
     fill: (close) => options.fill(() => close(false)),
-    onClose: () => {},
+    onClose: () => options.onClose?.(),
   });
 }

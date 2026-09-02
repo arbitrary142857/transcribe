@@ -177,7 +177,7 @@ describe("mergeIntoAccount()", () => {
     assert.equal(held.size, 1);
   });
 
-  it("keeps everything when the server's answer names no levels", async () => {
+  it("keeps everything when the server's answer names no tunes", async () => {
     for (const body of [undefined, { taken: "all" }, { taken: [1, 2] }, "ok"]) {
       const { local, held } = await browserWith(PROGRESS);
       const { fetch } = stubFetch({ status: 200, body });
@@ -202,12 +202,12 @@ describe("forgetLocalProgress()", () => {
 });
 
 describe("the hand-off wording", () => {
-  it("counts one level in the singular", () => {
-    assert.match(mergeQuestion(1).body.join(" "), /1 level played/);
-    assert.match(mergeQuestion(3).body.join(" "), /3 levels played/);
-    assert.match(forgetQuestion(1).body.join(" "), /1 level/);
-    assert.match(handoffSentence(1), /1 level played/);
-    assert.match(handoffSentence(2), /2 levels played/);
+  it("counts one tune in the singular", () => {
+    assert.match(mergeQuestion(1).body.join(" "), /1 tune played/);
+    assert.match(mergeQuestion(3).body.join(" "), /3 tunes played/);
+    assert.match(forgetQuestion(1).body.join(" "), /1 tune/);
+    assert.match(handoffSentence(1), /1 tune played/);
+    assert.match(handoffSentence(2), /2 tunes played/);
   });
 
   it("says the records leave this browser and that it cannot be undone", () => {

@@ -260,7 +260,7 @@ words, everything the setup page settled, the draft's id if it had one, and
 what the sign-in was *for* — `intent: "save"` from the Save button, `"keep"`
 from the nav's corner),
 disarms the browser's leave-page question, and navigates to
-`/api/auth/google?next=/edit` (or `next=/edit?level=…`). The `next` is the
+`/api/auth/google?next=/edit` (or `next=/edit?tune=…`). The `next` is the
 `returnPathOf` mechanism above. The editor that loads on the way back finds
 the stash, **clears it at once** — it is a hand-off across a sign-in, not a
 place work lives — rebuilds itself without the setup page, and — when the intent was
@@ -289,16 +289,16 @@ Who may do what, by route:
 
 | route | session | no session | stranger, published | stranger, draft |
 | --- | --- | --- | --- | --- |
-| `GET /api/levels` | none | 200 | — | — |
+| `GET /api/tunes` | none | 200 | — | — |
 | `GET /api/mine` | required | 401 | — | — |
-| `POST /api/levels` | required | 401 | — | — |
-| `GET /api/levels/:id/source` | required | 401 | 403 | 404 |
-| `PUT /api/levels/:id` | required | 401 | 403 | 404 |
-| `DELETE /api/levels/:id` | required | 401 | 403 | 404 |
-| `POST /api/levels/:id/publish` | required | 401 | 403 | 404 |
-| `POST /api/levels/:id/unpublish` | required | 401 | 403 | 404 |
-| `GET /api/levels/:id/puzzle` | only for drafts | 200 / 404 | 200 | 404 |
-| `POST /api/levels/:id/check` | for drafts; else if a cookie is sent | 200 / 404 | 200 | 404 |
+| `POST /api/tunes` | required | 401 | — | — |
+| `GET /api/tunes/:id/source` | required | 401 | 403 | 404 |
+| `PUT /api/tunes/:id` | required | 401 | 403 | 404 |
+| `DELETE /api/tunes/:id` | required | 401 | 403 | 404 |
+| `POST /api/tunes/:id/publish` | required | 401 | 403 | 404 |
+| `POST /api/tunes/:id/unpublish` | required | 401 | 403 | 404 |
+| `GET /api/tunes/:id/puzzle` | only for drafts | 200 / 404 | 200 | 404 |
+| `POST /api/tunes/:id/check` | for drafts; else if a cookie is sent | 200 / 404 | 200 | 404 |
 | `GET /api/progress` | required | 401 | — | — |
 | `GET /api/progress/:id` | required | 401 | 200 / 204 | 404 |
 | `PUT /api/progress/:id` | required | 401 | 204 | 404 |

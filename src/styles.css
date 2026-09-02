@@ -3425,6 +3425,20 @@ body.show-keys .keys-note {
   cursor: pointer;
 }
 
+/* The one details row that is not a label over a box. The peppers are a
+   control small enough to sit beside their name, and stacking them put a
+   heading over a row of five glyphs — which read as a section of the form
+   rather than as one field among four. */
+.details-difficulty {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.details-difficulty .details-head {
+  flex: 0 0 auto;
+}
+
 /* "(Required)", in the app's red, a step quieter than the label it follows. */
 .details-required {
   margin-left: 0.35rem;
@@ -4151,8 +4165,7 @@ main.page {
   gap: 0.55rem;
 }
 
-.level-figure,
-.upvote-line {
+.level-figure {
   display: inline-flex;
   align-items: center;
   gap: 0.18rem;
@@ -4164,7 +4177,7 @@ main.page {
 }
 
 .level-figure-icon svg,
-.upvote-heart svg {
+.like-heart svg {
   display: block;
   width: 1em;
   height: 1em;
@@ -4184,83 +4197,145 @@ main.page {
   color: var(--note-correct);
 }
 
-button.upvote-line {
-  padding: 0.1rem 0.25rem;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  cursor: pointer;
+/* ---- Giving a tune a heart ----
+
+   Emphatically a button, unlike the count in the box's corner: a border, a
+   fill and a word, because the one thing this had to say is that it can be
+   pressed and the figure beside it cannot. It carries no number of its own —
+   the count lives once, in the corner, and moves when this is pressed. */
+.like-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #cfc7b8;
+  border-radius: 999px;
+  background: #fffdf8;
+  color: #6c6459;
   font: inherit;
-  color: #8d8378;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-button.upvote-line:hover {
-  color: #b23a2a;
+.like-button:hover {
+  border-color: #cf4f80;
+  color: #cf4f80;
 }
 
-button.upvote-line:focus-visible {
+.like-button:focus-visible {
   outline: 2px solid var(--note-selected);
   outline-offset: 1px;
 }
 
-.upvote-line.is-upvoted,
-.upvote-line.is-upvoted .upvote-heart {
-  color: #b23a2a;
+/* Given: the heart is filled and the button wears the colour, so the state is
+   the glyph and the fill together rather than the word alone. */
+.like-button.is-liked {
+  border-color: #cf4f80;
+  background: #fdf1f5;
+  color: #cf4f80;
 }
 
-/* The difficulty as anybody enters it: a minus, the peppers with their
-   number, a plus. The figure between the buttons is the keyboard's stop. */
-.difficulty-stepper {
-  display: flex;
+.like-heart {
+  display: inline-flex;
+  color: #cf4f80;
+}
+
+/* ---- Saying how hard it is ----
+
+   Five peppers, pressed where you mean, and an × beside them where saying
+   nothing is allowed. The row takes focus and the peppers under the pointer
+   show — at full strength — the figure a press would give.
+
+   Nothing here fades. A row of half-transparent peppers reads as a figure that
+   is somehow less set, rather than as one being chosen; what says "you are
+   choosing" is the row lifting on to a soft ground under the pointer, which is
+   the same thing every other pressable row on this site does.
+
+   Drawn a good deal larger than the peppers a card prints, because these are
+   ten targets rather than one picture: a half at the card's size is about six
+   pixels of pepper, which is not something to ask anybody to hit. */
+.difficulty-picker {
+  display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.15rem;
+  /* An explicit width, so a details field's column does not stretch the row
+     wider than its peppers — see the note on the listeners in
+     `difficulty-picker.ts`. */
+  width: fit-content;
 }
 
-.stepper-button {
+.picker-peppers {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.2rem 0.35rem;
+  border-radius: 7px;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 90ms ease-out;
+}
+
+/* The pointer is on the row: it lifts, and what it shows is what a press
+   would give. */
+.difficulty-picker.is-previewing .picker-peppers {
+  background: #f0e9dd;
+}
+
+.picker-peppers:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 1px;
+}
+
+/* Nothing proposed: five empty outlines, quiet, which read as a row waiting to
+   be given rather than as one that has lost its fill. Never while the pointer
+   is over it — then the row is showing a figure, and a figure is not quiet. */
+.difficulty-picker.is-unset:not(.is-previewing) .picker-peppers {
+  opacity: 0.55;
+}
+
+/* Taking a proposal back, which is a different thing from changing it and so
+   is a different control. Always drawn where it is allowed at all, and dead
+   rather than gone while there is nothing to remove — a button that comes and
+   goes would move the peppers beside it. */
+.picker-clear {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  padding: 0;
-  border: 1px solid #cfc7b8;
+  width: 1.5rem;
+  height: 1.5rem;
+  /* The padding is what sizes the glyph, which fills what is left. A drawn ×
+     centres on the button; a typed one sits on the font's math axis and rides
+     visibly high in the ring around it. */
+  padding: 0.32rem;
+  border: 0;
   border-radius: 50%;
   background: none;
-  color: #6c6459;
-  font-size: 1.05rem;
-  line-height: 1;
+  color: #8d8378;
   cursor: pointer;
 }
 
-.stepper-button:hover:not(:disabled) {
-  border-color: #b23a2a;
-  color: #b23a2a;
+.picker-clear svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.stepper-button:disabled {
-  opacity: 0.35;
+.picker-clear:hover:not(:disabled) {
+  color: var(--wrong);
+  background: #f0e9dd;
+}
+
+.picker-clear:disabled {
+  opacity: 0.3;
   cursor: default;
 }
 
-.stepper-button:focus-visible,
-.stepper-figure:focus-visible {
+.picker-clear:focus-visible {
   outline: 2px solid var(--note-selected);
   outline-offset: 1px;
-}
-
-.stepper-figure {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.08rem;
-  font-size: 1.35rem;
-  line-height: 1;
-  color: #b23a2a;
-}
-
-/* Shown but not yet said: the middle of the scale, before a first press
-   makes it anybody's word. */
-.difficulty-stepper.is-provisional .stepper-figure {
-  opacity: 0.45;
 }
 
 /* The name of the thing: the largest words on the card and the darkest, and
@@ -5359,39 +5434,75 @@ button.upvote-line:focus-visible {
   color: #8d8378;
 }
 
-/* A finished level used to be a green card with a ✓ pinned to its picture.
+/* A finished tune used to be a green card with a ✓ pinned to its picture.
    Both are gone: the first line says "Transcribed" in the same green, which
    is one mark instead of three for one fact. */
 
-/* ---- A level's own box ---- */
+/* ---- A tune's own box ----
 
-/* Everything in here is set a size up from the confirm dialog's scale, which is
-   what this box was built on and was never right for it: a confirm is one
-   sentence to be read in a glance, and this is a page about a piece of music.
-   The bumps are scoped to `.level-modal` so the confirm keeps its own size.
+   Laid out down the page as the thing itself is: what it is called, what its
+   author wants known, what the music is and how it has gone, and then — along
+   the foot — whose it is and where to go from here.
+
+   Everything in here is set a size up from the confirm dialog's scale, which
+   was what this box was built on and was never right for it: a confirm is one
+   sentence read at a glance, and this is a page about a piece of music. The
+   bumps are scoped to `.level-modal` so the confirm keeps its own size.
 
    `--level-edge` is a firmer version of `--rule`, for the boxes that are
-   nothing but an edge round a number. At the page's own rule weight they read
+   nothing but an edge round a figure. At the page's own rule weight they read
    as smudges rather than as boxes, and lifting `--rule` itself would redraw
    every panel and every stave in the app. */
 .level-modal {
   --level-edge: #b8afa1;
 
-  width: min(42rem, calc(100vw - 3rem));
+  /* Wide enough that the line above the buttons — how the tune has gone, the
+     heart and the difficulty proposal — holds together on one row. That
+     sentence with three controls after it wants about 56rem; below that the
+     row wraps rather than overflows, which is the narrow-window fallback. The
+     solve's longer "Congratulations!" line is allowed to wrap at this width;
+     sizing the box for that one sentence would have made every other opening
+     of it a thousand pixels wide. */
+  width: min(56rem, calc(100vw - 3rem));
   max-width: none;
-  padding: 1.5rem 1.7rem 1.4rem;
+  padding: 1.6rem 1.7rem 1.3rem;
 }
 
-.level-modal .modal-title {
-  /* Clear of the × in the corner, which is drawn over the padding. */
-  padding-right: 2rem;
-  font-size: 1.3rem;
+/* ---- What it is called ----
+
+   The sheet's masthead, in a box: centred and large, with what it is from
+   centred and smaller beneath. That is where a reader's eye already goes for
+   these two things, and the box is about the same piece of music the sheet
+   head names — so it names it the same way.
+
+   Padded equally at both ends rather than only clear of the ×, because the
+   title is centred: room made on one side alone would push the words off the
+   middle of their own box. */
+.level-modal-head {
+  margin-bottom: 1.1rem;
+  padding: 0 2rem;
+  text-align: center;
+}
+
+.level-modal-title {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.level-modal-subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 400;
+  line-height: 1.2;
+  color: #57504a;
 }
 
 /* A 128-character title with no spaces in it would otherwise run off the page.
    `anywhere` rather than `break-word`, which leaves an unbroken run intact.
 
-   `.modal-body` is here because the delete confirm names the level in its
+   `.modal-body` is here because the delete confirm names the tune in its
    sentence rather than in its heading, so that is where an unbroken title
    lands — and an unwrappable line sets a min-content width the box's own
    `max-width` cannot argue with. */
@@ -5401,271 +5512,18 @@ button.upvote-line:focus-visible {
   overflow-wrap: anywhere;
 }
 
-.level-modal-subtitle {
-  margin: -0.25rem 0 0;
-  font-size: 0.95rem;
-  color: #6c6459;
-}
+/* ---- What the author wants known ----
 
-/* Who wrote it down, and how hard they say it is, under the names. */
-.level-modal-author {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin: 0.1rem 0 0;
-  font-size: 0.88rem;
-  color: #8d8378;
-}
+   The edge the instructions scroll inside. Without one, text that ran past the
+   room available simply stopped partway down the dialog, which reads as cut
+   off rather than as more to come. Focusable, because a region that scrolls
+   has to be reachable by keyboard as well as by wheel.
 
-.level-modal-solved {
-  margin: 0.5rem 0 0;
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
-  color: var(--note-correct);
-}
-
-/* How much of the figure is the solvers': quiet, beside the peppers. */
-.level-modal-ratings {
-  color: #8d8378;
-}
-
-/* The received figures in the box: the heart, the solvers, the medians. */
-.level-modal-figures {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.25rem;
-  margin: 0.35rem 0 0;
-  font-size: 0.82rem;
-  color: #8d8378;
-}
-
-.level-modal-median {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-/* The solving moment's own line, above the sober one. */
-.level-modal-cheer {
-  margin: 0.6rem 0 0;
-  font-size: 1.15rem;
-  font-weight: bold;
-  color: var(--note-correct);
-}
-
-/* The solver's own word, under the solved line. A little column on purpose:
-   the actions this box will grow later — back to the levels, a thumbs-up —
-   belong under the stepper. */
-.rating-prompt {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.35rem;
-  margin: 0.7rem 0 0;
-  padding-top: 0.6rem;
-  border-top: 1px solid #e4ddd0;
-}
-
-.rating-prompt-lead {
-  margin: 0;
-  font-size: 0.88rem;
-  color: #6c6459;
-}
-
-/* What actually reaches the database, said as buttons. */
-.rating-prompt-buttons {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.rating-prompt-button {
-  padding: 0.25rem 0.7rem;
-  border: 1px solid #cfc7b8;
-  border-radius: 6px;
-  background: #fffdf8;
-  color: #4c463d;
-  font: inherit;
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-
-.rating-prompt-button:hover:not(:disabled) {
-  border-color: #b23a2a;
-  color: #b23a2a;
-}
-
-.rating-prompt-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.rating-prompt-button:focus-visible {
-  outline: 2px solid var(--note-selected);
-  outline-offset: 1px;
-}
-
-.rating-prompt-status {
-  margin: 0;
-  min-height: 1em;
-  font-size: 0.8rem;
-  color: #6c6459;
-}
-
-.rating-prompt-status.is-wrong {
-  color: #a04434;
-}
-
-.rating-prompt-status:empty {
-  display: none;
-}
-
-.rating-prompt-how {
-  font-size: 0.78rem;
-  color: #8d8378;
-}
-
-/* ---- What the music is ---- */
-
-/* The two signatures, set apart from the measured facts under them: these say
-   what the music is, those say how much of it there is. */
-.level-drawn {
-  display: flex;
-  justify-content: center;
-  align-items: stretch;
-  gap: 0.9rem;
-  margin: 1.1rem 0 0.9rem;
-}
-
-/* Shrink to what is in them. Splitting the modal evenly between the two left a
-   meter forty units wide adrift in half a dialog, and a box far larger than
-   its contents reads as something failing to load.
-
-   Centred rather than spread. The two panels are the same height, because they
-   are a pair and should look it, but they do not hold the same number of
-   things: the key signature carries its name underneath and the meter has
-   nothing to carry. Spread apart, that left the meter's heading pinned at the
-   top of its box and the glyph pinned at the bottom with a hole between them,
-   which read as something missing rather than as a box with room to spare. */
-.level-signature {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  padding: 0.8rem 1.1rem 0.9rem;
-  border-color: var(--level-edge);
-}
-
-.level-signature-heading {
-  margin: 0;
-  font-size: 0.76rem;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: #7d7468;
-}
-
-/* Width comes from the diagram, set inline in `signaturePanel` — the svg draws
-   to whatever room it is given, so this is the only thing deciding its scale. */
-.level-stave {
-  flex: 0 0 auto;
-}
-
-.level-stave svg {
-  width: 100%;
-  height: auto;
-}
-
-/* The key's own name. A signature of no accidentals is A minor as readily as C
-   major, so the stave alone cannot say which — the meter panel needs no such
-   line and has none.
-
-   Plain text, not the chip the key chooser sets it in. A chip is a control's
-   look, and this is the only thing in the box wearing one; among a dialog of
-   headings and numbers it read as the one piece of furniture from somewhere
-   else. It is a caption, so it is set as one. */
-.level-signature-name {
-  margin: 0;
-  font-size: 0.95rem;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-/* ---- How much of it there is ---- */
-
-.level-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
-  gap: 0.6rem;
-}
-
-/* Icon, number, unit — in that order and on one line, so the number sits
-   against the thing it counts rather than under a heading to be interpreted.
-
-   Centred in the box rather than packed to the left. The boxes share their
-   width but not their contents: "4 bars" is half the length of "120 BPM", so
-   left-packed they all carried their ink at the same starting point and a
-   different amount of nothing after it, and the row came out looking ragged
-   down its right-hand side. */
-.level-stat {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  padding: 0.75rem 0.7rem;
-  background: #fffdf9;
-  border: 1px solid var(--level-edge);
-  border-radius: 8px;
-}
-
-.level-stat-icon {
-  flex: 0 0 auto;
-  display: flex;
-  color: #6c6459;
-}
-
-.level-stat-icon svg {
-  width: 1.6rem;
-  height: 1.6rem;
-}
-
-.level-stat-value {
-  display: flex;
-  align-items: baseline;
-  gap: 0.3rem;
-  margin: 0;
-  min-width: 0;
-}
-
-.level-stat-number {
-  font-size: 1.6rem;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-
-.level-stat-unit {
-  font-size: 0.82rem;
-  color: #7d7468;
-}
-
-.level-instructions-heading {
-  margin: 1.2rem 0 0.45rem;
-  font-size: 0.76rem;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: #7d7468;
-}
-
-/* The edge the instructions scroll inside.
-
-   Without one, text that ran past the room available simply stopped partway
-   down the dialog, which reads as cut off rather than as more to come. A
-   border and an inset fill say where the text ends and that the end is not the
-   end of it. Focusable, because a region that scrolls has to be reachable by
-   keyboard as well as by wheel. */
+   No heading over it. It sits directly under the title, where what the author
+   has to say belongs, and a word in small capitals telling the reader that a
+   box of prose is prose earns nothing. */
 .level-instructions-box {
-  max-height: 11rem;
+  max-height: 10rem;
   overflow-y: auto;
   padding: 0.8rem 0.95rem;
   background: #fffdf9;
@@ -5689,11 +5547,296 @@ button.upvote-line:focus-visible {
   color: #3c3630;
 }
 
-/* Play is a link, not a button, so it needs the confirm's look spelled out. */
-.level-modal-play {
-  display: inline-block;
+/* ---- What the music is, and how it has gone ----
+
+   Two columns: one drawn fact at the left and three measured ones stacked at
+   the right. The left is given the room its drawing needs and the right takes
+   what is left, rather than the two splitting the box evenly — a stave a
+   hundred and seventy units wide adrift in half a dialog reads as something
+   that failed to load. */
+.level-facts {
+  display: flex;
+  align-items: stretch;
+  gap: 0.7rem;
+  margin: 1rem 0 0;
+}
+
+.level-facts-column {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+/* One fact in a box of its own, on one line: what it is at the left, small and
+   quiet, and the figure hard against the right edge. Stacked, these took
+   half the height of the dialog to say three short things; side by side the
+   three figures line up in a column of their own and the pair of columns is
+   no taller than the stave beside it. */
+.level-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.85rem;
+  background: #fffdf9;
+  border: 1px solid var(--level-edge);
+  border-radius: 8px;
+}
+
+.level-facts-column .level-fact {
+  flex: 1 1 0;
+}
+
+.level-fact-label {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #7d7468;
+}
+
+.level-fact-value {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  min-height: 1.7rem;
+  font-size: 1.3rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* The peppers and their figure are one of the three values in this column and
+   should read at the size of the other two, not at the smaller size a card
+   prints them in beside a title. */
+.level-fact-value .difficulty {
+  font-size: 1.3rem;
+  gap: 0.1rem;
+}
+
+.level-fact-value .difficulty-text {
+  margin-left: 0.4rem;
+  font-size: 1.3rem;
+}
+
+/* ---- How the music opens ----
+
+   Clef, key and meter on one stave, which is how a piece of music opens and
+   how it is quickest to read: four sharps is a picture where "E major" is a
+   fact to recall. One image and no caption — what the stave cannot say, that
+   an empty signature is C major as readily as A minor, is said to the pointer
+   and to a screen reader instead.
+
+   Centred and shrink-to-fit: the drawing is sized in `level-modal.ts` from its
+   own width in stave units, so this only decides where it sits. */
+/* The one fact box that is not a row: a drawing with its caption under it. */
+.level-signature {
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.1rem;
+}
+
+/* The one thing the drawing cannot say: a signature of no accidentals is A
+   minor as readily as C major. A caption, so it is set as one — plain text,
+   not the chip the key chooser wears. */
+.level-signature-name {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.level-stave {
+  flex: 0 0 auto;
+}
+
+.level-stave svg {
+  width: 100%;
+  height: auto;
+}
+
+/* ---- What the solve earned ----
+
+   Where the signature stands the rest of the time. The moment a check comes
+   back is about the clock and the count, not about what key the piece was in.
+   The time is set large, as the figure the box is about. */
+.level-result {
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-width: 11rem;
+  padding: 1.2rem 1.4rem;
+}
+
+.level-result-time {
+  margin: 0;
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--note-correct);
+}
+
+.level-result-attempts {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #6c6459;
+}
+
+/* One check and no more, which is the thing worth saying about that solve. */
+.level-result-attempts.is-flawless {
+  color: var(--note-selected);
+  font-style: italic;
+}
+
+/* ---- How it has gone, and what the viewer may say about it ----
+
+   The sentence at the left and the two controls at the right, which is the
+   order they are read in: what happened, then what you may do about it. They
+   wrap onto separate lines rather than squeezing when the box is narrow. */
+.level-modal-doings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  margin-top: 1rem;
+}
+
+.level-modal-line {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #4c463d;
+}
+
+.level-modal-line:empty {
+  display: none;
+}
+
+/* The one word in the box the accent picks out, because it is the whole of
+   what that sentence is saying. */
+.level-modal-marked {
+  color: var(--note-selected);
+  font-style: italic;
+  font-weight: 600;
+}
+
+.level-modal-say {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  margin-left: auto;
+}
+
+/* "Suggest difficulty:" and the peppers, on one line. */
+.proposal {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.proposal-lead {
+  font-size: 0.85rem;
+  color: #6c6459;
+  white-space: nowrap;
+}
+
+/* A refusal from the server, in the red the app is wrong in. The peppers go
+   back to what the database holds when one appears, so this says why they
+   moved rather than standing in for them. */
+.proposal-trouble {
+  font-size: 0.8rem;
+  color: var(--wrong);
+}
+
+.proposal-trouble:empty {
+  display: none;
+}
+
+/* ---- The foot: whose it is, and the ways out ----
+
+   What the tune has earned and who wrote it down at the left; the buttons at
+   the right. Aligned along the bottom so a two-line byline does not drag the
+   buttons up with it. */
+.level-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.2rem;
+  margin-top: 1.1rem;
+}
+
+.level-modal-earned {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  min-width: 0;
+  font-size: 0.95rem;
+}
+
+/* Drawn to the byline beside them rather than to a card's smaller line. */
+.level-modal-earned .level-figure {
+  font-size: 0.95rem;
+}
+
+/* Quiet, and read as a fact rather than as a control — which is the whole of
+   what tells it apart from the heart button above it. Set at the size of the
+   sentence above rather than at a caption's, because whose tune this is is not
+   a footnote to the buttons beside it. */
+.level-modal-byline {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #6c6459;
+  overflow-wrap: anywhere;
+}
+
+/* Your own tune, said in the indigo the cards say it in: the same fact in both
+   places, that this one is yours out among everybody's. */
+.level-modal-byline.is-yours {
+  color: var(--indigo);
+}
+
+/* The buttons keep their own row's spacing rather than the modal's default
+   top margin, which would push them away from the byline beside them. */
+.level-modal-foot .modal-buttons {
+  margin-top: 0;
+  flex-wrap: wrap;
+}
+
+/* Two of these are links and one is a button, so the confirm's look has to be
+   spelled out for the anchors. */
+.level-modal-way {
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
   text-align: center;
+  white-space: nowrap;
+}
+
+/* Under about 34rem the two columns of facts have nowhere to go, and the
+   stave has a width of its own it will not give up. */
+@media (max-width: 34rem) {
+  .level-facts {
+    flex-direction: column;
+  }
+
+  .level-signature,
+  .level-result {
+    align-self: center;
+  }
 }
 
 /* Three once a fourth column would put the card under about 250px, which is

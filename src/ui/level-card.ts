@@ -7,7 +7,6 @@
  * puzzles, that is the difference between a level and its answer.
  */
 
-import { beatsPerMinute, tempoMapOf } from "../playback/tempo-map.js";
 import { displayedDifficulty } from "../shared/difficulty.js";
 import { ANONYMOUS, type UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
@@ -65,82 +64,8 @@ export function countFigure(
   return figure;
 }
 
-/** Which fact this is, so the box beside it can pick an icon. */
-export type LevelStatKind = "bars" | "notes" | "tempo" | "length";
-
-/** One measured fact about a level, in the parts its own box prints. */
-export type LevelStat = {
-  kind: LevelStatKind;
-  /** For a screen reader and a tooltip, where the icon says nothing. */
-  label: string;
-  /** The number, set large. */
-  value: string;
-  /** What the number counts, set small beside it. */
-  unit: string;
-};
-
 /**
- * How much of a level there is, and how long it runs.
- *
- * The number and its unit come apart because the box sets them at different
- * sizes: "4" large and "bars" small is one fact read at a glance, where a bare
- * "4" under the heading "Bars" left the reader to work out that the heading
- * meant *how many*.
- *
- * The key and the meter are not here. They are notation, and the box draws
- * them rather than naming them — a signature is quicker to recognise than a
- * phrase is to read.
- *
- * The tempo is worked out rather than stored, because the two marks and the
- * bar count already say it -- one fewer column able to disagree with the rest.
- * It is the felt beat, so 6/8 counts two to the bar rather than six.
- *
- * Seconds rather than a timecode: these sections run half a minute, and `0:31`
- * is slower to read than `31 sec` for nothing gained.
- */
-export function levelStats(level: TranscriptionSummary): LevelStat[] {
-  const map = tempoMapOf(
-    { start: level.markStart, end: level.markEnd },
-    level.measures,
-    level.meter,
-  );
-
-  return [
-    {
-      kind: "bars",
-      label: "Bars",
-      value: String(level.measures),
-      unit: level.measures === 1 ? "bar" : "bars",
-    },
-    {
-      kind: "notes",
-      label: "Notes",
-      value: String(level.noteCount),
-      unit: level.noteCount === 1 ? "note" : "notes",
-    },
-    // The database will not hold marks that describe no tempo, so this stands
-    // against a row no route can currently write rather than against a level.
-    ...(map === undefined
-      ? []
-      : ([
-          {
-            kind: "tempo",
-            label: "Tempo",
-            value: String(Math.round(beatsPerMinute(map))),
-            unit: "BPM",
-          },
-        ] as const)),
-    {
-      kind: "length",
-      label: "Length",
-      value: String(Math.round(level.markEnd - level.markStart)),
-      unit: "sec",
-    },
-  ];
-}
-
-/**
- * How much is left, for the tooltip on an unfinished level's status.
+ * How much is left, for the tooltip on an unfinished tune's status.
  *
  * The status word reads "Unfinished"; what it hovers to say is the count,
  * rather than the same word again.
@@ -159,7 +84,7 @@ export type CardPage = "home" | "mine";
  * On the catalog it opens the level's box — the room to decide whether to
  * play something — and a level still missing pitches opens nothing, because
  * there is no complete answer to mark an attempt against and
- * `/api/levels/:id/puzzle` refuses it for the same reason.
+ * `/api/tunes/:id/puzzle` refuses it for the same reason.
  *
  * On the author's own page a card is work rather than a puzzle, so it opens
  * the editor with no box in between, finished or not. The exception is a
@@ -433,7 +358,7 @@ export function createLevelCard(
   } else {
     // A button rather than a link, because what it opens is a box on this page
     // rather than an address. The cost is that a level can no longer be opened
-    // in a new tab from here; `/play?level=…` is still a real address, and the
+    // in a new tab from here; `/play?tune=…` is still a real address, and the
     // box is what leads to it.
     const { run } = options.open;
     const open = document.createElement("button");

@@ -38,8 +38,8 @@ export function nameSentence(user: UserSummary): string {
     return `${name} was picked for you. Choose your own, or keep it.`;
   }
   return user.anonymousAuthor
-    ? `Your levels say by ${ANONYMOUS} while you are shown as Anonymous; ${name} is kept for when you are not.`
-    : `Your levels say by ${name}.`;
+    ? `Your tunes say by ${ANONYMOUS} while you are shown as Anonymous; ${name} is kept for when you are not.`
+    : `Your tunes say by ${name}.`;
 }
 
 /** The word under the name field for each verdict. */
@@ -180,7 +180,7 @@ export function createAccountPage(options: AccountPageOptions): void {
   // ---- the two settings ------------------------------------------------
 
   const showing = panel("How you are shown");
-  const anonymousNote = line("Your levels say by Anonymous, and your name is kept to yourself.");
+  const anonymousNote = line("Your tunes say by Anonymous, and your name is kept to yourself.");
   showing.append(
     createSwitch({
       label: "Show me as Anonymous",
@@ -188,7 +188,7 @@ export function createAccountPage(options: AccountPageOptions): void {
       onChange(on) {
         void change({ anonymousAuthor: on }).then((trouble) => {
           anonymousNote.textContent =
-            trouble ?? "Your levels say by Anonymous, and your name is kept to yourself.";
+            trouble ?? "Your tunes say by Anonymous, and your name is kept to yourself.";
           about.textContent = nameSentence(user);
         });
       },
@@ -198,7 +198,7 @@ export function createAccountPage(options: AccountPageOptions): void {
 
   const counting = panel("Public figures");
   const countingNote = line(
-    "Every level shows figures worked out from players like you: a difficulty blended from solvers' ratings, hearts, and how many solved it in what time. Turn this off to be left out: you will not be asked to rate or upvote, and your ratings, hearts and playthroughs stop counting until you turn it back on.",
+    "Every tune shows figures worked out from players like you: a difficulty blended from solvers' ratings, hearts, and how many solved it in what time. Turn this off to be left out: you will not be asked to rate or upvote, and your ratings, hearts and playthroughs stop counting until you turn it back on.",
   );
   counting.append(
     createSwitch({

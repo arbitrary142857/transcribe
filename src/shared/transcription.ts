@@ -434,9 +434,16 @@ function oneLineProblem(
  * A sentence rather than a flag, in the shape `timingProblem()` and
  * `tieProblem()` already use, because the submit panel has to say why its
  * button is greyed and the route has to say why it refused.
+ *
+ * `status` is what the details belong to, where the caller knows: a published
+ * tune must keep a difficulty, since every published tune carries a figure for
+ * solvers' ratings to lean on and the picker can now take one back. A draft
+ * may be saved without one and is stopped at the publish button instead. Left
+ * out, nothing is asked about the difficulty beyond its being a rating.
  */
 export function detailsProblem(
   raw: TranscriptionDetails,
+  status?: LevelStatus,
 ): string | undefined {
   // Whatever arrived as JSON reaches this, so nothing is assumed to be text.
   if (typeof raw.title !== "string") {
@@ -476,6 +483,9 @@ export function detailsProblem(
 
   if (raw.difficulty !== undefined && !isStars(raw.difficulty)) {
     return "The difficulty is half a pepper to five peppers, in halves.";
+  }
+  if (raw.difficulty === undefined && status === "published") {
+    return "This tune is published, so it needs a difficulty!";
   }
 
   return undefined;

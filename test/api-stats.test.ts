@@ -29,11 +29,11 @@ const stats = async (
   id: string = ID,
 ) => {
   const { asked, env } = stubDatabase(answers);
-  const response = await api.request(`/api/levels/${id}/stats`, { headers }, env);
+  const response = await api.request(`/api/tunes/${id}/stats`, { headers }, env);
   return { response, asked };
 };
 
-describe("GET /api/levels/:id/stats", () => {
+describe("GET /api/tunes/:id/stats", () => {
   it("answers both medians for a published level, from sharing players' solves", async () => {
     const { response, asked } = await stats([
       levelAnswer(),

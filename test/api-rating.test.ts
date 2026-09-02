@@ -51,7 +51,7 @@ const request = async (
 ) => {
   const { asked, env } = stubDatabase(answers);
   const response = await api.request(
-    `/api/levels/${id}/rating`,
+    `/api/tunes/${id}/rating`,
     body === undefined
       ? { method, headers }
       : {
@@ -71,7 +71,7 @@ const rate = (
   id: string = ID,
 ) => request("PUT", { stars }, answers, headers, id);
 
-describe("PUT /api/levels/:id/rating", () => {
+describe("PUT /api/tunes/:id/rating", () => {
   it("records a solver's rating as halves, upserting rather than minting a second row", async () => {
     const { response, asked } = await rate(2.5, [asStranger(), levelAnswer(), solvedAnswer()]);
 
@@ -95,7 +95,7 @@ describe("PUT /api/levels/:id/rating", () => {
     assert.equal(asked.filter((each) => /ratings/iu.test(each.sql)).length, 0);
   });
 
-  it("tells a strange id there is no level, without asking the database", async () => {
+  it("tells a strange id there is no tune, without asking the database", async () => {
     const { response, asked } = await rate(2.5, [asStranger()], SIGNED_IN, "x");
 
     assert.equal(response.status, 404);
@@ -112,7 +112,7 @@ describe("PUT /api/levels/:id/rating", () => {
     }
   });
 
-  it("refuses the author's rating of their own level, whose word is already the anchor", async () => {
+  it("refuses the author's rating of their own tune, whose word is already the anchor", async () => {
     const { response, asked } = await rate(2.5, [asOwner(), levelAnswer(), solvedAnswer()]);
 
     assert.equal(response.status, 403);
@@ -156,21 +156,18 @@ describe("PUT /api/levels/:id/rating", () => {
     );
   });
 
-  it("refuses a rating of a draft, telling a stranger only that there is no level", async () => {
-    const stranger = await rate(2.5, [
-      asStranger(),
-      levelAnswer({ status: "draft" }),
-      solvedAnswer(),
-    ]);
-    assert.equal(stranger.response.status, 404);
-
-    const owner = await rate(2.5, [
-      asOwner(),
-      levelAnswer({ status: "draft" }),
-      solvedAnswer(),
-    ]);
-    assert.equal(owner.response.status, 409);
-    assert.match(await errorOf(owner.response), /not published/iu);
+  it("refuses a rating of a draft, telling everybody only that there is no tune", async () => {
+    // A draft is not playable, so nobody has solved one to rate -- and its
+    // existence stays the author's to disclose.
+    for (const who of [asStranger(), asOwner()]) {
+      const { response } = await rate(2.5, [
+        who,
+        levelAnswer({ status: "draft" }),
+        solvedAnswer(),
+      ]);
+      assert.equal(response.status, 404);
+      assert.equal(await errorOf(response), "There is no tune at that address.");
+    }
   });
 
   it("refuses a body too large to be a rating", async () => {
@@ -184,7 +181,7 @@ describe("PUT /api/levels/:id/rating", () => {
   });
 });
 
-describe("DELETE /api/levels/:id/rating", () => {
+describe("DELETE /api/tunes/:id/rating", () => {
   it("lets a solver take their rating back entirely", async () => {
     const { response, asked } = await request("DELETE", undefined, [asStranger()]);
 
@@ -202,7 +199,7 @@ describe("DELETE /api/levels/:id/rating", () => {
   });
 });
 
-describe("GET /api/levels/:id/rating", () => {
+describe("GET /api/tunes/:id/rating", () => {
   it("answers a rating nobody has given with 204, and one they have with its stars", async () => {
     const none = await request("GET", undefined, [asStranger()]);
     assert.equal(none.response.status, 204);

@@ -16,6 +16,7 @@ update the status table when a phase lands.
 | 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
 | 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of `/` | Shipped 2026-08-22; no admin page, by decision |
 | 6 | Difficulty from solvers' ratings blended with the author's word (`share_stats` honoured at read time), peppers and the stepper, the range filter, `/about`; hearts, the grown-up solved box, solver counts and median times | Difficulty committed 2026-08-25 (`177c17b`); hearts and play figures built 2026-08-25; error reports remain |
+| — | The tune's box redrawn; the pepper picker; "level" → "tune" everywhere public, URLs included; drafts unplayable | Built 2026-09-02; awaiting click-through |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
@@ -90,6 +91,25 @@ to honour. The author-set difficulty — half a star to five, in halves,
 stored as an integer count — was pulled forward from phase 6 so every card
 has the same shape; `src/shared/difficulty.ts` is the one function that
 decides what is shown, and phase 6 changes only its body.
+
+**Vocabulary and addresses (2026-09-02).** Everything public says **tune**,
+not level: the nav, both page headings, every sentence in the client and
+every refusal from the worker, `/about` and `/privacy` — and the addresses
+too, `/api/tunes/…` and `/play?tune=`, which was affordable only because
+nothing is deployed yet. What did *not* change, deliberately: module names,
+CSS classes, element ids, TypeScript types (`LevelStatus`, `levelBoxPlan`),
+the database's own columns (`level_id`), and the `transcribe:` storage
+keys. None of those face anybody, and renaming them would bury real changes
+under a mechanical diff. The word "heart" was kept for the upvote as well —
+"like" was considered and dropped, since the glyph is a heart everywhere.
+
+**A draft is not playable (2026-09-02).** `/puzzle`, `/check` and every
+progress route answer 404 for a draft to *everybody*, its author and an
+admin included; `canPlay` is the whole rule and no session lookup happens
+on any of those paths any more. It used to be owner-or-admin. Nothing on
+the site ever led there (a draft's card opens the editor), an author has no
+use for playing an answer they wrote, and every figure below those routes —
+progress, ratings, hearts, medians — is about a tune that is public.
 
 **Still open** (decide when the phase needs it): whether a daily level
 mechanic is coming (streaks presuppose one); dark mode is a per-machine
@@ -224,7 +244,10 @@ outline and fill weights of one silhouette, MIT, inlined in `icons.ts`),
 the border always visible and the fill clipped to none, half or full.
 Entering a difficulty became a +/− stepper in half steps — by decision,
 never clicking on the pepper row — used by the details panel, the details
-box and the solver's prompt alike; there is no way to clear it. The prompt
+box and the solver's prompt alike; there is no way to clear it.
+**(Reversed 2026-09-02:** the row is pressed directly now, with a hover
+preview, which was the missing piece that decision turned on; pressing the
+count already standing clears it. See `difficulty.md`.**)** The prompt
 lives in the level's box, which the solving check now opens a beat after
 the burst; the box also says "from N ratings", the one place the count
 shows. The catalog gained a from–to range filter over the *blended*
@@ -245,7 +268,7 @@ door, since their word is the anchor and is set there. Cards' difficulty
 row gained the figure back beside the peppers ("1.5", "4.0"; the stepper
 stays number-free so its buttons hold still), the heart count and the
 solver count, zeros included. The box adds the two medians from
-`GET /api/levels/:id/stats` — sharing players' solves only, never the
+`GET /api/tunes/:id/stats` — sharing players' solves only, never the
 author's own, each figure absent (a dash) under `STATS_FLOOR = 3` — with
 `medianOf` in `src/shared/stats.ts` and the rows from
 `PROGRESS_SQL.solveTimes`. `difficulty.md` covers all the figures now.

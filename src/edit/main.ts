@@ -24,7 +24,7 @@ import { mountSiteNav } from "../ui/site-nav.js";
  *
  * Unless there is a stash. Work that was put aside on the way to signing in
  * belongs to one address — `/edit` for a transcription that never had one,
- * `/edit?level=…` for a draft that did — and is taken up only there, and
+ * `/edit?tune=…` for a draft that did — and is taken up only there, and
  * cleared the moment it is taken: it is a hand-off across a sign-in, not a
  * place work lives. For a draft it is also newer than the row, so the row is
  * not fetched at all.
@@ -34,7 +34,7 @@ import { mountSiteNav } from "../ui/site-nav.js";
  * is looked up.
  */
 async function readEntry(): Promise<Entry | Trouble> {
-  const asked = new URLSearchParams(window.location.search).get("level");
+  const asked = new URLSearchParams(window.location.search).get("tune");
   const draft = readDraft(window.localStorage);
 
   if (asked === null) {
@@ -45,7 +45,7 @@ async function readEntry(): Promise<Entry | Trouble> {
     return { kind: "new" };
   }
   if (!isTranscriptionId(asked)) {
-    return { trouble: "That address does not name a level." };
+    return { trouble: "That address does not name a tune." };
   }
   if (draft !== undefined && draft.levelId === asked) {
     clearDraft(window.localStorage);
@@ -53,7 +53,7 @@ async function readEntry(): Promise<Entry | Trouble> {
   }
 
   const record = await fetchLevel<TranscriptionRecord>(
-    `/api/levels/${asked}/source`,
+    `/api/tunes/${asked}/source`,
   );
   return "trouble" in record
     ? record

@@ -77,7 +77,7 @@ people, which they are not.
 
 | route | session | no session | stranger, published | stranger, draft |
 | --- | --- | --- | --- | --- |
-| `POST /api/levels/:id/check` | if a cookie is sent | 200, nothing written | 200, counted | 404 |
+| `POST /api/tunes/:id/check` | if a cookie is sent | 200, nothing written | 200, counted | 404 |
 | `GET /api/progress` | required | 401 | -- | -- |
 | `GET /api/progress/:levelId` | required | 401 | 200, or 204 | 404 |
 | `PUT /api/progress/:levelId` | required | 401 | 204 | 404 |
@@ -216,7 +216,7 @@ is a question asked now rather than a way of liking the page.
   rating and upvote routes refuse writes while it is off, and every
   aggregate — the rating blend, the heart count, and the figures computed
   from *this* table (the solver count in the listing, the median solve
-  times behind `GET /api/levels/:id/stats`) — leaves out the rows of
+  times behind `GET /api/tunes/:id/stats`) — leaves out the rows of
   anybody who turned it off, at read time. The play figures also leave out
   the level's own author, whose solves say nothing about the level.
 

@@ -20,7 +20,7 @@ export type Switch = {
 export type SwitchOptions = {
   /**
    * The words on it — or an element holding them, for the one switch whose
-   * words are not all words: "Show ♥ Levels Only" draws its heart from
+   * words are not all words: "Show ♥ Tunes Only" draws its heart from
    * `icons.ts` rather than setting an emoji, so that the site's heart is the
    * same heart everywhere it appears. Give `spoken` with it.
    */
@@ -28,7 +28,7 @@ export type SwitchOptions = {
   /**
    * What to call the switch where the label cannot say it: a drawn glyph is
    * hidden from a screen reader, so without this the heart switch would
-   * announce itself as "Show Levels Only".
+   * announce itself as "Show Tunes Only".
    */
   spoken?: string;
   /** Why it is worth turning on, for the pointer and for a screen reader. */

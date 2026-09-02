@@ -66,8 +66,6 @@ import {
 } from "./merge-offer.js";
 import { openModal } from "./modal.js";
 import { browserFetch } from "./page-boot.js";
-import { solvedContribution } from "./rating-prompt.js";
-import { upvoteLine } from "./upvote-line.js";
 import { createSwitch } from "./switch.js";
 
 export type LevelListOptions = {
@@ -85,7 +83,7 @@ export type LevelList = {
 };
 
 const SOURCE: Record<CardPage, string> = {
-  home: "/api/levels",
+  home: "/api/tunes",
   mine: "/api/mine",
 };
 
@@ -187,7 +185,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
     parts.push(
       createSwitch({
         label: "Compact View",
-        title: "Hide the pictures and fit more levels on the screen",
+        title: "Hide the pictures and fit more tunes on the screen",
         checked: compact,
         onChange(on) {
           compact = on;
@@ -230,7 +228,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
   /** The list emptying is worth saying, or the page just goes blank. */
   function sayEmpty(): void {
     if (page === "home") {
-      say("No levels yet.");
+      say("No tunes yet.");
       return;
     }
     const start = document.createElement("a");
@@ -307,8 +305,8 @@ export function createLevelList(options: LevelListOptions): LevelList {
       // what happened rather than "something went wrong".
       say(
         error instanceof Error
-          ? `The levels could not be loaded. ${error.message}`
-          : "The levels could not be loaded.",
+          ? `The tunes could not be loaded. ${error.message}`
+          : "The tunes could not be loaded.",
       );
       console.error(error);
     }
@@ -322,7 +320,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
     choose.href = "/account";
     choose.className = "note-action";
     choose.textContent = "Choose your own";
-    line.append(`Your levels say by ${who.username ?? ANONYMOUS}, a name picked for you. `, choose);
+    line.append(`Your tunes say by ${who.username ?? ANONYMOUS}, a name picked for you. `, choose);
     return line;
   }
 
@@ -344,44 +342,29 @@ export function createLevelList(options: LevelListOptions): LevelList {
     }
   }
 
-  /** The level's own box, as the catalog opens it. */
+  /** The tune's own box, as a card opens it. */
   function openBox(
     level: TranscriptionSummary,
     progress: PlayProgress | undefined,
   ): void {
-    const solvedAt = progress?.solvedAt;
     openLevelModal({
       level,
       instructions: level.instructions,
-      play: true,
-      started: (progress?.pitches.length ?? 0) > 0,
-      solvedIn:
-        solvedAt === undefined || progress === undefined
-          ? undefined
-          : { elapsedMs: progress.elapsedMs, checkCount: progress.checkCount },
-      // Rating and hearting a level are revisitable from its box; the
-      // builders decide for themselves what this viewer may do.
-      contribute: solvedContribution({
-        level,
-        viewer: user,
-        solved: solvedAt !== undefined,
-        // The author's door: the same details box the pencil opens,
-        // with the same refresh behind it.
-        onEditDetails: () => void retitle(level),
-      }),
-      upvote: upvoteLine({
-        level,
-        viewer: user,
-        solved: solvedAt !== undefined,
-      }),
+      page,
+      opening: "browse",
+      viewer: user,
+      progress,
+      // The author's door: the same details box the pencil opens, with the
+      // same refresh behind it.
+      onEditDetails: () => void retitle(level),
     });
   }
 
   /**
    * One card, wired to what this page lets the viewer do with it.
    *
-   * The box's Play link reads "Resume" once a pitch has been written and "Play
-   * again" once it has been solved, so both facts go in.
+   * The progress goes to the box as well as to the status word: the way in
+   * reads "Start", "Continue" or "View Transcription" by how far it has got.
    */
   function cardFor(
     level: TranscriptionSummary,
@@ -389,7 +372,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
   ): HTMLLIElement {
     const plan = cardPlan(level, user, page);
     const opening = cardOpening(level, page);
-    const editing = `/edit?level=${encodeURIComponent(level.id)}`;
+    const editing = `/edit?tune=${encodeURIComponent(level.id)}`;
 
     const open: LevelCardOptions["open"] =
       opening === "editor"
@@ -467,7 +450,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
 
     try {
       const response = await fetch(
-        `/api/levels/${encodeURIComponent(level.id)}/${action}`,
+        `/api/tunes/${encodeURIComponent(level.id)}/${action}`,
         { method: "POST", headers: { accept: "application/json" } },
       );
       if (!response.ok) {
@@ -483,7 +466,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
     move(
       level,
       {
-        title: "Publish this level?",
+        title: "Publish this tune?",
         body: [
           `“${level.title}” goes into the list for everybody to play.`,
           "The music and the timing marks freeze. Only the title, subtitle, instructions and difficulty can change afterwards; unpublishing takes it back.",
@@ -498,7 +481,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
     move(
       level,
       {
-        title: "Unpublish this level?",
+        title: "Unpublish this tune?",
         body: [
           `“${level.title}” leaves the list and becomes a draft again.`,
           "It gets a new address, and anybody's progress on it is lost.",
@@ -517,7 +500,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
    */
   async function removeLevel(level: TranscriptionSummary): Promise<void> {
     const agreed = await openModal({
-      title: "Delete this level?",
+      title: "Delete this tune?",
       body: [
         `“${level.title}” will be removed from the database.`,
         "This cannot be undone.",
@@ -528,7 +511,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
     if (!agreed) return;
 
     try {
-      const response = await fetch(`/api/levels/${encodeURIComponent(level.id)}`, {
+      const response = await fetch(`/api/tunes/${encodeURIComponent(level.id)}`, {
         method: "DELETE",
         headers: { accept: "application/json" },
       });

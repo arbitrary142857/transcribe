@@ -18,7 +18,7 @@ describe("nameSentence()", () => {
   });
 
   it("says what a chosen name does", () => {
-    assert.match(nameSentence({ ...user, choseUsername: true }), /Your levels say by quiet-heron/);
+    assert.match(nameSentence({ ...user, choseUsername: true }), /Your tunes say by quiet-heron/);
   });
 
   it("says the name goes unshown while the author is Anonymous", () => {

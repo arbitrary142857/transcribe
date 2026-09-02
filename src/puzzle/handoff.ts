@@ -122,7 +122,7 @@ export async function forgetLocalProgress(
 
 // ---- the wording ----------------------------------------------------------
 
-const levels = (count: number) => (count === 1 ? "1 level" : `${count} levels`);
+const tunes = (count: number) => (count === 1 ? "1 tune" : `${count} tunes`);
 
 export type Question = {
   title: string;
@@ -135,8 +135,8 @@ export function mergeQuestion(count: number): Question {
   return {
     title: "Bring this browser's progress into your account?",
     body: [
-      `This browser holds progress on ${levels(count)} played without signing in.`,
-      "Your account keeps whichever side is further along on each level — a solve over an attempt, the better solve over the other, more found notes over fewer — and the verdicts from both.",
+      `This browser holds progress on ${tunes(count)} played without signing in.`,
+      "Your account keeps whichever side is further along on each tune — a solve over an attempt, the better solve over the other, more found notes over fewer — and the verdicts from both.",
       "Afterwards the records leave this browser. This cannot be undone.",
     ],
     confirm: "Bring it in",
@@ -148,7 +148,7 @@ export function forgetQuestion(count: number): Question {
   return {
     title: "Forget this browser's progress?",
     body: [
-      `Progress on ${levels(count)} played without signing in will be removed from this browser. Your account is not touched.`,
+      `Progress on ${tunes(count)} played without signing in will be removed from this browser. Your account is not touched.`,
       "This cannot be undone.",
     ],
     confirm: "Forget it",
@@ -158,5 +158,5 @@ export function forgetQuestion(count: number): Question {
 
 /** The standing line under the catalog, while records remain. */
 export function handoffSentence(count: number): string {
-  return `This browser also holds progress on ${levels(count)} played without signing in.`;
+  return `This browser also holds progress on ${tunes(count)} played without signing in.`;
 }

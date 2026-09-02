@@ -300,6 +300,21 @@ describe("detailsProblem()", () => {
       undefined,
     );
   });
+
+  it("lets a draft be saved with no difficulty said yet", () => {
+    assert.equal(detailsProblem({ title: "Clair de lune" }, "draft"), undefined);
+  });
+
+  it("refuses to leave a published tune without a difficulty", () => {
+    assert.equal(
+      detailsProblem({ title: "Clair de lune" }, "published"),
+      "This tune is published, so it needs a difficulty!",
+    );
+    assert.equal(
+      detailsProblem({ title: "Clair de lune", difficulty: 3 }, "published"),
+      undefined,
+    );
+  });
 });
 
 describe("cleanDetails()", () => {

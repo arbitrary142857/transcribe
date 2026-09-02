@@ -206,13 +206,13 @@ const allOn = <K extends string>(chosen: Chosen<K>): boolean =>
  */
 export function catalogEmptySentence(filter: CatalogFilter): string | undefined {
   const said: string[] = [];
-  if (!allOn(filter.statuses)) said.push("No levels are at those statuses.");
+  if (!allOn(filter.statuses)) said.push("No tunes are at those statuses.");
   if (!isWholeScale(filter.heat)) said.push("Nothing at that difficulty.");
-  if (filter.heartedOnly) said.push("You have not hearted any of these levels.");
-  if (!filter.showOwn) said.push("Only your own levels are here.");
+  if (filter.heartedOnly) said.push("You have not hearted any of these tunes.");
+  if (!filter.showOwn) said.push("Only your own tunes are here.");
 
   if (said.length === 0) return undefined;
-  return said.length === 1 ? said[0] : "No levels match the filters.";
+  return said.length === 1 ? said[0] : "No tunes match the filters.";
 }
 
 // ---- the author's own page ------------------------------------------------

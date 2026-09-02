@@ -1,87 +1,63 @@
 /**
- * The heart on a level: how many stand, and — for a solver who may — yours.
+ * The heart on a tune, for a solver who may give one.
  *
- * Always an element, so the box always has the figure; what varies is
- * whether it presses. The gates for pressing are the upvote route's,
- * mirrored so the control never offers what the server would refuse:
- * signed in, sharing statistics, solved, not the author, published.
- * Everybody else gets the count alone.
+ * Only the pressable half lives here now. The *count* is the box's, printed
+ * once in its bottom corner beside the finishers, because two numbers for one
+ * fact in one box drift the moment either is pressed — so this carries a word
+ * rather than a figure, and tells the box when to move the number.
  *
- * A press is the whole gesture — no save button, unlike the difficulty
- * proposal — because the heart filling in *is* the feedback, and pressing
- * again takes it back. The count moves with it, locally; the next listing
- * fetch is what makes it everybody's number.
+ * The gates for pressing are the upvote route's, mirrored in `maySpeak` so the
+ * control never offers what the server would refuse. Whoever may not press
+ * simply gets nothing; the count in the corner is there for everybody.
+ *
+ * A press is the whole gesture — no save button — because the heart filling in
+ * *is* the feedback, and pressing again takes it back.
  */
 
-import type { UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { heartFillIcon, heartIcon } from "./icons.js";
 
-const hearts = (count: number): string =>
-  count === 1 ? "1 heart" : `${count} hearts`;
-
-export function upvoteLine(options: {
+export function likeButton(options: {
   level: TranscriptionSummary;
-  viewer: UserSummary | undefined;
-  solved: boolean;
+  /** Told when a heart lands or is taken back, so the count can follow. */
+  onChange: (move: 1 | -1) => void;
 }): HTMLElement {
-  const { level, viewer } = options;
-  let count = level.upvoteCount ?? 0;
-
-  const mayPress =
-    viewer !== undefined &&
-    viewer.shareStats &&
-    options.solved &&
-    level.status === "published" &&
-    level.ownerId !== viewer.id;
-
-  const glyph = document.createElement("span");
-  glyph.className = "upvote-heart";
-  glyph.setAttribute("aria-hidden", "true");
-
-  const figure = document.createElement("span");
-  figure.className = "upvote-count";
-  figure.setAttribute("aria-hidden", "true");
-
-  if (!mayPress) {
-    const line = document.createElement("span");
-    line.className = "upvote-line";
-    line.setAttribute("role", "img");
-    line.setAttribute("aria-label", hearts(count));
-    line.title = hearts(count);
-    glyph.innerHTML = heartIcon();
-    figure.textContent = String(count);
-    line.append(glyph, figure);
-    return line;
-  }
+  const { level } = options;
 
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "upvote-line is-live";
-  button.append(glyph, figure);
+  button.className = "like-button";
 
-  let upvoted = false;
+  const glyph = document.createElement("span");
+  glyph.className = "like-heart";
+  glyph.setAttribute("aria-hidden", "true");
+
+  const word = document.createElement("span");
+  word.className = "like-word";
+
+  button.append(glyph, word);
+
+  let liked = false;
   let sending = false;
   /** The server's last word against a press, worn as the title until the next. */
   let refusal: string | undefined;
 
   function draw(): void {
-    glyph.innerHTML = upvoted ? heartFillIcon() : heartIcon();
-    figure.textContent = String(count);
-    button.setAttribute("aria-pressed", String(upvoted));
-    button.classList.toggle("is-upvoted", upvoted);
-    const label = upvoted ? "Take your heart back" : "Upvote this level";
-    button.setAttribute("aria-label", `${label} (${hearts(count)})`);
-    button.title = refusal ?? `${hearts(count)} — ${label.toLowerCase()}`;
+    glyph.innerHTML = liked ? heartFillIcon() : heartIcon();
+    word.textContent = liked ? "Liked" : "Like";
+    button.setAttribute("aria-pressed", String(liked));
+    button.classList.toggle("is-liked", liked);
+    button.title = refusal ?? (liked ? "Take your heart back" : "Give this tune a heart");
+    button.setAttribute("aria-label", button.title);
   }
 
-  const address = `/api/levels/${encodeURIComponent(level.id)}/upvote`;
+  const address = `/api/tunes/${encodeURIComponent(level.id)}/upvote`;
 
   button.addEventListener("click", () => {
     if (sending) return;
     sending = true;
     refusal = undefined;
-    const giving = !upvoted;
+    const giving = !liked;
     void (async () => {
       try {
         const response = await fetch(address, {
@@ -89,8 +65,8 @@ export function upvoteLine(options: {
           headers: { accept: "application/json" },
         });
         if (response.ok) {
-          upvoted = giving;
-          count += giving ? 1 : -1;
+          liked = giving;
+          options.onChange(giving ? 1 : -1);
         } else {
           const said = (await response.json().catch(() => ({}))) as { error?: string };
           refusal = said.error ?? `The server answered ${response.status}.`;
@@ -105,18 +81,18 @@ export function upvoteLine(options: {
   });
 
   // Whether this account's heart already stands, arriving after the box has
-  // drawn — a late fill, like the difficulty proposal's.
+  // drawn. It moves no count: the figure the listing gave already holds it.
   void (async () => {
     try {
       const response = await fetch(address, { headers: { accept: "application/json" } });
       if (!response.ok) return;
       const said = (await response.json()) as { upvoted?: boolean };
       if (said.upvoted === true) {
-        upvoted = true;
+        liked = true;
         draw();
       }
     } catch {
-      // The count alone, then; a press still works.
+      // Hollow, then; a press still works and still says which way it went.
     }
   })();
 

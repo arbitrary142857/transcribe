@@ -119,9 +119,9 @@ const rightAnswer = [
   { index: 3, midi: E4.toMidi() },
 ];
 
-describe("GET /api/levels/:id/puzzle", () => {
+describe("GET /api/tunes/:id/puzzle", () => {
   it("hands over the rhythm with only the first note's pitch on it", async () => {
-    const { response } = await get(`/api/levels/${ID}/puzzle`, rowOf());
+    const { response } = await get(`/api/tunes/${ID}/puzzle`, rowOf());
 
     assert.equal(response.status, 200);
     const body = (await response.json()) as { melody: unknown };
@@ -140,7 +140,7 @@ describe("GET /api/levels/:id/puzzle", () => {
     // Asserted over the whole response text rather than over the melody field,
     // because the point is that the answer is nowhere in the reply at all --
     // not merely absent from the place one would think to look.
-    const { response } = await get(`/api/levels/${ID}/puzzle`, rowOf());
+    const { response } = await get(`/api/tunes/${ID}/puzzle`, rowOf());
     const text = await response.text();
 
     // C may appear: it is the key's tonic and the given note. E and G are the
@@ -161,7 +161,7 @@ describe("GET /api/levels/:id/puzzle", () => {
     tied.tie(0);
 
     const { response } = await get(
-      `/api/levels/${ID}/puzzle`,
+      `/api/tunes/${ID}/puzzle`,
       rowOf({ melody: JSON.stringify(encode(tied)), note_count: 3 }),
     );
 
@@ -177,7 +177,7 @@ describe("GET /api/levels/:id/puzzle", () => {
   });
 
   it("carries the facts a play page draws its bar from", async () => {
-    const { response } = await get(`/api/levels/${ID}/puzzle`, rowOf());
+    const { response } = await get(`/api/tunes/${ID}/puzzle`, rowOf());
 
     const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.title, "Clair de lune");
@@ -194,7 +194,7 @@ describe("GET /api/levels/:id/puzzle", () => {
     const draft = melodyOf([new Note(C4, QUARTER), new UnpitchedNote(QUARTER)]);
 
     const { response } = await get(
-      `/api/levels/${ID}/puzzle`,
+      `/api/tunes/${ID}/puzzle`,
       rowOf({ melody: JSON.stringify(encode(draft)), unpitched_count: 1 }),
     );
 
@@ -203,14 +203,14 @@ describe("GET /api/levels/:id/puzzle", () => {
   });
 
   it("looks nothing up for an id that could not name a level", async () => {
-    const { response, asked } = await get("/api/levels/NOT-AN-ID/puzzle");
+    const { response, asked } = await get("/api/tunes/NOT-AN-ID/puzzle");
 
     assert.equal(response.status, 404);
     assert.equal(asked.length, 0);
   });
 
   it("answers 404 for a level that is not there", async () => {
-    const { response } = await get(`/api/levels/${ID}/puzzle`);
+    const { response } = await get(`/api/tunes/${ID}/puzzle`);
 
     assert.equal(response.status, 404);
   });
@@ -219,43 +219,41 @@ describe("GET /api/levels/:id/puzzle", () => {
     const draft = rowOf({ status: "draft", published_at: null });
 
     it("still hands a published puzzle to anybody, without asking who they are", async () => {
-      const { response, asked } = await get(`/api/levels/${ID}/puzzle`, rowOf(), [asOwner()], SIGNED_IN);
+      const { response, asked } = await get(`/api/tunes/${ID}/puzzle`, rowOf(), [asOwner()], SIGNED_IN);
 
       assert.equal(response.status, 200);
       assert.equal(asked.length, 1);
       assert.doesNotMatch(asked[0]!.sql, /sessions/i);
     });
 
-    it("hands a draft's puzzle to its author, and to an admin", async () => {
-      for (const who of [asOwner(), asAdmin()]) {
-        const { response } = await get(`/api/levels/${ID}/puzzle`, draft, [who], SIGNED_IN);
-        assert.equal(response.status, 200);
+    it("hides a draft from everybody, its author and an admin included", async () => {
+      // A draft is work being written, not a puzzle: nothing on the site
+      // leads to one, and an author has no use for playing an answer they
+      // wrote. 404 rather than 403, so a draft's existence stays the
+      // author's to disclose.
+      for (const who of [asOwner(), asAdmin(), asStranger()]) {
+        const { response } = await get(`/api/tunes/${ID}/puzzle`, draft, [who], SIGNED_IN);
+        assert.equal(response.status, 404);
+        assert.equal(await errorOf(response), "There is no tune at that address.");
       }
-    });
 
-    it("hides a draft from a stranger and from the signed-out alike, as 404", async () => {
-      const stranger = await get(`/api/levels/${ID}/puzzle`, draft, [asStranger()], SIGNED_IN);
-      assert.equal(stranger.response.status, 404);
-      assert.equal(await errorOf(stranger.response), "There is no level at that address.");
-
-      const nobody = await get(`/api/levels/${ID}/puzzle`, draft);
+      const nobody = await get(`/api/tunes/${ID}/puzzle`, draft);
       assert.equal(nobody.response.status, 404);
     });
 
-    it("asks who is asking only after the row turns out to be a draft", async () => {
-      const { asked } = await get(`/api/levels/${ID}/puzzle`, draft, [asOwner()], SIGNED_IN);
+    it("never asks who is asking, since nothing here turns on it", async () => {
+      const { asked } = await get(`/api/tunes/${ID}/puzzle`, draft, [asOwner()], SIGNED_IN);
 
-      assert.equal(asked.length, 2);
+      assert.equal(asked.length, 1);
       assert.match(asked[0]!.sql, /from transcriptions/i);
-      assert.match(asked[1]!.sql, /from sessions/i);
     });
   });
 });
 
-describe("POST /api/levels/:id/check", () => {
+describe("POST /api/tunes/:id/check", () => {
   it("marks every note and says the puzzle is solved", async () => {
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       { pitches: rightAnswer },
       rowOf(),
     );
@@ -278,7 +276,7 @@ describe("POST /api/levels/:id/check", () => {
 
   it("marks the wrong ones wrong and does not call it solved", async () => {
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       {
         pitches: [
           ...rightAnswer.slice(0, 2),
@@ -304,7 +302,7 @@ describe("POST /api/levels/:id/check", () => {
     // the melody. It carries verdicts and counts, and nothing that is a pitch.
     for (const pitches of [rightAnswer, [{ index: 0, midi: 1 }, ...rightAnswer.slice(1)]]) {
       const { response } = await post(
-        `/api/levels/${ID}/check`,
+        `/api/tunes/${ID}/check`,
         { pitches },
         rowOf(),
       );
@@ -333,7 +331,7 @@ describe("POST /api/levels/:id/check", () => {
     ]);
 
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       {
         pitches: [
           { index: 0, midi: C4.toMidi() },
@@ -356,7 +354,7 @@ describe("POST /api/levels/:id/check", () => {
     tied.tie(0);
 
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       {
         pitches: [
           { index: 0, midi: C4.toMidi() },
@@ -383,7 +381,7 @@ describe("POST /api/levels/:id/check", () => {
     // Partial attempts are the cheapest way to interrogate the marker, and a
     // half-filled score is not something anyone means to submit.
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       { pitches: rightAnswer.slice(0, 2) },
       rowOf(),
     );
@@ -396,7 +394,7 @@ describe("POST /api/levels/:id/check", () => {
     const draft = melodyOf([new Note(C4, QUARTER), new UnpitchedNote(QUARTER)]);
 
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       { pitches: [{ index: 0, midi: C4.toMidi() }, { index: 1, midi: 60 }] },
       rowOf({ melody: JSON.stringify(encode(draft)), unpitched_count: 1 }),
     );
@@ -418,7 +416,7 @@ describe("POST /api/levels/:id/check", () => {
       {},
     ]) {
       const { response } = await post(
-        `/api/levels/${ID}/check`,
+        `/api/tunes/${ID}/check`,
         body,
         rowOf(),
       );
@@ -432,7 +430,7 @@ describe("POST /api/levels/:id/check", () => {
 
   it("answers 404 for a level that is not there", async () => {
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       { pitches: rightAnswer },
     );
 
@@ -440,7 +438,7 @@ describe("POST /api/levels/:id/check", () => {
   });
 
   it("looks nothing up for an id that could not name a level", async () => {
-    const { response, asked } = await post("/api/levels/NOT-AN-ID/check", {
+    const { response, asked } = await post("/api/tunes/NOT-AN-ID/check", {
       pitches: rightAnswer,
     });
 
@@ -450,7 +448,7 @@ describe("POST /api/levels/:id/check", () => {
 
   it("marks a published level's attempt for anybody signed out, with no session lookup", async () => {
     const { response, asked } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       { pitches: rightAnswer },
       rowOf(),
       [asOwner()],
@@ -472,7 +470,7 @@ describe("POST /api/levels/:id/check", () => {
       pitches: unknown,
       row: Row = rowOf(),
       who: readonly Answer[] = [asOwner()],
-    ) => post(`/api/levels/${ID}/check`, { pitches }, row, who, SIGNED_IN);
+    ) => post(`/api/tunes/${ID}/check`, { pitches }, row, who, SIGNED_IN);
 
     it("records the check against the account, asking who is asking only after the attempt is graded", async () => {
       const { response, asked } = await check(wrongAnswer);
@@ -532,45 +530,31 @@ describe("POST /api/levels/:id/check", () => {
       assert.equal(asked.some((each) => /sessions|progress/i.test(each.sql)), false);
     });
 
-    it("asks who is asking once for a draft, not twice", async () => {
+    it("writes nothing for a draft, which nobody may check against", async () => {
       const draft = rowOf({ status: "draft", published_at: null });
 
-      const { response, asked } = await check(wrongAnswer, draft);
+      const { response, asked } = await check(wrongAnswer, draft, [asOwner()]);
 
-      assert.equal(response.status, 200);
-      assert.equal(asked.filter((each) => /from sessions/i.test(each.sql)).length, 1);
-      assert.equal(asked.length, 3);
-    });
-
-    it("records the author's checks on their own draft, and an admin's", async () => {
-      const draft = rowOf({ status: "draft", published_at: null });
-
-      const author = await check(wrongAnswer, draft, [asOwner()]);
-      assert.equal(author.asked.at(-1)!.values[0], OWNER_ID);
-
-      const admin = await check(wrongAnswer, draft, [asAdmin()]);
-      assert.match(admin.asked.at(-1)!.sql, /into progress/i);
-      assert.equal(admin.asked.at(-1)!.values[0], STRANGER_ID);
+      assert.equal(response.status, 404);
+      assert.equal(asked.some((each) => /into progress/i.test(each.sql)), false);
     });
   });
 
-  it("lets the author try their own finished draft, and nobody else", async () => {
+  it("refuses an attempt at a draft from everybody, its author included", async () => {
     const draft = rowOf({ status: "draft", published_at: null });
 
-    const author = await post(`/api/levels/${ID}/check`, { pitches: rightAnswer }, draft, [asOwner()], SIGNED_IN);
-    assert.equal(author.response.status, 200);
-    assert.equal(((await author.response.json()) as { solved: boolean }).solved, true);
+    for (const who of [asOwner(), asAdmin(), asStranger()]) {
+      const { response } = await post(`/api/tunes/${ID}/check`, { pitches: rightAnswer }, draft, [who], SIGNED_IN);
+      assert.equal(response.status, 404);
+    }
 
-    const stranger = await post(`/api/levels/${ID}/check`, { pitches: rightAnswer }, draft, [asStranger()], SIGNED_IN);
-    assert.equal(stranger.response.status, 404);
-
-    const nobody = await post(`/api/levels/${ID}/check`, { pitches: rightAnswer }, draft);
+    const nobody = await post(`/api/tunes/${ID}/check`, { pitches: rightAnswer }, draft);
     assert.equal(nobody.response.status, 404);
   });
 
   it("reads the attempt before the database, so a huge body is 413 whatever the level", async () => {
     const { response, asked } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       { pitches: rightAnswer, padding: "a".repeat(100_000) },
       rowOf({ status: "draft", published_at: null }),
     );
@@ -587,7 +571,7 @@ describe("POST /api/levels/:id/check", () => {
     ]);
 
     const { response } = await post(
-      `/api/levels/${ID}/check`,
+      `/api/tunes/${ID}/check`,
       {
         pitches: [
           { index: 0, midi: C4.toMidi() },

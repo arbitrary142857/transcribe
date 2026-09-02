@@ -6,7 +6,6 @@ import {
   cardPlan,
   countLeft,
   keyName,
-  levelStats,
   publishBlock,
 } from "../dist/ui/level-card.js";
 import type { UserSummary } from "../dist/shared/session.js";
@@ -57,67 +56,6 @@ describe("keyName()", () => {
     assert.equal(
       keyName(level({ keyFifths: 0, keyMode: "minor" })),
       "A minor",
-    );
-  });
-});
-
-describe("levelStats()", () => {
-  /** The stats by name, since the modal places each in its own box. */
-  const statsOf = (level: TranscriptionSummary) =>
-    Object.fromEntries(levelStats(level).map((stat) => [stat.kind, stat]));
-
-  it("gives each fact a number and a unit to print beside it", () => {
-    // Split rather than joined, because the box sets the number large and the
-    // unit small: "4" and "bars" are two different sizes of the same fact.
-    assert.deepEqual(levelStats(level()), [
-      { kind: "bars", label: "Bars", value: "4", unit: "bars" },
-      { kind: "notes", label: "Notes", value: "12", unit: "notes" },
-      { kind: "tempo", label: "Tempo", value: "120", unit: "BPM" },
-      { kind: "length", label: "Length", value: "8", unit: "sec" },
-    ]);
-  });
-
-  it("counts the beat a player feels, so 6/8 gets two to the bar", () => {
-    // Two bars of 6/8 across two seconds: four felt beats, not twelve.
-    const compound = level({
-      meter: { beats: 6, beatUnit: 8 },
-      measures: 2,
-      markStart: 0,
-      markEnd: 2,
-    });
-
-    assert.equal(statsOf(compound).tempo!.value, "120");
-  });
-
-  it("is unmoved by where in the video the section was taken from", () => {
-    assert.equal(statsOf(level({ markStart: 630, markEnd: 638 })).tempo!.value, "120");
-  });
-
-  it("rounds the length to the second, as a box is read at a glance", () => {
-    assert.equal(statsOf(level({ markStart: 0, markEnd: 31.6 })).length!.value, "32");
-    assert.equal(statsOf(level({ markStart: 0, markEnd: 31.4 })).length!.value, "31");
-  });
-
-  it("drops the s from a single bar and a single note", () => {
-    const one = level({ measures: 1, noteCount: 1, markEnd: 2 });
-
-    assert.equal(statsOf(one).bars!.unit, "bar");
-    assert.equal(statsOf(one).notes!.unit, "note");
-  });
-
-  it("leaves the tempo out when the marks describe none", () => {
-    // The database will not hold such a row, so this stands against a level no
-    // route can currently write rather than against one anybody will see.
-    const untimed = level({ markStart: 5, markEnd: 5 });
-
-    assert.equal("tempo" in statsOf(untimed), false);
-  });
-
-  it("says nothing about the key or the meter, which the box draws", () => {
-    // Printing them here as well would be the same fact twice in one box.
-    assert.deepEqual(
-      levelStats(level()).map((stat) => stat.kind),
-      ["bars", "notes", "tempo", "length"],
     );
   });
 });
@@ -202,7 +140,7 @@ describe("cardOpening()", () => {
   });
 
   it("opens nothing for a level with no complete answer to play against", () => {
-    // `/api/levels/:id/puzzle` refuses one for the same reason.
+    // `/api/tunes/:id/puzzle` refuses one for the same reason.
     assert.equal(cardOpening(level({ unpitchedCount: 2 }), "home"), undefined);
   });
 

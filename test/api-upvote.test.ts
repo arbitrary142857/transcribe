@@ -48,14 +48,14 @@ const request = async (
 ) => {
   const { asked, env } = stubDatabase(answers);
   const response = await api.request(
-    `/api/levels/${id}/upvote`,
+    `/api/tunes/${id}/upvote`,
     { method, headers },
     env,
   );
   return { response, asked };
 };
 
-describe("PUT /api/levels/:id/upvote", () => {
+describe("PUT /api/tunes/:id/upvote", () => {
   it("stands a solver's upvote, and stands it once however often it is pressed", async () => {
     const { response, asked } = await request("PUT", [asStranger(), levelAnswer(), solvedAnswer()]);
 
@@ -74,14 +74,14 @@ describe("PUT /api/levels/:id/upvote", () => {
     assert.equal(asked.filter((each) => /upvotes/iu.test(each.sql)).length, 0);
   });
 
-  it("tells a strange id there is no level, without asking the database", async () => {
+  it("tells a strange id there is no tune, without asking the database", async () => {
     const { response, asked } = await request("PUT", [asStranger()], SIGNED_IN, "x");
 
     assert.equal(response.status, 404);
     assert.equal(asked.length, 0);
   });
 
-  it("refuses the author's upvote of their own level", async () => {
+  it("refuses the author's upvote of their own tune", async () => {
     const { response, asked } = await request("PUT", [asOwner(), levelAnswer(), solvedAnswer()]);
 
     assert.equal(response.status, 403);
@@ -118,24 +118,19 @@ describe("PUT /api/levels/:id/upvote", () => {
     );
   });
 
-  it("refuses an upvote of a draft, telling a stranger only that there is no level", async () => {
-    const stranger = await request("PUT", [
-      asStranger(),
-      levelAnswer({ status: "draft" }),
-      solvedAnswer(),
-    ]);
-    assert.equal(stranger.response.status, 404);
-
-    const owner = await request("PUT", [
-      asOwner(),
-      levelAnswer({ status: "draft" }),
-      solvedAnswer(),
-    ]);
-    assert.equal(owner.response.status, 409);
+  it("refuses an upvote of a draft, telling everybody only that there is no tune", async () => {
+    for (const who of [asStranger(), asOwner()]) {
+      const { response } = await request("PUT", [
+        who,
+        levelAnswer({ status: "draft" }),
+        solvedAnswer(),
+      ]);
+      assert.equal(response.status, 404);
+    }
   });
 });
 
-describe("DELETE /api/levels/:id/upvote", () => {
+describe("DELETE /api/tunes/:id/upvote", () => {
   it("lets a solver take their upvote back entirely", async () => {
     const { response, asked } = await request("DELETE", [asStranger()]);
 
@@ -153,7 +148,7 @@ describe("DELETE /api/levels/:id/upvote", () => {
   });
 });
 
-describe("GET /api/levels/:id/upvote", () => {
+describe("GET /api/tunes/:id/upvote", () => {
   it("says whether the caller's own upvote stands", async () => {
     const standing = await request("GET", [asStranger(), upvotedAnswer()]);
     assert.equal(standing.response.status, 200);

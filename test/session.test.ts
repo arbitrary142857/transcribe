@@ -113,13 +113,13 @@ describe("signInPath()", () => {
     assert.equal(signInPath("/mine"), "/api/auth/google?next=%2Fmine");
   });
 
-  it("escapes a query so the level in the address survives the round trip", () => {
-    const path = signInPath("/edit?level=k3m9x2p7qw4t");
-    assert.equal(path, "/api/auth/google?next=%2Fedit%3Flevel%3Dk3m9x2p7qw4t");
+  it("escapes a query so the tune in the address survives the round trip", () => {
+    const path = signInPath("/edit?tune=k3m9x2p7qw4t");
+    assert.equal(path, "/api/auth/google?next=%2Fedit%3Ftune%3Dk3m9x2p7qw4t");
     // What the server unpacks is what was asked for.
     assert.equal(
       new URL(path, "http://localhost").searchParams.get("next"),
-      "/edit?level=k3m9x2p7qw4t",
+      "/edit?tune=k3m9x2p7qw4t",
     );
   });
 

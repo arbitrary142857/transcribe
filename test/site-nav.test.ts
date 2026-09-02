@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { cornerLabel, planNav } from "../dist/ui/site-nav.js";
 
 describe("planNav()", () => {
-  it("offers the levels and the way to make one, and says which page this is", () => {
+  it("offers the tunes and the way to make one, and says which page this is", () => {
     const fromHome = planNav("/", false);
     const fromEditor = planNav("/edit", false);
 
@@ -26,7 +26,7 @@ describe("planNav()", () => {
     // out has no such page, so the nav is where the invitation lives.
     assert.deepEqual(
       planNav("/", false).map((link) => link.label),
-      ["Levels", "Create Transcription"],
+      ["Tunes", "Create Transcription"],
     );
   });
 
@@ -39,7 +39,7 @@ describe("planNav()", () => {
     );
     assert.deepEqual(
       planNav("/", true).map((link) => link.label),
-      ["Levels", "My Transcriptions"],
+      ["Tunes", "My Transcriptions"],
     );
   });
 

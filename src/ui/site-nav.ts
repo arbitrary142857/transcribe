@@ -53,7 +53,7 @@ export function planNav(pathname: string, signedIn: boolean): NavLink[] {
   // The dev server answers `/edit` with `/edit/`; the two are one page.
   const here = pathname.length > 1 ? pathname.replace(/\/$/u, "") : pathname;
   return [
-    { href: "/", label: "Levels", current: here === "/" },
+    { href: "/", label: "Tunes", current: here === "/" },
     signedIn
       ? { href: "/mine", label: "My Transcriptions", current: here === "/mine" }
       : { href: "/edit", label: "Create Transcription", current: here === "/edit" },

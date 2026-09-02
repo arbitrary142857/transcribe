@@ -269,12 +269,12 @@ api.use("*", async (c, next) => {
 // what keeps a published level's hot path to one statement.
 api.route("/", auth);
 
-const NO_LEVEL = "There is no level at that address.";
+const NO_LEVEL = "There is no tune at that address.";
 
-const SIGN_IN_TO_EDIT = "Sign in to work on a level.";
+const SIGN_IN_TO_EDIT = "Sign in to work on a tune.";
 
 /** Said of a published level, whose existence is no secret. */
-const NOT_AUTHOR = "Only the author can change this level.";
+const NOT_AUTHOR = "Only the author can change this tune.";
 
 /** The two columns every gated route needs beside whatever else it asked for. */
 type Owned = { owner_id: string; status: LevelStatus };
@@ -341,7 +341,7 @@ async function readOwnedRow<T extends Record<string, unknown>>(
 // ---- listing ------------------------------------------------------------
 
 // Everybody's: what is published, newest first, with nobody asked who they are.
-api.get("/api/levels", async (c) => {
+api.get("/api/tunes", async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT ${LEVEL_COLUMNS} FROM transcriptions
       WHERE status = ? ORDER BY created_at DESC LIMIT ?`,
@@ -359,7 +359,7 @@ api.get("/api/levels", async (c) => {
 api.get("/api/mine", async (c) => {
   const user = await sessionUserOf(c);
   if (user === undefined) {
-    return c.json({ error: "Sign in to see your levels." }, 401);
+    return c.json({ error: "Sign in to see your tunes." }, 401);
   }
 
   const { results } = await c.env.DB.prepare(
@@ -581,7 +581,7 @@ async function readSubmission(
   return { ...read, ...music };
 }
 
-api.post("/api/levels", async (c) => {
+api.post("/api/tunes", async (c) => {
   // Before the body: the answer is the same whatever it holds, and nothing an
   // anonymous sender wrote gets parsed.
   const user = await sessionUserOf(c);
@@ -666,12 +666,12 @@ api.post("/api/levels", async (c) => {
  * given. It is the author's door and nobody else's -- which is why it was kept
  * separate in the first place, so that shutting it touched nothing else.
  */
-api.get("/api/levels/:id/source", async (c) => {
+api.get("/api/tunes/:id/source", async (c) => {
   const read = await readOwnedRow<LevelRow & { melody: string }>(
     c,
     c.req.param("id"),
     `${LEVEL_COLUMNS}, melody`,
-    "Only the author can open a level's source.",
+    "Only the author can open a tune's source.",
   );
   if ("problem" in read) {
     return c.json({ error: read.problem }, read.status);
@@ -686,7 +686,7 @@ api.get("/api/levels/:id/source", async (c) => {
 
 /** Why a published level's music and marks stay where they are. */
 const PUBLISHED_LOCKED =
-  "Only the title, subtitle, instructions and difficulty of a published level can change; unpublish it to change the music or the marks.";
+  "Only the title, subtitle, instructions and difficulty of a published tune can change; unpublish it to change the music or the marks.";
 
 /**
  * Replace the music, the words, and where the music sits in the video -- or,
@@ -715,7 +715,7 @@ const PUBLISHED_LOCKED =
  * which is how the details box edits a published level without ever having
  * opened the editor. A draft is held to sending its melody, as a submission is.
  */
-api.put("/api/levels/:id", async (c) => {
+api.put("/api/tunes/:id", async (c) => {
   const owned = await readOwnedRow<
     Pick<
       LevelRow,
@@ -763,7 +763,7 @@ api.put("/api/levels/:id", async (c) => {
     // an edit may move it, never take it away.
     if (words.details.difficulty === undefined) {
       return c.json(
-        { error: "A published level keeps a difficulty; change it rather than clearing it." },
+        { error: "A published tune keeps a difficulty; change it rather than clearing it." },
         409,
       );
     }
@@ -858,11 +858,11 @@ api.put("/api/levels/:id", async (c) => {
  * Throw a level away. The author's to do, draft or published, and an admin's.
  *
  * The row is looked up before it is deleted -- that is what `readOwnedRow` is
- * -- so a mistyped address is answered with "there is no such level" rather
+ * -- so a mistyped address is answered with "there is no such tune" rather
  * than with the silence that means "done". Being wrong about which level was
  * removed is the one mistake here that cannot be taken back.
  */
-api.delete("/api/levels/:id", async (c) => {
+api.delete("/api/tunes/:id", async (c) => {
   const id = c.req.param("id");
   const owned = await readOwnedRow(c, id, "id");
   if ("problem" in owned) {
@@ -879,12 +879,12 @@ api.delete("/api/levels/:id", async (c) => {
 
 // ---- publishing -----------------------------------------------------------
 
-const ALREADY_PUBLISHED = "That level is already published.";
-const NOT_PUBLISHED = "That level is not published.";
+const ALREADY_PUBLISHED = "That tune is already published.";
+const NOT_PUBLISHED = "That tune is not published.";
 const PUBLISH_UNFINISHED =
-  "Every note needs a pitch before the level can be published.";
+  "Every note needs a pitch before the tune can be published.";
 const PUBLISH_UNRATED =
-  "The level needs a difficulty before it can be published.";
+  "The tune needs a difficulty before it can be published.";
 
 /**
  * Make a draft everybody's.
@@ -896,7 +896,7 @@ const PUBLISH_UNRATED =
  * both read 'draft', and the second then changes nothing rather than
  * re-stamping what the first already did.
  */
-api.post("/api/levels/:id/publish", async (c) => {
+api.post("/api/tunes/:id/publish", async (c) => {
   const id = c.req.param("id");
   const owned = await readOwnedRow<{
     unpitched_count: number;
@@ -962,7 +962,7 @@ api.post("/api/levels/:id/publish", async (c) => {
  * `published_at = NULL` is statement text, not a bound null, which is the
  * shape the codebase prefers.
  */
-api.post("/api/levels/:id/unpublish", async (c) => {
+api.post("/api/tunes/:id/unpublish", async (c) => {
   const id = c.req.param("id");
   const owned = await readOwnedRow(c, id, "id");
   if ("problem" in owned) {
@@ -1050,27 +1050,29 @@ function readAnswer(stored: string): Melody | undefined {
 }
 
 /**
- * A level's answer, ready to be stripped or graded.
+ * A tune's answer, ready to be stripped or graded.
  *
  * `columns` is spliced into SQL, so both callers pass a constant declared in
  * this file and nothing else ever reaches it -- the same rule `LEVEL_COLUMNS`
  * is held to. Every value still goes through `bind`.
  *
- * A draft answers 404 to everyone but its author and an admin -- never 401 or
- * 403, because a draft's existence is the author's to disclose, and a stranger
- * is told exactly what a missing level would tell them.
+ * **A draft answers 404 to everybody, its author and an admin included.** A
+ * draft is work being written, not a puzzle: there is no way to reach one from
+ * the site (a draft's card opens the editor), an author has no use for playing
+ * an answer they wrote, and every route below this one is about attempts,
+ * progress and figures that only a published tune has. Never 401 or 403,
+ * because a draft's existence is the author's to disclose, and a stranger is
+ * told exactly what a missing tune would tell them.
  *
- * Who was asking comes back with the row, when it was found out: a caller
- * that needs the answer too should not ask the sessions table twice. A caller
- * that already knows passes `viewer`, and the question is never asked at all.
+ * Since nothing here turns on who is asking, the sessions table is not touched
+ * on any path -- which is what keeps a stranger's play at one statement.
  */
 async function readAnswerRow<T extends Record<string, unknown>>(
   c: Context<{ Bindings: ApiEnv }>,
   id: string,
   columns: string,
-  viewer?: UserSummary,
 ): Promise<
-  | { row: T; answer: Melody; user: UserSummary | undefined }
+  | { row: T; answer: Melody }
   | { status: 404 | 409; problem: string }
 > {
   const row = (await c.env.DB.prepare(
@@ -1081,15 +1083,8 @@ async function readAnswerRow<T extends Record<string, unknown>>(
     | (T & Owned & { unpitched_count: number; melody: string })
     | null;
 
-  if (row === null) {
+  if (row === null || row.status === "draft") {
     return { status: 404, problem: NO_LEVEL };
-  }
-  let user = viewer;
-  if (row.status === "draft") {
-    user ??= await sessionUserOf(c);
-    if (!canSee(user, row)) {
-      return { status: 404, problem: NO_LEVEL };
-    }
   }
   // An answer with blanks in it cannot mark anybody's attempt. Read off the
   // column rather than the melody, which is the reason the column exists.
@@ -1101,12 +1096,14 @@ async function readAnswerRow<T extends Record<string, unknown>>(
   if (answer === undefined) {
     throw new Error(`The melody stored for level ${id} could not be read.`);
   }
-  return { row, answer, user };
+  return { row, answer };
 }
 
-/** Whether this viewer may see this row: anybody a published one, owner or admin a draft. */
-const canSee = (user: UserSummary | undefined, row: Owned): boolean =>
-  row.status === "published" || (user !== undefined && ownerOrAdmin(user, row));
+/**
+ * Whether this row may be played, rated, or kept progress on: only a published
+ * one, whoever is asking. See `readAnswerRow` for why a draft is nobody's.
+ */
+const canPlay = (row: Owned): boolean => row.status === "published";
 
 /**
  * A level as something to play: everything a card shows, and the rhythm.
@@ -1116,7 +1113,7 @@ const canSee = (user: UserSummary | undefined, row: Owned): boolean =>
  * Everything else arrives as a note awaiting a pitch, which is what the stave
  * already draws with an x notehead.
  */
-api.get("/api/levels/:id/puzzle", async (c) => {
+api.get("/api/tunes/:id/puzzle", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1152,7 +1149,7 @@ api.get("/api/levels/:id/puzzle", async (c) => {
  * The count is written last, after the attempt has been graded, and only for
  * somebody signed in: see the end of the route.
  */
-api.post("/api/levels/:id/check", async (c) => {
+api.post("/api/tunes/:id/check", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1181,7 +1178,7 @@ api.post("/api/levels/:id/check", async (c) => {
 
   const attempt = readAttempt(body, read.answer.eventCount);
   if (attempt === undefined) {
-    return c.json({ error: "That is not an attempt at this level." }, 400);
+    return c.json({ error: "That is not an attempt at this tune." }, 400);
   }
 
   const graded = gradeAttempt(read.answer, attempt);
@@ -1208,9 +1205,8 @@ api.post("/api/levels/:id/check", async (c) => {
 
   // Who is asking, asked last: after the attempt has been refused or graded,
   // so a malformed one costs no session query -- and not at all for a
-  // published level when there is no cookie, since `sessionUserOf` asks
-  // nothing then, which is what keeps anonymous play at one statement. A
-  // draft already cost the question on the way in; its answer is reused.
+  // published tune when there is no cookie, since `sessionUserOf` asks
+  // nothing then, which is what keeps anonymous play at one statement.
   //
   // The row is the account's record of this level: one more check, the
   // pitches as they stand, and the solve if this was it. The verdicts go in
@@ -1218,7 +1214,7 @@ api.post("/api/levels/:id/check", async (c) => {
   // saves the whole of them the moment this answer lands. A solved row is
   // finished -- the statement's WHERE makes this a no-op on one -- so a tab
   // that did not hear about the solve cannot turn "Flawless!" into two.
-  const user = read.user ?? (await sessionUserOf(c));
+  const user = await sessionUserOf(c);
   if (user !== undefined) {
     const now = Date.now();
     await c.env.DB.prepare(PROGRESS_SQL.check)
@@ -1435,15 +1431,14 @@ function progressOf(row: ProgressRow): PlayProgress {
 }
 
 /**
- * The level a player's progress is filed under, if the viewer may see it.
+ * The tune a player's progress is filed under, if there is one to play.
  *
  * Owner and status alone, never the melody: nothing here grades anything. No
- * 409 for a draft still missing pitches either -- nothing can be checked
- * against one, so a row for it is harmless, and it goes with the level.
+ * 409 for a draft still missing pitches either -- a draft is not playable at
+ * all, so it is simply not here.
  */
-async function readVisibleLevel(
+async function readPlayableTune(
   c: Context<{ Bindings: ApiEnv }>,
-  user: UserSummary,
   id: string,
 ): Promise<Owned | undefined> {
   const row = (await c.env.DB.prepare(
@@ -1451,7 +1446,7 @@ async function readVisibleLevel(
   )
     .bind(id)
     .first()) as Owned | null;
-  return row !== null && canSee(user, row) ? row : undefined;
+  return row !== null && canPlay(row) ? row : undefined;
 }
 
 const toProgressRow = (progress: PlayProgress, now: number) => ({
@@ -1478,8 +1473,8 @@ api.get("/api/progress", async (c) => {
 
 // One level's record, for the play page opening it. 204 is "nothing yet",
 // which is not an error; 404 is the level, in the words `/puzzle` would use.
-api.get("/api/progress/:levelId", async (c) => {
-  const id = c.req.param("levelId");
+api.get("/api/progress/:tuneId", async (c) => {
+  const id = c.req.param("tuneId");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
   }
@@ -1489,7 +1484,7 @@ api.get("/api/progress/:levelId", async (c) => {
     return c.json({ error: SIGN_IN_TO_PLAY }, 401);
   }
 
-  if ((await readVisibleLevel(c, user, id)) === undefined) {
+  if ((await readPlayableTune(c, id)) === undefined) {
     return c.json({ error: NO_LEVEL }, 404);
   }
 
@@ -1510,8 +1505,8 @@ api.get("/api/progress/:levelId", async (c) => {
  * with those two filled in blank, which also refuses a record filed under
  * another level, however it got there.
  */
-api.put("/api/progress/:levelId", async (c) => {
-  const id = c.req.param("levelId");
+api.put("/api/progress/:tuneId", async (c) => {
+  const id = c.req.param("tuneId");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
   }
@@ -1546,10 +1541,10 @@ api.put("/api/progress/:levelId", async (c) => {
       )
     : undefined;
   if (progress === undefined) {
-    return c.json({ error: "That is not progress at this level." }, 400);
+    return c.json({ error: "That is not progress at this tune." }, 400);
   }
 
-  if ((await readVisibleLevel(c, user, id)) === undefined) {
+  if ((await readPlayableTune(c, id)) === undefined) {
     return c.json({ error: NO_LEVEL }, 404);
   }
 
@@ -1622,7 +1617,6 @@ api.post("/api/progress/merge", async (c) => {
       c,
       browser.levelId,
       "unpitched_count, melody",
-      user,
     );
     if ("status" in read) continue;
 
@@ -1733,7 +1727,7 @@ export const UPVOTE_SQL = {
   mine: `SELECT level_id FROM upvotes WHERE user_id = ?`,
 } as const;
 
-const SIGN_IN_TO_RATE = "Sign in to rate a level.";
+const SIGN_IN_TO_RATE = "Sign in to rate a tune.";
 const NOT_A_RATING = "A rating is half a pepper to five peppers, in halves.";
 
 /** More bytes than `{ "stars": 2.5 }` will ever need. */
@@ -1752,10 +1746,10 @@ const MAX_RATING_BYTES = 1024;
  *
  * The refusals are ordered like the play routes': the id's shape before any
  * lookup, the session before the body is read, the body before the level,
- * and the level's answers in `readVisibleLevel`'s words -- a stranger asking
+ * and the level's answers in `readPlayableTune`'s words -- a stranger asking
  * about a draft learns only that there is no level.
  */
-api.put("/api/levels/:id/rating", async (c) => {
+api.put("/api/tunes/:id/rating", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1781,7 +1775,7 @@ api.put("/api/levels/:id/rating", async (c) => {
     return c.json({ error: NOT_A_RATING }, 400);
   }
 
-  const row = await readVisibleLevel(c, user, id);
+  const row = await readPlayableTune(c, id);
   if (row === undefined) {
     return c.json({ error: NO_LEVEL }, 404);
   }
@@ -1805,7 +1799,7 @@ api.put("/api/levels/:id/rating", async (c) => {
     .bind(user.id, id)
     .first()) as ProgressRow | null;
   if (played === null || played.solved_at === null) {
-    return c.json({ error: "Rate a level once you have solved it." }, 403);
+    return c.json({ error: "Rate a tune once you have solved it." }, 403);
   }
 
   const now = Date.now();
@@ -1818,7 +1812,7 @@ api.put("/api/levels/:id/rating", async (c) => {
 
 // Taking a rating back. The caller's own row and nothing else, so no level
 // lookup: deleting what may not be there reveals nothing and is not an error.
-api.delete("/api/levels/:id/rating", async (c) => {
+api.delete("/api/tunes/:id/rating", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1837,7 +1831,7 @@ api.delete("/api/levels/:id/rating", async (c) => {
 // The caller's own rating, for the prompt opening with it. 204 is "nothing
 // yet", as the progress read answers; no visibility lookup for the same
 // reason as the DELETE above.
-api.get("/api/levels/:id/rating", async (c) => {
+api.get("/api/tunes/:id/rating", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1857,7 +1851,7 @@ api.get("/api/levels/:id/rating", async (c) => {
   return c.json({ stars: starsOfHalf(row.half) });
 });
 
-const SIGN_IN_TO_UPVOTE = "Sign in to upvote a level.";
+const SIGN_IN_TO_UPVOTE = "Sign in to upvote a tune.";
 
 /**
  * A solver's heart on a level, or not: a toggle, not a counter.
@@ -1869,7 +1863,7 @@ const SIGN_IN_TO_UPVOTE = "Sign in to upvote a level.";
  * one upvote (the insert conflicts into silence), and taking it back is the
  * DELETE below.
  */
-api.put("/api/levels/:id/upvote", async (c) => {
+api.put("/api/tunes/:id/upvote", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1880,7 +1874,7 @@ api.put("/api/levels/:id/upvote", async (c) => {
     return c.json({ error: SIGN_IN_TO_UPVOTE }, 401);
   }
 
-  const row = await readVisibleLevel(c, user, id);
+  const row = await readPlayableTune(c, id);
   if (row === undefined) {
     return c.json({ error: NO_LEVEL }, 404);
   }
@@ -1889,7 +1883,7 @@ api.put("/api/levels/:id/upvote", async (c) => {
   }
   if (row.owner_id === user.id) {
     return c.json(
-      { error: "The author does not vote for their own level." },
+      { error: "The author does not vote for their own tune." },
       403,
     );
   }
@@ -1904,7 +1898,7 @@ api.put("/api/levels/:id/upvote", async (c) => {
     .bind(user.id, id)
     .first()) as ProgressRow | null;
   if (played === null || played.solved_at === null) {
-    return c.json({ error: "Upvote a level once you have solved it." }, 403);
+    return c.json({ error: "Upvote a tune once you have solved it." }, 403);
   }
 
   await c.env.DB.prepare(UPVOTE_SQL.give).bind(user.id, id, Date.now()).run();
@@ -1914,7 +1908,7 @@ api.put("/api/levels/:id/upvote", async (c) => {
 
 // Taking the heart back: the caller's own row and nothing else, idempotent,
 // for the same reasons as the rating's DELETE.
-api.delete("/api/levels/:id/upvote", async (c) => {
+api.delete("/api/tunes/:id/upvote", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1933,7 +1927,7 @@ api.delete("/api/levels/:id/upvote", async (c) => {
 // Whether the caller's own heart stands, for the button opening filled or
 // not. A plain yes or no rather than 204: the button has exactly two states
 // and the answer should name one.
-api.get("/api/levels/:id/upvote", async (c) => {
+api.get("/api/tunes/:id/upvote", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);
@@ -1958,7 +1952,7 @@ api.get("/api/levels/:id/upvote", async (c) => {
  * one account's own rows, which the table's primary key is `(user_id,
  * level_id)` for -- no join, and nothing here about anybody else's hearts.
  *
- * Kept off the listing query on purpose. `/api/levels` answers a published
+ * Kept off the listing query on purpose. `/api/tunes` answers a published
  * catalog with no session lookup at all, which is what makes it the same
  * work for everybody; this is the one extra question, asked only by a
  * browser that is signed in.
@@ -1988,7 +1982,7 @@ api.get("/api/me/upvotes", async (c) => {
  * (they are all zeros, but the id's existence is what a stranger must not
  * learn -- the `/puzzle` rule).
  */
-api.get("/api/levels/:id/stats", async (c) => {
+api.get("/api/tunes/:id/stats", async (c) => {
   const id = c.req.param("id");
   if (!isTranscriptionId(id)) {
     return c.json({ error: NO_LEVEL }, 404);

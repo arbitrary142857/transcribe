@@ -1,452 +1,477 @@
 /**
- * A level's own box: what it is made of, and what its author wants known.
+ * A tune's own box: what it is, how it has been received, and the way in.
  *
- * Opened two ways, and it is the same box both times. From the level list it
- * is how you decide whether to play something, so it carries a Play button.
- * From inside a puzzle it is the information button beside the title, where
- * Play would mean nothing — you are already here.
+ * Opened five ways and it is one box every time — from either list of cards,
+ * on arriving at a puzzle cold, from the (i) beside the title, and by the check
+ * that solves it. `levelBoxPlan` decides what each of those offers; this file
+ * draws it and nothing else, so the differences between the five live in one
+ * table rather than in a dozen conditions spread through the drawing.
  *
- * The facts come from `levelStats`, which is what the card used to print as
- * one dot-separated line. A grid with a word over each number is worth the
- * room: "4/4" and "4 bars" and "120 BPM" are three different kinds of thing,
- * and a line of them separated by dots asks the reader to sort that out.
+ * It is laid out as the sheet is: the title centred and large, the subtitle
+ * centred and smaller under it, because a reader's eye already goes there for
+ * those two things and the box is about the same piece of music the sheet head
+ * names. Then what the author wants known, then what the music is and how it
+ * has gone for everybody, then — along the foot — whose it is and where to go.
  */
 
-import { NoteValue } from "../music/duration.js";
 import { keyForFifths } from "../music/key-signature.js";
-import {
-  KEY_DIAGRAM_WIDTH,
-  renderKeyDiagram,
-} from "../render/key-diagram.js";
 import { renderStaveDiagram } from "../render/stave-diagram.js";
+import type { PlayProgress } from "../puzzle/progress.js";
 import { formatElapsed } from "../puzzle/stopwatch.js";
+import type { UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
-import {
-  barsIcon,
-  flagIcon,
-  lengthIcon,
-  metronomeIcon,
-  noteIcon,
-} from "./icons.js";
-import {
-  countFigure,
-  keyName,
-  levelStats,
-  solversSaid,
-  type LevelStat,
-  type LevelStatKind,
-} from "./level-card.js";
+import { markOpened } from "./arrival.js";
 import { displayedDifficulty } from "../shared/difficulty.js";
-import { authorLabel } from "../shared/session.js";
-import { createDifficulty } from "./difficulty.js";
+import { createDifficulty, createUnratedDifficulty } from "./difficulty.js";
+import { flagIcon, heartIcon } from "./icons.js";
+import {
+  bylineOf,
+  countFigure,
+  heartsSaid,
+  keyName,
+  solversSaid,
+} from "./level-card.js";
+import {
+  levelBoxPlan,
+  maySpeak,
+  type BoxOpening,
+  type BoxPage,
+  type BoxPiece,
+} from "./level-box.js";
 import { openInfoModal } from "./modal.js";
+import { difficultyProposal } from "./rating-prompt.js";
+import { likeButton } from "./upvote-line.js";
 
 /**
- * Room for the meter glyph and nothing else, and the ink around it.
+ * Room on the stave for a clef, seven accidentals and a meter.
  *
- * The same pair the setup page's meter chooser uses. Taking the *default*
- * headroom instead was what made this diagram enormous: the default reserves a
- * clef's worth above and below — 54 units of empty staff around a glyph 40
- * wide — and since the svg is drawn to whatever width its box gives it, that
- * tall, narrow view box came out over twice as high as the box was wide.
+ * The key diagram's own width plus what a time signature takes beside it. One
+ * drawing rather than the two this box used to set side by side: a clef, a key
+ * and a meter are how a piece of music opens, and three panels for the opening
+ * of one stave was three boxes saying one thing.
  */
-const METER_WIDTH = 40;
-const METER_HEADROOM = { above: 7, below: 7 };
+const SIGNATURE_WIDTH = 176;
+
+/** Ink above the top line and below the bottom one, for a clef's reach. */
+const SIGNATURE_HEADROOM = { above: 28, below: 26 };
 
 /**
- * How many stave units go in a rem.
- *
- * Both diagrams are sized from this, so the key signature and the meter are
- * drawn at one scale and read as two views of the same stave rather than two
- * pictures that happen to sit together. Fewer units to the rem draws both
- * larger: at seventeen the two signatures were the smallest thing in a dialog
- * that exists to show them.
+ * How many stave units go in a rem. Fewer draws the stave larger; this is what
+ * makes the diagram read as notation rather than as an icon of some.
  */
-const UNITS_PER_REM = 14;
+const UNITS_PER_REM = 13;
 
 export type LevelModalOptions = {
   /** Everything the box is about. */
   level: TranscriptionSummary;
   /** What the author wrote, if they wrote anything. */
   instructions: string | undefined;
-  /** Offer a way in. Absent when the box is opened from inside the puzzle. */
-  play?: boolean;
-  /** How long it took, when it has been finished. */
-  solvedIn?: { elapsedMs: number; checkCount: number };
-  /**
-   * Whether there is an attempt here to go back to.
-   *
-   * Separate from `solvedIn`, which is both the finished time and the fact of
-   * being finished — a level can be neither started nor solved, started and not
-   * solved, or solved, and the way in should say which.
-   */
-  started?: boolean;
-  /**
-   * The viewer's part in the figures: the rating prompt for a solver, the
-   * author's note for the author. Built by `solvedContribution`; the box
-   * stays dumb about who may say what.
-   */
-  contribute?: HTMLElement;
-  /**
-   * The heart, counted and — for a solver who may — pressable. Built by
-   * `upvoteLine`, which decides which of the two it is.
-   */
-  upvote?: HTMLElement;
-  /** The solving moment itself: a cheer above the solved line. */
-  celebrate?: boolean;
-  /**
-   * Offer the ways onward — staying here, or the level list. Passed by the
-   * play page, where the box opens over a finished puzzle; the catalog's
-   * box offers Play instead.
-   */
-  wayOut?: boolean;
+  /** Which page the box was opened on, and what opened it. */
+  page: BoxPage;
+  opening: BoxOpening;
+  /** Who is looking, so the box knows whose tune this is and who may speak. */
+  viewer: UserSummary | undefined;
+  /** How far the viewer has got, from wherever their progress is kept. */
+  progress: PlayProgress | undefined;
+  /** The author's door to the words. Only ever asked for from a list. */
+  onEditDetails?: () => void;
+  /** Called once the box has gone, however it went. */
+  onClose?: () => void;
 };
 
-/** What the way in offers, given how far this level has got. */
-function wayIn(options: LevelModalOptions): string {
-  if (options.solvedIn) return "Play again";
-  return options.started ? "Resume" : "Play";
-}
-
 export function openLevelModal(options: LevelModalOptions): void {
-  const { level } = options;
+  const { level, viewer, progress } = options;
+  const own = viewer !== undefined && viewer.id === level.ownerId;
+  const solved = progress?.solvedAt !== undefined;
+
+  const plan = levelBoxPlan({
+    page: options.page,
+    opening: options.opening,
+    own,
+    maySpeak: maySpeak(level, viewer, solved),
+    progress,
+  });
 
   openInfoModal({
     className: "level-modal",
-    // Nothing in here closes the box any more; the shell's × does, along with
-    // Escape and the backdrop.
+    onClose: options.onClose,
+    // Nothing in here closes the box but its own buttons; the shell's × does,
+    // along with Escape and the backdrop.
     fill(close) {
-      const parts: Node[] = [];
+      const parts: Node[] = [head(level)];
 
-      const heading = document.createElement("h2");
-      heading.className = "modal-title";
-      heading.textContent = level.title;
-      parts.push(heading);
-
-      if (level.subtitle !== undefined) {
-        const subtitle = document.createElement("p");
-        subtitle.className = "level-modal-subtitle";
-        subtitle.textContent = level.subtitle;
-        parts.push(subtitle);
+      if (plan.instructions && options.instructions !== undefined) {
+        parts.push(instructionsBox(options.instructions));
       }
 
-      // Who wrote it down, and how hard it is: the same two facts the card
-      // leads with, since this box is the card opened. A draft without a
-      // difficulty shows the byline alone, as its card does.
-      const author = document.createElement("p");
-      author.className = "level-modal-author";
-      author.append(authorLabel(level.author));
-      const displayed = displayedDifficulty(level);
-      if (displayed !== undefined) {
-        author.append(" · ", createDifficulty(displayed));
-        if (level.ratingCount !== undefined) {
-          // How much of the figure is the solvers': the one place the count
-          // of ratings is shown.
-          const count = document.createElement("span");
-          count.className = "level-modal-ratings";
-          count.textContent =
-            level.ratingCount === 1
-              ? " · from 1 rating"
-              : ` · from ${level.ratingCount} ratings`;
-          author.append(count);
-        }
-      }
-      parts.push(author);
+      parts.push(
+        facts(level, plan.left === "result" ? resultBox(progress) : signatureBox(level)),
+      );
 
-      // ---- how it has been received --------------------------------------
-      //
-      // The heart (counted, and pressable for a solver who may), the
-      // solvers, and the two medians. The medians arrive after the box has
-      // drawn, from /stats; until then — and whenever there are too few
-      // qualifying solves to publish one — they are a dash.
-      if (level.status === "published") {
-        const figures = document.createElement("p");
-        figures.className = "level-modal-figures";
+      const hearts = heartCount(level);
 
-        const solvers = level.solveCount ?? 0;
-        figures.append(
-          ...(options.upvote ? [options.upvote, " · "] : []),
-          // The card's flag, not the tick this box used to draw: the two
-          // print the same figure and should not be two different glyphs.
-          countFigure(flagIcon(), solvers, solversSaid(solvers), "flag"),
+      if (plan.line !== undefined || plan.speak) {
+        parts.push(
+          doings(
+            plan.line,
+            plan.speak
+              ? [likeButton({ level, onChange: hearts.move }), difficultyProposal(level)]
+              : [],
+          ),
         );
-
-        const median = medianFigure("Median completion time", "median");
-        const flawless = medianFigure("Median flawless completion time", "flawless");
-        figures.append(" · ", median.element, " · ", flawless.element);
-        parts.push(figures);
-
-        void (async () => {
-          try {
-            const response = await fetch(
-              `/api/levels/${encodeURIComponent(level.id)}/stats`,
-              { headers: { accept: "application/json" } },
-            );
-            if (!response.ok) return;
-            const said = (await response.json()) as {
-              medianSolveMs?: number;
-              medianFlawlessMs?: number;
-            };
-            median.show(said.medianSolveMs);
-            flawless.show(said.medianFlawlessMs);
-          } catch {
-            // The dashes stand; they were the truth a moment ago too.
-          }
-        })();
       }
 
-      if (options.celebrate && options.solvedIn) {
-        const cheer = document.createElement("p");
-        cheer.className = "level-modal-cheer";
-        cheer.textContent = "Solved!";
-        parts.push(cheer);
-      }
-
-      if (options.solvedIn) {
-        const solved = document.createElement("p");
-        solved.className = "level-modal-solved";
-        const attempts =
-          options.solvedIn.checkCount === 1
-            ? "flawlessly"
-            : `in ${options.solvedIn.checkCount} attempts`;
-        solved.textContent = `Solved ${attempts} · ${formatElapsed(options.solvedIn.elapsedMs)}`;
-        parts.push(solved);
-      }
-
-      if (options.contribute) {
-        parts.push(options.contribute);
-      }
-
-      // ---- the two signatures, drawn rather than named -------------------
-      //
-      // Notation is quicker to recognise than to read: four sharps is a
-      // picture where "E major" is a fact to recall. Both diagrams already
-      // exist for the choosers that set them, so they are drawn the same way
-      // here and cannot disagree with what the editor showed.
-      //
-      // Built as panels, like the key chooser's own cells, and set apart from
-      // the measured facts below: these two say what the music *is*, the four
-      // below say how much of it there is.
-
-      const drawn = document.createElement("div");
-      drawn.className = "level-drawn";
-
-      const keyPanel = signaturePanel(
-        "Key signature",
-        KEY_DIAGRAM_WIDTH,
-        (staff) =>
-          renderKeyDiagram(
-            staff,
-            keyForFifths(level.keyFifths, level.keyMode),
-            level.clef,
-          ),
-      );
-      // The one chip here, because a signature of no accidentals is A minor as
-      // readily as C major and the stave alone cannot say which.
-      const mode = document.createElement("p");
-      mode.className = "level-signature-name";
-      mode.textContent = keyName(level);
-      keyPanel.append(mode);
-
-      const meterPanel = signaturePanel(
-        "Time signature",
-        METER_WIDTH,
-        (staff) =>
-          renderStaveDiagram(
-            staff,
-            METER_WIDTH,
-            (stave) =>
-              stave.addTimeSignature(
-                `${level.meter.beats}/${level.meter.beatUnit}`,
-              ),
-            METER_HEADROOM,
-          ),
-      );
-
-      drawn.append(keyPanel, meterPanel);
-      parts.push(drawn);
-
-      // ---- how much of it there is ---------------------------------------
-
-      const grid = document.createElement("div");
-      grid.className = "level-grid";
-      for (const stat of levelStats(level)) {
-        grid.append(statBox(stat));
-      }
-      parts.push(grid);
-
-      // ---- what the author wants known ---------------------------------
-
-      if (options.instructions !== undefined) {
-        const heading = document.createElement("h3");
-        heading.className = "level-instructions-heading";
-        heading.textContent = "Instructions";
-
-        const body = document.createElement("p");
-        body.className = "level-instructions";
-        // Set as text, with the line breaks kept by `white-space: pre-wrap` in
-        // the stylesheet rather than by turning newlines into markup. A
-        // disabled textarea would show the same characters but read as a
-        // broken input rather than as something to be read.
-        body.textContent = options.instructions;
-
-        // A box of its own, so that instructions long enough to scroll scroll
-        // inside something with an edge — text that simply ran out of room
-        // partway down the modal would read as cut off rather than as scrollable.
-        const boxed = document.createElement("div");
-        boxed.className = "level-instructions-box";
-        boxed.tabIndex = 0;
-        boxed.append(body);
-
-        parts.push(heading, boxed);
-      }
-
-      // ---- the way in ---------------------------------------------------
-
-      // No Close button beside it. The × in the corner is the way out, and two
-      // of those in one box asks which is which for no gain — the more so here,
-      // where the other button is the thing you came to press. Opened from
-      // inside the puzzle there is no way in either, so the row goes entirely
-      // rather than standing empty.
-      if (options.play) {
-        const buttons = document.createElement("div");
-        buttons.className = "modal-buttons";
-
-        const play = document.createElement("a");
-        play.className = "modal-confirm level-modal-play";
-        play.href = `/play?level=${encodeURIComponent(level.id)}`;
-        play.textContent = wayIn(options);
-        buttons.append(play);
-        parts.push(buttons);
-      }
-
-      // The ways onward from a finished puzzle: staying is closing the box,
-      // and the level list is an address. Only ever instead of Play — the
-      // page you would play on is the one underneath.
-      if (options.wayOut) {
-        const buttons = document.createElement("div");
-        buttons.className = "modal-buttons";
-
-        const stay = document.createElement("button");
-        stay.type = "button";
-        stay.className = "modal-cancel";
-        stay.textContent = "Keep playing";
-        stay.addEventListener("click", () => close());
-
-        const away = document.createElement("a");
-        away.className = "modal-confirm level-modal-play";
-        away.href = "/";
-        away.textContent = "Level select";
-
-        buttons.append(stay, away);
-        parts.push(buttons);
-      }
-
+      parts.push(foot(options, plan, hearts.element, close));
       return parts;
     },
   });
 }
 
 /**
- * One labelled median, a dash until — and unless — the figure arrives.
+ * The masthead, as the sheet prints one: the name centred and large, and what
+ * it is from centred and smaller beneath.
  *
- * The dash is not a loading state alone: under the privacy floor the server
- * answers nothing on purpose, and the dash is what nothing looks like.
+ * No byline here, unlike the sheet's: who wrote it down is one of the facts
+ * along the foot, beside the figures their work has earned.
  */
-function medianFigure(
-  label: string,
-  word: string,
-): { element: HTMLElement; show(ms: number | undefined): void } {
-  const element = document.createElement("span");
-  element.className = "level-modal-median";
-  element.title = label;
+function head(level: TranscriptionSummary): HTMLElement {
+  const element = document.createElement("div");
+  element.className = "level-modal-head";
 
-  const time = document.createElement("span");
-  time.className = "level-modal-median-time";
+  const title = document.createElement("h2");
+  title.className = "modal-title level-modal-title";
+  title.textContent = level.title;
+  element.append(title);
 
-  const draw = (ms: number | undefined): void => {
-    const said = ms === undefined ? "—" : formatElapsed(ms);
-    time.textContent = said;
-    element.setAttribute("aria-label", `${label}: ${said}`);
-  };
+  if (level.subtitle !== undefined && level.subtitle !== "") {
+    const subtitle = document.createElement("p");
+    subtitle.className = "level-modal-subtitle";
+    subtitle.textContent = level.subtitle;
+    element.append(subtitle);
+  }
 
-  element.append(`${word} `, time);
-  draw(undefined);
-  return { element, show: draw };
+  return element;
 }
 
 /**
- * A signature under its name, drawn on its own stave.
+ * What the author wants known, in a box that scrolls.
  *
- * A `.panel` like the key chooser's cells, because that is what these are —
- * one notation diagram with a word over it — and the two screens showing the
- * same thing should look like they are showing the same thing.
+ * Without an edge, text that ran past the room simply stopped partway down the
+ * dialog, which reads as cut off rather than as more to come. Focusable,
+ * because a region that scrolls has to be reachable by keyboard too.
  */
-function signaturePanel(
-  heading: string,
-  units: number,
-  draw: (staff: HTMLElement) => void,
-): HTMLElement {
-  const panel = document.createElement("div");
-  panel.className = "panel level-signature";
+function instructionsBox(instructions: string): HTMLElement {
+  const boxed = document.createElement("div");
+  boxed.className = "level-instructions-box";
+  boxed.tabIndex = 0;
 
-  const label = document.createElement("p");
-  label.className = "level-signature-heading";
-  label.textContent = heading;
+  const body = document.createElement("p");
+  body.className = "level-instructions";
+  // Set as text, with the line breaks kept by `white-space: pre-wrap` rather
+  // than by turning newlines into markup.
+  body.textContent = instructions;
+
+  boxed.append(body);
+  return boxed;
+}
+
+/** The two columns: one drawn fact at the left, three measured ones at the right. */
+function facts(level: TranscriptionSummary, left: HTMLElement): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "level-facts";
+
+  const median = factBox("Median time");
+  const flawless = factBox("Median flawless");
+  // A dash until — and unless — the figures arrive.
+  median.show(undefined);
+  flawless.show(undefined);
+
+  const difficulty = factBox("Difficulty");
+  const displayed = displayedDifficulty(level);
+  difficulty.value.append(
+    displayed === undefined ? createUnratedDifficulty() : createDifficulty(displayed),
+  );
+
+  const column = document.createElement("div");
+  column.className = "level-facts-column";
+  column.append(median.element, flawless.element, difficulty.element);
+
+  row.append(left, column);
+
+  // The medians arrive after the box has drawn, and are absent on purpose
+  // while too few sharing players have solved it — the dash is what nothing
+  // looks like, not only what waiting looks like.
+  void (async () => {
+    try {
+      const response = await fetch(
+        `/api/tunes/${encodeURIComponent(level.id)}/stats`,
+        { headers: { accept: "application/json" } },
+      );
+      if (!response.ok) return;
+      const said = (await response.json()) as {
+        medianSolveMs?: number;
+        medianFlawlessMs?: number;
+      };
+      median.show(said.medianSolveMs);
+      flawless.show(said.medianFlawlessMs);
+    } catch {
+      // The dashes stand; they were the truth a moment ago too.
+    }
+  })();
+
+  return row;
+}
+
+/** One labelled figure, empty until something is put in it. */
+function factBox(label: string): {
+  element: HTMLElement;
+  value: HTMLElement;
+  show(ms: number | undefined): void;
+} {
+  const element = document.createElement("div");
+  element.className = "level-fact";
+
+  const name = document.createElement("p");
+  name.className = "level-fact-label";
+  name.textContent = label;
+
+  const value = document.createElement("p");
+  value.className = "level-fact-value";
+
+  element.append(name, value);
+  return {
+    element,
+    value,
+    show(ms) {
+      const said = ms === undefined ? "—" : formatElapsed(ms);
+      value.textContent = said;
+      element.setAttribute("aria-label", `${label}: ${said}`);
+    },
+  };
+}
+
+/**
+ * How the music opens, drawn rather than named, with the key named under it.
+ *
+ * Notation is quicker to recognise than to read: four sharps is a picture where
+ * "E major" is a fact to recall. The caption is there for the one thing the
+ * drawing genuinely cannot say — a signature of no accidentals is A minor as
+ * readily as C major — so it names the key alone. The meter and the clef are
+ * unambiguous on the stave and printing them again would be the same fact
+ * twice.
+ */
+function signatureBox(level: TranscriptionSummary): HTMLElement {
+  const panel = document.createElement("div");
+  panel.className = "level-fact level-signature";
+  const said = `${keyName(level)}, ${level.meter.beats}/${level.meter.beatUnit}, ${level.clef} clef`;
+  panel.setAttribute("role", "img");
+  panel.setAttribute("aria-label", said);
+  panel.title = said;
 
   const staff = document.createElement("div");
   staff.className = "level-stave";
   // Sized from the diagram's own width rather than left to fill the panel: the
-  // svg draws to whatever room it is given, so a meter forty units wide and a
-  // key signature a hundred and twenty-four would otherwise come out the same
-  // size on the page and at wildly different scales.
-  staff.style.width = `${units / UNITS_PER_REM}rem`;
-  draw(staff);
+  // svg draws to whatever room it is given, so the scale is decided here.
+  staff.style.width = `${SIGNATURE_WIDTH / UNITS_PER_REM}rem`;
+  renderStaveDiagram(
+    staff,
+    SIGNATURE_WIDTH,
+    (stave) => {
+      stave.addClef(level.clef);
+      stave.addKeySignature(
+        keyForFifths(level.keyFifths, level.keyMode).toString(),
+      );
+      stave.addTimeSignature(`${level.meter.beats}/${level.meter.beatUnit}`);
+    },
+    SIGNATURE_HEADROOM,
+  );
 
-  panel.append(label, staff);
+  // A caption, so set as one: plain text under the drawing rather than the
+  // chip the key chooser wears, which is a control's look and would read here
+  // as the one piece of furniture from another screen.
+  const named = document.createElement("p");
+  named.className = "level-signature-name";
+  named.textContent = keyName(level);
+
+  panel.append(staff, named);
   return panel;
 }
 
-/** Which icon stands for each fact. */
-const STAT_ICON: Record<LevelStatKind, () => string> = {
-  bars: barsIcon,
-  notes: () => noteIcon(NoteValue.Quarter, 0),
-  tempo: metronomeIcon,
-  length: lengthIcon,
-};
+/**
+ * What the solve just earned, where the signature usually is.
+ *
+ * The moment the check comes back is about the clock and the count, not about
+ * what key the piece was in; that is what the box is for the rest of the time.
+ */
+function resultBox(progress: PlayProgress | undefined): HTMLElement {
+  const panel = document.createElement("div");
+  panel.className = "level-fact level-result";
+
+  const time = document.createElement("p");
+  time.className = "level-result-time";
+  time.textContent = formatElapsed(progress?.elapsedMs ?? 0);
+
+  const attempts = document.createElement("p");
+  attempts.className = "level-result-attempts";
+  const count = progress?.checkCount ?? 0;
+  const flawless = count === 1;
+  attempts.textContent = flawless
+    ? "Flawless!"
+    : `${count} attempts`;
+  attempts.classList.toggle("is-flawless", flawless);
+
+  panel.append(time, attempts);
+  return panel;
+}
+
+/** The line above the buttons: how it has gone, and what the viewer may say. */
+function doings(
+  line: BoxPiece[] | undefined,
+  controls: readonly HTMLElement[],
+): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "level-modal-doings";
+
+  const words = document.createElement("p");
+  words.className = "level-modal-line";
+  for (const piece of line ?? []) {
+    if (typeof piece === "string") {
+      words.append(piece);
+    } else {
+      // The one word in the box the accent picks out, and it is picked out
+      // because it is the whole of what that sentence is saying.
+      const marked = document.createElement("em");
+      marked.className = "level-modal-marked";
+      marked.textContent = piece.marked;
+      words.append(marked);
+    }
+  }
+  row.append(words);
+
+  if (controls.length > 0) {
+    const said = document.createElement("div");
+    said.className = "level-modal-say";
+    said.append(...controls);
+    row.append(said);
+  }
+
+  return row;
+}
 
 /**
- * One measured fact: an icon, a number, and what the number counts.
+ * The heart count in the corner, and the one way it moves.
  *
- * The icon carries the meaning and the unit confirms it, which is what "4 bars"
- * says and what a bare "4" under the heading "Bars" did not — that heading
- * could as easily have meant which bar as how many.
- *
- * The icon is `aria-hidden` inside its own markup, so the label is what a
- * screen reader gets; it is on the box rather than read out twice.
+ * The only number for this fact in the box: the button that gives a heart
+ * carries a word instead, so there is nothing here for it to disagree with.
  */
-function statBox(stat: LevelStat): HTMLElement {
-  const box = document.createElement("div");
-  box.className = "level-stat";
+function heartCount(level: TranscriptionSummary): {
+  element: HTMLElement;
+  move(by: 1 | -1): void;
+} {
+  let count = level.upvoteCount ?? 0;
+  const element = countFigure(heartIcon(), count, heartsSaid(count), "heart");
+  const number = element.querySelector(".level-figure-count");
+  return {
+    element,
+    move(by) {
+      count += by;
+      if (number !== null) number.textContent = String(count);
+      element.setAttribute("aria-label", heartsSaid(count));
+      element.title = heartsSaid(count);
+    },
+  };
+}
 
-  const icon = document.createElement("span");
-  icon.className = "level-stat-icon";
-  // Constants from icons.ts, never anything out of the database.
-  icon.innerHTML = STAT_ICON[stat.kind]();
+/** The last line: what it has earned and whose it is, then the ways out. */
+function foot(
+  options: LevelModalOptions,
+  plan: ReturnType<typeof levelBoxPlan>,
+  hearts: HTMLElement,
+  close: () => void,
+): HTMLElement {
+  const { level, viewer } = options;
 
-  const value = document.createElement("p");
-  value.className = "level-stat-value";
+  const row = document.createElement("div");
+  row.className = "level-modal-foot";
 
-  const number = document.createElement("span");
-  number.className = "level-stat-number";
-  number.textContent = stat.value;
+  const said = document.createElement("div");
+  said.className = "level-modal-earned";
 
-  const unit = document.createElement("span");
-  unit.className = "level-stat-unit";
-  unit.textContent = stat.unit;
+  const solvers = level.solveCount ?? 0;
+  said.append(hearts, countFigure(flagIcon(), solvers, solversSaid(solvers), "flag"));
 
-  value.append(number, unit);
-  box.append(icon, value);
-  box.setAttribute("aria-label", `${stat.label}: ${stat.value} ${stat.unit}`);
-  return box;
+  const byline = document.createElement("p");
+  byline.className = "level-modal-byline";
+  if (plan.byline === "own") {
+    byline.textContent = "You own this tune!";
+    byline.classList.add("is-yours");
+  } else {
+    // The site's own tunes are the ones worth picking out of a page of names,
+    // and they are picked out here the way the cards pick them out.
+    const who = bylineOf(level, viewer);
+    const name = document.createElement("span");
+    name.className =
+      who.mark === undefined
+        ? "level-byline-name"
+        : `level-byline-name is-${who.mark}`;
+    name.textContent = who.name;
+    byline.append("Transcribed by ", name);
+  }
+  said.append(byline);
+
+  const buttons = document.createElement("div");
+  buttons.className = "modal-buttons";
+  for (const button of plan.buttons) {
+    buttons.append(wayOut(button, options, close));
+  }
+
+  row.append(said, buttons);
+  return row;
+}
+
+/**
+ * One way out of the box.
+ *
+ * A link where it is an address and a button where it is something done here,
+ * which is the distinction the cards draw too — so the catalog's way in can be
+ * opened in a new tab and the puzzle's cannot, there being no second page.
+ */
+function wayOut(
+  button: ReturnType<typeof levelBoxPlan>["buttons"][number],
+  options: LevelModalOptions,
+  close: () => void,
+): HTMLElement {
+  const look = `${button.accent ? "modal-confirm" : "modal-cancel"} level-modal-way`;
+
+  if (button.act === "play" || button.act === "catalog") {
+    const link = document.createElement("a");
+    link.className = look;
+    link.textContent = button.label;
+    link.href =
+      button.act === "catalog"
+        ? "/"
+        : `/play?tune=${encodeURIComponent(options.level.id)}`;
+    if (button.act === "play") {
+      // The puzzle page opens this box for itself when somebody arrives cold;
+      // pressing the way in from here is the opposite of arriving cold.
+      link.addEventListener("click", () =>
+        markOpened(window.sessionStorage, options.level.id),
+      );
+    }
+    return link;
+  }
+
+  const pressed = document.createElement("button");
+  pressed.type = "button";
+  pressed.className = look;
+  pressed.textContent = button.label;
+  pressed.addEventListener("click", () => {
+    if (button.act === "edit") {
+      close();
+      options.onEditDetails?.();
+      return;
+    }
+    close();
+  });
+  return pressed;
 }

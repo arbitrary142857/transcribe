@@ -546,7 +546,7 @@ export function createEditorPage(
             };
 
       const response = await fetch(
-        levelId === undefined ? "/api/levels" : `/api/levels/${levelId}`,
+        levelId === undefined ? "/api/tunes" : `/api/tunes/${levelId}`,
         {
           method: levelId === undefined ? "POST" : "PUT",
           headers: { "content-type": "application/json" },
@@ -577,7 +577,7 @@ export function createEditorPage(
           throw new Error("The server's answer could not be read.");
         }
         levelId = id;
-        window.history.replaceState(null, "", `/edit?level=${id}`);
+        window.history.replaceState(null, "", `/edit?tune=${id}`);
       }
       markSaved(sent);
       exit({ pause: DEPARTURE_MS });
@@ -595,7 +595,7 @@ export function createEditorPage(
 
   /** Where a sign-in should come back to: this draft, or a fresh page for one. */
   const here = () =>
-    levelId === undefined ? "/edit" : `/edit?level=${levelId}`;
+    levelId === undefined ? "/edit" : `/edit?tune=${levelId}`;
 
   /**
    * Put the work aside for a sign-in, and say whether it was put.

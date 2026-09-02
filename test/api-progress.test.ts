@@ -207,7 +207,7 @@ describe("GET /api/progress", () => {
   });
 });
 
-describe("GET /api/progress/:levelId", () => {
+describe("GET /api/progress/:tuneId", () => {
   it("answers 401 without asking the database when nobody is signed in", async () => {
     const { response, asked } = await get(`/api/progress/${ID}`, [level(rowOf())]);
 
@@ -250,7 +250,7 @@ describe("GET /api/progress/:levelId", () => {
     assert.deepEqual(read.values, [OWNER_ID, ID]);
   });
 
-  it("answers 404 for a level that is not there and for a draft that is not the viewer's, in the same words", async () => {
+  it("answers 404 for a tune that is not there and for a draft alike, in the same words", async () => {
     const missing = await get(`/api/progress/${ID}`, [asOwner()], SIGNED_IN);
     const hidden = await get(`/api/progress/${ID}`, [asStranger(), level(DRAFT)], SIGNED_IN);
 
@@ -260,14 +260,16 @@ describe("GET /api/progress/:levelId", () => {
     assert.equal(progressStatements(hidden.asked).length, 0);
   });
 
-  it("hands the author, and an admin, their record on a draft", async () => {
+  it("holds no record on a draft, for its author or an admin either", async () => {
+    // Nothing may be played until it is published, so there is no progress on
+    // a draft to hand anybody.
     for (const who of [asOwner(), asAdmin()]) {
       const { response } = await get(
         `/api/progress/${ID}`,
         [who, level(DRAFT), held(progressRow())],
         SIGNED_IN,
       );
-      assert.equal(response.status, 200);
+      assert.equal(response.status, 404);
     }
   });
 
@@ -282,7 +284,7 @@ describe("GET /api/progress/:levelId", () => {
   });
 });
 
-describe("PUT /api/progress/:levelId", () => {
+describe("PUT /api/progress/:tuneId", () => {
   const put = (body: unknown, answers?: readonly Answer[], headers?: Record<string, string>) =>
     send("PUT", `/api/progress/${ID}`, body, answers, headers);
 
@@ -375,7 +377,7 @@ describe("PUT /api/progress/:levelId", () => {
     assert.equal(progressStatements(huge.asked).length, 0);
   });
 
-  it("answers 404 for a level that is not there or a draft not the viewer's, and writes nothing", async () => {
+  it("answers 404 for a tune that is not there or a draft alike, and writes nothing", async () => {
     const missing = await put(saved, [asOwner()], SIGNED_IN);
     const hidden = await put(saved, [asStranger(), level(DRAFT)], SIGNED_IN);
 
@@ -485,7 +487,7 @@ describe("POST /api/progress/merge", () => {
     ]);
   });
 
-  it("skips a level that is not there, and a draft that is not the viewer's, without saying so", async () => {
+  it("skips a tune that is not there, and a draft, without saying so", async () => {
     const missing = await merge({ records: [record()] }, [asOwner()], SIGNED_IN);
     const hidden = await merge({ records: [record()] }, [asStranger(), level(DRAFT)], SIGNED_IN);
 
@@ -508,16 +510,15 @@ describe("POST /api/progress/merge", () => {
     assert.deepEqual(batches, []);
   });
 
-  it("merges the author's record on their own draft, asking who is asking only once", async () => {
-    const { response, asked, batches } = await merge(
+  it("takes no record on a draft, the author's own included", async () => {
+    const { response, batches } = await merge(
       { records: [record()] },
       [asOwner(), level(DRAFT)],
       SIGNED_IN,
     );
 
-    assert.deepEqual(await response.json(), { taken: [ID] });
-    assert.equal(asked.filter((each) => /FROM sessions/i.test(each.sql)).length, 1);
-    assert.equal(inserted(batches).length, 1);
+    assert.deepEqual(await response.json(), { taken: [] });
+    assert.equal(inserted(batches).length, 0);
   });
 
   it("writes every taken record in one batch", async () => {

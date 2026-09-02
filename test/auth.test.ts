@@ -216,7 +216,7 @@ describe("GET /api/auth/google", () => {
   it("keeps the place to return to in the flight cookie, where no script can read it", async () => {
     const { db } = stubDatabase();
     const response = await api.request(
-      "/api/auth/google?next=%2Fedit%3Flevel%3Dk3m9x2p7qw4t",
+      "/api/auth/google?next=%2Fedit%3Ftune%3Dk3m9x2p7qw4t",
       undefined,
       envOf(db, stubGoogle().fetch),
     );
@@ -225,7 +225,7 @@ describe("GET /api/auth/google", () => {
     const [, , where] = flight.split(".");
     assert.equal(
       Buffer.from(where!, "base64url").toString(),
-      "/edit?level=k3m9x2p7qw4t",
+      "/edit?tune=k3m9x2p7qw4t",
     );
     // Google is told nothing about it: the redirect_uri it matches exactly
     // stays what it was, and nothing else names the path.
@@ -249,10 +249,10 @@ describe("GET /api/auth/google", () => {
 
 describe("returnPathOf()", () => {
   it("keeps a path within the site, query string and all", () => {
-    assert.equal(returnPathOf("/edit?level=k3m9x2p7qw4t"), "/edit?level=k3m9x2p7qw4t");
+    assert.equal(returnPathOf("/edit?tune=k3m9x2p7qw4t"), "/edit?tune=k3m9x2p7qw4t");
     assert.equal(returnPathOf("/mine"), "/mine");
     assert.equal(returnPathOf("/"), "/");
-    assert.equal(returnPathOf("/play?level=abc#top"), "/play?level=abc#top");
+    assert.equal(returnPathOf("/play?tune=abc#top"), "/play?tune=abc#top");
   });
 
   it("sends a path to another site home instead", () => {
@@ -268,7 +268,7 @@ describe("returnPathOf()", () => {
   });
 
   it("sends anything that is not a path home", () => {
-    for (const notAPath of [undefined, null, "", "edit", "edit?level=x", 42, {}, []]) {
+    for (const notAPath of [undefined, null, "", "edit", "edit?tune=x", 42, {}, []]) {
       assert.equal(returnPathOf(notAPath), "/", `kept ${String(notAPath)}`);
     }
   });
@@ -339,12 +339,12 @@ describe("GET /api/auth/callback", () => {
 
     const response = await api.request(
       `/api/auth/callback?code=abc&state=${STATE}`,
-      { headers: flightBackTo("/edit?level=k3m9x2p7qw4t") },
+      { headers: flightBackTo("/edit?tune=k3m9x2p7qw4t") },
       envOf(db, google.fetch),
     );
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get("location"), "/edit?level=k3m9x2p7qw4t");
+    assert.equal(response.headers.get("location"), "/edit?tune=k3m9x2p7qw4t");
     assert.notEqual(cookieNamed(response, "session"), undefined);
   });
 
