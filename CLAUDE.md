@@ -32,13 +32,18 @@ to read `node_modules/`, and say so when doing it.
 Write tests first, then code.
 Consult previously-existing tests for reference on how to name tests.
 
-## The accounts work follows a roadmap
+## The reference docs, and the one that is history
 
-`docs/roadmap.md` holds the phases of the accounts and ownership work, what
-has been decided and why, and which phase is next. Read it before touching
-auth, levels, progress or migrations, and update its status table when a
-phase lands. `docs/authentication.md` is the reference for how sign-in and
-ownership work; `docs/progress.md` for how progress is kept and merged.
+Read the one that covers what you are touching, and keep it true when you
+change what it describes. `docs/authentication.md` is how sign-in and
+ownership work; `docs/progress.md` how progress is kept, saved and merged;
+`docs/difficulty.md` how a tune's difficulty is arrived at.
+
+`docs/roadmap.md` is not one of those. It was the plan for the accounts
+phases, those are finished, and it is kept only for the reasoning in it —
+read it when you want to know *why* something about auth or ownership was
+decided the way it was. Do not add to it, and do not update its status
+table: work since those phases is not tracked there and wants no roadmap.
 
 ## Never edit an applied migration
 

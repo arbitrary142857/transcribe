@@ -1,10 +1,17 @@
 # Accounts roadmap
 
-What the accounts and ownership work is, what has been decided about it and
-why, and where it stands. The reference for *how* sign-in and ownership work
-is `authentication.md`; this is the plan and the record. A session picking
-the work up should read this first, then the phase it is continuing, then
-update the status table when a phase lands.
+**A finished record of phases 1 to 6, kept for the reasoning in it and not
+maintained.** It was the plan while those phases were being built, and they
+are built; nothing since is written down here and nothing since should be.
+Work that came after the accounts phases has no roadmap and wants none.
+
+What is still worth reading is the *why*: the "Settled decisions" below and
+the per-phase "as built" notes are the arguments behind choices the code
+still lives with, and they are as true now as when they were made. What is
+*not* here is how any of it works today — for that go to `authentication.md`
+for sign-in and ownership, `progress.md` for how progress is kept and merged,
+and `difficulty.md` for the difficulty model. Those are the live references;
+this is the history.
 
 ## Status
 
@@ -16,9 +23,6 @@ update the status table when a phase lands.
 | 4 | Names and bylines, author-set difficulty, the profile page (name, settings, this browser's progress, deletion), the privacy page | Shipped 2026-08-21 (`9aeb89d` server, then client) |
 | 5 | Admin tools beyond ownership bypass: the pencil, Unpublish and the trash on every card of the catalog | Shipped 2026-08-22; no admin page, by decision |
 | 6 | Difficulty from solvers' ratings blended with the author's word (`share_stats` honoured at read time), peppers and the stepper, the range filter, `/about`; hearts, the grown-up solved box, solver counts and median times | Difficulty committed 2026-08-25 (`177c17b`); hearts and play figures built 2026-08-25; error reports remain |
-| — | The tune's box redrawn; the pepper picker; "level" → "tune" everywhere public, URLs included; drafts unplayable | Committed 2026-09-02 (`0687f75`) |
-| — | A home page at `/`; the catalog moved to `/tunes`; the site renamed "tune up"; the mark as favicon | Built 2026-09-02 |
-| — | The nav redrawn: the logo as one object, tabs with a bar rather than an underline, and "Sign In" opening a box that says why | Built 2026-09-02 |
 
 Known rough edges carried forward (not bugs, design not yet done): the
 details box loses typed words if the server refuses; the editor's setup page
@@ -114,7 +118,7 @@ the site ever led there (a draft's card opens the editor), an author has no
 use for playing an answer they wrote, and every figure below those routes —
 progress, ratings, hearts, medians — is about a tune that is public.
 
-**Still open** (decide when the phase needs it): whether a daily level
+**Left open when the phases ended**, and not tracked anywhere since: whether a daily level
 mechanic is coming (streaks presuppose one); dark mode is a per-machine
 preference, not an account one. Wanted eventually, recorded 2026-08-25:
 the catalog loads its first N levels and fetches more on scroll with a
