@@ -101,6 +101,26 @@
      unreadable meter, an invalid link, a field over its limit, a refusal, and
      the trash on a card that is about to be pressed. */
   --wrong: #b4432c;
+  /* Assist mode: the two tools that let you *hear* what you are transcribing,
+     and the row that unlocks them.
+
+     A cold blue, which is the one temperature nothing else on this site has.
+     The page's ground is warm, its accent is orange, being wrong is rust,
+     found is green and indigo says a tune is yours — so a blue reads at once
+     as none of those, and reads as *other* rather than as one more status. It
+     is the colour of something powerful you are being handed carefully: the
+     tools are not a mistake to use, and not an achievement either.
+
+     Four of them because the tools wear the blue in three different states and
+     the row in two. `--assist-wash` is the ground both tools stand on, locked
+     or open; `--assist` is their ink and their edge on it; `--assist-lit` is
+     the fill when a tool is switched on and when the row is still an offer;
+     `--assist-deep` is that fill under the pointer. The locked look is not a
+     colour but an absence of one — see `.assist-tool.is-locked`. */
+  --assist-wash: #e1f0fb;
+  --assist: #3a90c8;
+  --assist-lit: #2276ae;
+  --assist-deep: #185f90;
   /* A note whose rhythm is written but whose pitch is not chosen yet. */
   --note-placeholder: #8d8378;
   /* Trailing rests: the spare bar waiting to be written into, not music yet. */
@@ -1144,6 +1164,69 @@ main.editor-main {
    name as well as a time. The left-hand half takes nearly twice the room. */
 #panel-submit .panel-row > .play-clock {
   flex-grow: 1.9;
+}
+
+/* ---- Assist mode's own row ----
+
+   Under the clock and Check, full width, and the only thing in that corner
+   that is about how the tune is being played rather than about the tune. Its
+   blue is nowhere else in the panel, which is the whole of how it says the two
+   buttons it opens are a different kind of control.
+
+   An offer is filled; once taken it is the pale wash the two tools stand on,
+   which is what makes the row and the tools read as one fact in two places. */
+.assist-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fffdf9;
+  background: var(--assist-lit);
+  border: 1px solid var(--assist-lit);
+  border-radius: 6px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.assist-button:hover:not(:disabled) {
+  background: var(--assist-deep);
+  border-color: var(--assist-deep);
+}
+
+.assist-button-label {
+  /* Kept on one line: the padlock belongs at the end of the words, not under
+     them, and the row has width enough for both at this size. */
+  white-space: nowrap;
+}
+
+.assist-button-lock {
+  display: flex;
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+}
+
+.assist-button-lock svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Taken, and so no longer a button in anything but markup. Drawn as a
+   statement: the wash, the blue words, the padlock swung open, and no hover of
+   any kind. `:disabled` is named alongside the class because a disabled button
+   is greyed by the browser's own reckoning and this one must not be. */
+.assist-button.is-activated,
+.assist-button.is-activated:disabled {
+  color: var(--assist-deep);
+  background: var(--assist-wash);
+  border-color: var(--assist);
+  cursor: default;
 }
 
 /* The button that ends the sitting, and the pill that explains it. The pill is
@@ -2284,6 +2367,100 @@ main.editor-main {
   cursor: not-allowed;
 }
 
+/* ---- Assist mode's two tools ----
+
+   The piano's sound switch and "hear the notes" are the same kind of control
+   as the three toggles beside them and a different kind of thing, so they are
+   drawn as the same control in another colour rather than as another control.
+   The blue is worn in every state, open or shut: it says what kind of tool
+   this is, not what state it is in.
+
+   `overflow: visible` because the padlock stands above the button's own top
+   edge, and a button is one of the few elements a browser will clip on its
+   own. `position: relative` is what the padlock is placed against. */
+.playback-toggle.assist-tool {
+  position: relative;
+  overflow: visible;
+  color: var(--assist-deep);
+  background: var(--assist-wash);
+  border-color: var(--assist);
+}
+
+/* `:not(.is-on)` is load-bearing, and for the reason the plain toggles carry a
+   comment about: every `:not()` counts towards specificity, so this selector
+   outweighs the lit rule below and would repaint a switched-on tool pale while
+   the pointer is still on the button that switched it on. Saying which state
+   this hover is for settles it in both directions, where the ordering trick
+   the other toggles use would only settle it in one. */
+.playback-toggle.assist-tool:hover:not(:disabled):not(.is-locked):not(.is-on) {
+  background: #d3e5f7;
+  border-color: var(--assist-lit);
+}
+
+/* Lit in its own blue rather than the site's orange. The orange is what every
+   other toggle on the page does when it is switched on, and a tool that meant
+   something different while it was off should not stop meaning it the moment
+   it is used — which is exactly when the difference matters most. */
+.playback-toggle.assist-tool.is-on {
+  color: #fffdf9;
+  background: var(--assist-lit);
+  border-color: var(--assist-lit);
+}
+
+.playback-toggle.assist-tool.is-on:hover {
+  color: #fffdf9;
+  background: var(--assist-deep);
+  border-color: var(--assist-deep);
+}
+
+/* Locked: the ground stays blue and the picture goes out of it. Grey and half
+   present, rather than the button being greyed — the tool is not broken and
+   not waiting on anything, it is simply not yours yet, and a control drawn as
+   disabled says the first two of those. */
+.playback-toggle.assist-tool.is-locked,
+.playback-toggle.assist-tool.is-locked:hover {
+  cursor: not-allowed;
+  /* Held against the plain toggle's own hover, which would otherwise repaint a
+     locked tool in the panel's warm grey — at the exact moment the pointer is
+     on it and the tooltip is saying it belongs to assist mode. */
+  background: var(--assist-wash);
+  border-color: var(--assist);
+}
+
+.playback-toggle.assist-tool.is-locked .playback-toggle-icon {
+  color: #6f6a62;
+  opacity: 0.42;
+}
+
+/* The padlock, stuck on rather than drawn in: over the top-left corner, clear
+   of the icon, in the manner of the keyboard hints that ride the transport
+   buttons. A lock *on* a control reads as something done to it; a lock inside
+   one would read as what the control is for. */
+.assist-lock {
+  position: absolute;
+  top: -0.42rem;
+  left: -0.2rem;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0.2rem;
+  color: #fffdf9;
+  background: var(--assist-lit);
+  border: 1px solid var(--assist-deep);
+  border-radius: 999px;
+  /* The button underneath is what answers a press, and what a hover asks. */
+  pointer-events: none;
+}
+
+.assist-lock svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* ---- The one question the page stops for ---- */
 
 .modal-overlay {
@@ -2860,6 +3037,7 @@ body.show-keys .key-sticker {
 #side-panel .switch,
 #side-panel .key-toggle,
 #side-panel .submit-button,
+#side-panel .assist-button,
 #side-panel .play-clock,
 #side-panel .playback-shell-body,
 #side-panel .panel-tab,
@@ -3029,6 +3207,13 @@ body.show-keys .keys-note {
 #pitch-actions .playback-toggle {
   flex: 0 0 auto;
   height: 2rem;
+}
+
+/* Room above for the padlock, which stands off the button's own top edge and
+   would otherwise sit in Clear pitch's corner. The column's gap alone is not
+   quite the sticker's height. */
+#pitch-actions .playback-toggle.assist-tool {
+  margin-top: 0.3rem;
 }
 
 /* Equal halves of the column, so neither reads as the other's afterthought,
@@ -5853,6 +6038,59 @@ main.account-page {
    Both are gone: the first line says "Transcribed" in the same green, which
    is one mark instead of three for one fact. */
 
+/* ---- The box that asks for assist mode ----
+
+   Wider than a confirm and narrower than a tune's box. What sets the width is
+   the pair of rows: a control drawn beside a sentence, and the sentence should
+   hold on one line, or the button stops reading as the thing that line is
+   about. The closing paragraph then falls to two lines, which is what a
+   paragraph does. */
+.assist-modal {
+  width: min(36rem, calc(100vw - 3rem));
+  /* The confirm dialog's 26rem is for one sentence read at a glance, and this
+     box has a control beside each of two. */
+  max-width: none;
+}
+
+/* The one dialog whose yes is not in the site's accent.
+   Everything else about assist mode is drawn in its blue — the row that opened
+   this box, the two samples in it, the tools it unlocks — and an orange button
+   at the end of that would be the one thing in the box belonging to another
+   idea. The rule it breaks is worth breaking exactly here: what this button
+   commits to is the blue. */
+.assist-modal .modal-confirm {
+  background: var(--assist-lit);
+  border-color: var(--assist-lit);
+}
+
+.assist-modal .modal-confirm:hover {
+  background: var(--assist-deep);
+  border-color: var(--assist-deep);
+}
+
+/* One tool, drawn, with what it does beside it. The shell wraps every line in
+   a paragraph of its own, so this is the single node that paragraph holds —
+   which is why it is a `span` set to flex rather than a div. */
+.assist-explains {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.assist-explains-words {
+  flex: 1 1 auto;
+}
+
+/* A picture of a control rather than one: it takes no press, no focus and no
+   pointer, and it is drawn open, which is how the reader will find it. Sized
+   here because `.playback-toggle` grows to its row, and a row this wide would
+   have stretched it into a bar. */
+.assist-sample {
+  flex: 0 0 auto;
+  width: 3.4rem;
+  cursor: default;
+}
+
 /* ---- A tune's own box ----
 
    Laid out down the page as the thing itself is: what it is called, what its
@@ -5873,12 +6111,13 @@ main.account-page {
 
   /* Wide enough that the line above the buttons — how the tune has gone, the
      heart and the difficulty proposal — holds together on one row. That
-     sentence with three controls after it wants about 56rem; below that the
-     row wraps rather than overflows, which is the narrow-window fallback. The
-     solve's longer "Congratulations!" line is allowed to wrap at this width;
-     sizing the box for that one sentence would have made every other opening
-     of it a thousand pixels wide. */
-  width: min(56rem, calc(100vw - 3rem));
+     sentence with three controls after it wanted about 56rem, and the
+     "(with assist mode)" an assisted solve carries is worth about eight more;
+     below this the row wraps rather than overflows, which is the
+     narrow-window fallback. The solve's longer "Congratulations!" line is
+     allowed to wrap at this width; sizing the box for that one sentence would
+     have made every other opening of it wider still. */
+  width: min(64rem, calc(100vw - 3rem));
   max-width: none;
   padding: 1.6rem 1.7rem 1.3rem;
 }
@@ -6106,6 +6345,17 @@ main.account-page {
   color: #6c6459;
 }
 
+/* The one condition on the figure under it, in assist mode's blue and at the
+   size of the word below rather than the number between them. Upright, where
+   "Flawless!" is italic: that is an exclamation and this is a qualification,
+   and setting them alike would make this read as a second thing to be pleased
+   about. */
+.level-result-assist {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--assist-lit);
+}
+
 /* One check and no more, which is the thing worth saying about that solve. */
 .level-result-attempts.is-flawless {
   color: var(--note-selected);
@@ -6142,6 +6392,15 @@ main.account-page {
 .level-modal-marked {
   color: var(--note-selected);
   font-style: italic;
+  font-weight: 600;
+}
+
+/* The other phrase set apart in that sentence, and the reason the two are not
+   drawn alike: "flawlessly" is what the sentence is boasting and this is the
+   condition on the boast. Upright and in assist mode's blue, so that a line
+   carrying both cannot be read as carrying one long emphasis. */
+.level-modal-assist {
+  color: var(--assist-lit);
   font-weight: 600;
 }
 

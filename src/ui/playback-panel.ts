@@ -10,6 +10,8 @@ import {
   restartIcon,
   restoreIcon,
 } from "./icons.js";
+import { ASSIST_LOCKED } from "./assist.js";
+import { asAssistTool, type AssistTool } from "./assist-tool.js";
 import { createSpeedRow } from "./speed-row.js";
 import { createTimeField, type TimeField } from "./time-field.js";
 import { pageTooltip } from "./tooltip.js";
@@ -53,6 +55,13 @@ export type PlaybackPanelState = {
   followOn: boolean;
   /** Whether the frozen tempo exists — gates metronome and follow. */
   timed: boolean;
+  /**
+   * Whether "hear the notes" is still behind assist mode's lock.
+   *
+   * Meaningful only where the panel was built with `assist`, which is the play
+   * page; the editor never gives it, and there the toggle is an ordinary one.
+   */
+  assistLocked?: boolean;
 };
 
 export type PlaybackPanelHandlers = {
@@ -71,6 +80,17 @@ export type PlaybackPanelHandlers = {
   onFollow(on: boolean): void;
   /** A letter pressed inside a section field; shift distinguishes variants. */
   onLetter(letter: string, shift: boolean): boolean;
+};
+
+export type PlaybackPanelOptions = {
+  /**
+   * Whether "hear the notes" is one of assist mode's two tools here.
+   *
+   * True on the play page, where hearing your own transcription against the
+   * video is most of the answer; false in the editor, where the transcription
+   * is the author's own work and playing it back is how they check it.
+   */
+  assist?: boolean;
 };
 
 export type PlaybackPanel = {
@@ -139,11 +159,18 @@ function iconButton(
   return button;
 }
 
-/** A toggle that is all icon: the picture is the label, the title the words. */
+/**
+ * A toggle that is all icon: the picture is the label, the title the words.
+ *
+ * `refuse` is asked before every press, and says a sentence instead of acting
+ * when it has one. Only the assist tool gives it: the other three toggles are
+ * either live or `disabled`, and a disabled button never reaches this at all.
+ */
 function toggle(
   icon: string,
   label: string,
   onPress: (on: boolean) => void,
+  refuse?: () => string | undefined,
 ): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
@@ -153,6 +180,11 @@ function toggle(
   button.setAttribute("aria-pressed", "false");
   button.innerHTML = `<span class="playback-toggle-icon">${icon}</span>`;
   button.addEventListener("click", () => {
+    const dead = refuse?.();
+    if (dead !== undefined) {
+      pageTooltip().say(dead);
+      return;
+    }
     onPress(button.getAttribute("aria-pressed") !== "true");
   });
   return button;
@@ -169,6 +201,7 @@ function rowLabel(text: string, className = "playback-label"): HTMLElement {
 export function createPlaybackPanel(
   element: HTMLElement,
   handlers: PlaybackPanelHandlers,
+  options: PlaybackPanelOptions = {},
 ): PlaybackPanel {
   element.replaceChildren();
 
@@ -281,7 +314,16 @@ export function createPlaybackPanel(
   const loop = toggle(loopIcon(), "Loop", handlers.onLoop);
   const follow = toggle(playheadIcon(), "Follow along the score", handlers.onFollow);
   const metronome = toggle(metronomeIcon(), "Metronome", handlers.onMetronome);
-  const notes = toggle(notesHeardIcon(false), "Hear the notes", handlers.onNotes);
+  const notes = toggle(
+    notesHeardIcon(false),
+    "Hear the notes",
+    handlers.onNotes,
+    () => (assist?.locked() === true ? ASSIST_LOCKED : undefined),
+  );
+  /** The padlock and the blue, on the play page only. */
+  const assist: AssistTool | undefined = options.assist === true
+    ? asAssistTool(notes)
+    : undefined;
 
   const toggles = document.createElement("div");
   toggles.className = "playback-toggle-group";
@@ -329,6 +371,12 @@ export function createPlaybackPanel(
         }</span>`;
       play.title = state.playing ? "Pause" : "Play the section";
       restart.disabled = !state.canPlay;
+
+      // Locked is not disabled: a disabled button takes no pointer events, so
+      // one that is both would have no way to say why it does nothing. Locked
+      // and untimed together still comes out disabled, and the video not being
+      // ready is the more immediate of the two facts.
+      assist?.setLocked(state.assistLocked === true);
 
       for (const [button, on, gated] of [
         [loop, state.looping, state.timed],

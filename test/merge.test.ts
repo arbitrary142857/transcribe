@@ -42,6 +42,7 @@ const record = (over: Partial<PlayProgress> = {}): PlayProgress => ({
   elapsedMs: 1000,
   checkCount: 1,
   solvedAt: undefined,
+  assisted: false,
   pitches: [],
   judged: [],
   ...over,
@@ -313,5 +314,48 @@ describe("mergeProgress()", () => {
 
     const solvedOnce = mergeProgress(ANSWER, undefined, solved());
     assert.deepEqual(mergeProgress(ANSWER, solvedOnce, solved()), solvedOnce);
+  });
+});
+
+describe("the assist mark, across a merge", () => {
+  const assisted = (over: Partial<PlayProgress> = {}) =>
+    record({ assisted: true, ...over });
+
+  it("survives from the browser onto an account that has never seen the tune", () => {
+    assert.equal(mergeProgress(ANSWER, undefined, assisted()).assisted, true);
+  });
+
+  it("is kept from whichever side holds it, winner or loser", () => {
+    // The mark is a fact about the tools, not half of a score, so it does not
+    // travel with the pitches and the clock the way the rest of a record does.
+    const browserWins = mergeProgress(ANSWER, assisted(), solved());
+    const accountWins = mergeProgress(ANSWER, solved(), assisted());
+
+    assert.equal(browserWins.assisted, true);
+    assert.equal(accountWins.assisted, true);
+  });
+
+  it("cannot be taken back by a browser that says it was never asked for", () => {
+    // Which is the whole of "once activated, it cannot be deactivated" on this
+    // side of the wire: local storage is the player's own to edit, and a
+    // record claiming no assist meets an account row that remembers it.
+    assert.equal(mergeProgress(ANSWER, assisted(), record()).assisted, true);
+  });
+
+  it("stays off when neither side ever asked for the tools", () => {
+    assert.equal(mergeProgress(ANSWER, record(), solved()).assisted, false);
+  });
+
+  it("is believed from a browser, since claiming it only costs the claimant", () => {
+    // An assisted solve is left out of the public medians. Nothing is gained
+    // by claiming one, so nothing is regraded about it.
+    assert.equal(regradeProgress(ANSWER, assisted()).progress.assisted, true);
+  });
+
+  it("changes nothing when the same record is offered twice", () => {
+    const once = mergeProgress(ANSWER, undefined, assisted({ pitches: right }));
+    const twice = mergeProgress(ANSWER, once, assisted({ pitches: right }));
+
+    assert.deepEqual(twice, once);
   });
 });

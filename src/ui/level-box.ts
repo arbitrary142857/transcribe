@@ -18,6 +18,7 @@ import type { PlayProgress } from "../puzzle/progress.js";
 import { formatElapsed } from "../puzzle/stopwatch.js";
 import type { UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
+import { ASSIST_ASIDE } from "./assist.js";
 import { bucketOf } from "./level-filter.js";
 
 /** Which page the box was opened on, which decides where its way back goes. */
@@ -42,12 +43,16 @@ export type BoxButton = {
 };
 
 /**
- * A piece of the line above the buttons: words, or words the accent picks out.
+ * A piece of the line above the buttons: words, words the accent picks out, or
+ * words in assist mode's own blue.
  *
- * "Flawlessly" is the only marked word there is, and it is marked because it
- * is the whole of what that sentence is saying.
+ * Two phrases are ever set apart, and both answer the same question about a
+ * finished transcription -- *how* it was made. "Flawlessly" is the accent's,
+ * because one check and no more is the whole of what that sentence is saying;
+ * "(with assist mode)" is the blue's, because it is the qualification on
+ * everything else in the sentence.
  */
-export type BoxPiece = string | { marked: string };
+export type BoxPiece = string | { marked: string } | { assist: string };
 
 export type BoxPlan = {
   /** The row at the bottom right, in the order it is drawn. */
@@ -202,10 +207,27 @@ function lineFor(
     return [`This tune is in progress! You have transcribed for ${spent} so far.`];
   }
 
-  const lead = solving ? "Congratulations! You" : "You";
-  return progress.checkCount === 1
-    ? [`${lead} transcribed this tune `, { marked: "flawlessly" }, ` in ${spent}!`]
-    : [
-        `${lead} transcribed this tune in ${spent} using ${progress.checkCount} attempts!`,
-      ];
+  const lead = `${solving ? "Congratulations! You" : "You"} transcribed this tune`;
+  const flawless = progress.checkCount === 1;
+  const scored = flawless
+    ? ` in ${spent}!`
+    : ` in ${spent} using ${progress.checkCount} attempts!`;
+
+  // The set-apart phrases, in the order they were earned: which tools were
+  // open, and then what the checks came to. Both sit directly after the tune,
+  // where the sentence turns from what was done to how.
+  const apart: BoxPiece[] = [];
+  if (progress.assisted) apart.push({ assist: ASSIST_ASIDE });
+  if (flawless) apart.push({ marked: "flawlessly" });
+
+  // Nothing to set apart: one string, as this line was for its whole life
+  // before there was anything to qualify it with.
+  if (apart.length === 0) return [lead + scored];
+
+  // A piece carries no room of its own, so the space before each is a piece
+  // too -- and the first of them carries the whole of the lead with it.
+  const line: BoxPiece[] = [];
+  for (const piece of apart) line.push(line.length === 0 ? `${lead} ` : " ", piece);
+  line.push(scored);
+  return line;
 }

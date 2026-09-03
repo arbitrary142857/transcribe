@@ -6,8 +6,9 @@ with it. The code lives in `src/puzzle/progress.ts` (the shape, and the
 local-storage store), `src/puzzle/merge.ts` (the merge rule),
 `src/puzzle/account-progress.ts` (the account-backed store),
 `src/puzzle/handoff.ts` (offering a browser's records to an account),
-`worker/routes.ts` (the `progress` section, and `/check`'s write), and
-`migrations/0004_keep_progress_per_account.sql`. Tests: `test/merge.test.ts`,
+`worker/routes.ts` (the `progress` section, and `/check`'s write),
+`migrations/0004_keep_progress_per_account.sql` and
+`migrations/0008_note_assist_mode.sql`. Tests: `test/merge.test.ts`,
 `test/api-progress.test.ts`, `test/migrations.test.ts` (which runs every
 progress statement against real SQLite), `test/account-progress.test.ts`,
 `test/handoff.test.ts`.
@@ -22,9 +23,15 @@ levelId      which level
 elapsedMs    time with the tab showing, by the page's stopwatch
 checkCount   how many times Check has been pressed
 solvedAt     epoch ms of the check that came back all correct, or absent
+assisted     whether assist mode was ever unlocked on this tune
 pitches      [{ index, midi }]           what is written on the stave
 judged       [{ index, midi, correct }]  every guess a check has judged
 ```
+
+`assisted` arrived last, and is the only field that can only ever be raised
+(`src/ui/assist.ts` says what assist mode is and what it costs). Absent in a
+record written before it existed, which reads as `false`: those solves were
+made without the tools, there having been none to use.
 
 For somebody signed out it lives in their browser, under
 `localStorage["transcribe:progress:<levelId>"]`, and nothing about it ever
@@ -38,6 +45,7 @@ progress  user_id      -> users.id, ON DELETE CASCADE
           solved_at    INTEGER or NULL
           pitches      TEXT, a JSON array
           judged       TEXT, a JSON array
+          assisted     INTEGER 0 or 1, DEFAULT 0
           updated_at   epoch ms, moved by every write
           PRIMARY KEY (user_id, level_id)
           CHECK        solved_at IS NULL OR check_count >= 1
@@ -53,11 +61,19 @@ that knows a check happened and what it said, so when somebody signed in
 checks, the route counts it and, on a solve, stamps the moment from its own
 clock. Nothing a page sends can claim a check or a solve.
 
-**The page owns `elapsed_ms`, `pitches` and `judged`.** The page is the only
-thing holding the clock and the stave, so it saves those through
+**The page owns `elapsed_ms`, `pitches`, `judged` and `assisted`.** The page
+is the only thing holding the clock and the stave, so it saves those through
 `PUT /api/progress/:levelId` as it goes -- debounced after an edit, at once
 after a check, on the tab hiding, and on the way out. The body may say what
 it likes about the count or the solve; the route does not read those fields.
+
+**`assisted` only ever goes up.** The save upsert takes
+`MAX(assisted, excluded.assisted)`, so a stale tab, a save that overtook
+another, or a hand-edited local record cannot unsay a yes -- which is the
+whole of "once activated, it cannot be deactivated" as far as the server is
+concerned; the page merely never offers the other direction. `/check` does
+not name the column at all, in its columns or its SET: the check route has
+never heard of assist mode, and the `DEFAULT 0` fills in a row it begins.
 
 **A solved row is finished.** `/check` writes nothing to a row whose
 `solved_at` is set (the upsert's `WHERE solved_at IS NULL`): the page stops
@@ -101,7 +117,8 @@ A browser holds progress for whoever used it, and an account holds progress
 for whoever signed in. The day those are the same person, the browser's
 records are offered to the account through `POST /api/progress/merge`, and
 two records of one level have to become one. The rule, in a sentence: **one
-record wins whole, and the other gives only its verdicts.**
+record wins whole, and the other gives only what is a fact rather than a
+score** -- its verdicts, and whether it ever unlocked assist mode.
 
 First, the browser's record is **re-graded** against the answer, because
 local storage is the player's own to edit. A pitch or verdict at an index
@@ -133,6 +150,14 @@ winner's pitches with the winner's tally. The loser contributes its `judged`
 entries, which are facts about the answer rather than a score: the union of
 both sides, keyed by (index, midi), so every guess either side tried stays
 coloured on the stave.
+
+`assisted` is the other field taken from *either* side, and for the same
+reason: which tools were open is a fact about the sitting rather than half of
+a score, so there is nothing for it to describe a sitting nobody had with.
+Taking it from either side is also what keeps it un-deactivatable across a
+sign-in, where the browser's copy may well be the older one. It is believed
+without regrading -- there is nothing on the server to check it against, and
+claiming it only ever costs the claimant a place in the medians.
 
 Merging is idempotent. The same record offered twice ties on every key and
 the account's side wins, which is what lets the browser offer its records
@@ -219,6 +244,14 @@ is a question asked now rather than a way of liking the page.
   times behind `GET /api/tunes/:id/stats`) — leaves out the rows of
   anybody who turned it off, at read time. The play figures also leave out
   the level's own author, whose solves say nothing about the level.
+- **Assist mode**, the two tools that let a player *hear* what they are
+  transcribing, leaves an `assisted` solve out of the median times
+  (`PROGRESS_SQL.solveTimes`): a time earned with the pitches audible is not
+  the same measurement as one earned without it, and averaging the two
+  describes nobody's sitting. The rating blend and the heart count are
+  untouched — an opinion about how hard a tune is stays an opinion however it
+  was solved — and so is the solver count in the listing, an assisted solve
+  still being somebody having transcribed the tune.
 
 ## Operating it
 

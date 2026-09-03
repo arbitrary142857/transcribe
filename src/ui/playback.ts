@@ -77,9 +77,25 @@ export type PlaybackOptions = {
    * position, speed and loudness back itself.
    */
   remountVideo?: (options: { controls: boolean }) => HTMLIFrameElement;
+  /**
+   * Whether "hear the notes" is one of assist mode's two tools here, and
+   * whether it is locked as the page opens.
+   *
+   * Given by the play page only. In the editor the transcription is the
+   * author's own work and playing it back is how they check it; on the play
+   * page it is most of the answer, so it waits to be asked for.
+   */
+  assist?: { locked: boolean };
 };
 
 export type Playback = {
+  /**
+   * Let the transcription be heard, assist mode having been unlocked.
+   *
+   * One way only, and idempotent: the page calls it on activation and again on
+   * the solve, and there is nothing that locks it back.
+   */
+  unlockAssist(): void;
   /** Take on a melody, whether freshly edited or arrived whole from undo. */
   follow(melody: Melody): void;
   /** Take on the score as it now stands, after any redraw. */
@@ -118,6 +134,8 @@ export function createPlayback(
   options: PlaybackOptions = {},
 ): Playback {
   const canRetime = options.canRetime ?? false;
+  /** False wherever the toggle is not an assist tool at all — the editor. */
+  let assistLocked = options.assist?.locked ?? false;
   const beatsPerBar = beatsPerBarOf(config.meter);
 
   /**
@@ -256,6 +274,7 @@ export function createPlayback(
       metronomeOn,
       notesOn,
       followOn,
+      assistLocked,
     });
 
     timingPanel?.update({
@@ -482,6 +501,10 @@ export function createPlayback(
    * the slider at zero.
    */
   function setNotes(on: boolean): void {
+    // The panel refuses the press and says why, so this is the backstop for
+    // every other way in — there is none today, and the rule belongs with the
+    // sound rather than with the button that asks for it.
+    if (assistLocked) return;
     notesOn = on && map !== undefined;
     sendPlayalong();
     refresh();
@@ -723,7 +746,7 @@ export function createPlayback(
     },
 
     onLetter,
-  });
+  }, { assist: options.assist !== undefined });
 
   // The player is fenced or not by mode, and the fence's click answers with
   // the play button — which is why this waits for the panel to exist.
@@ -826,6 +849,12 @@ export function createPlayback(
   refresh();
 
   return {
+    unlockAssist() {
+      if (!assistLocked) return;
+      assistLocked = false;
+      refresh();
+    },
+
     follow(next) {
       takeOnsets(next);
     },

@@ -21,6 +21,7 @@ import { formatElapsed } from "../puzzle/stopwatch.js";
 import type { UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { markOpened } from "./arrival.js";
+import { ASSIST_STAMP } from "./assist.js";
 import { displayedDifficulty } from "../shared/difficulty.js";
 import { createDifficulty, createUnratedDifficulty } from "./difficulty.js";
 import { flagIcon, heartIcon } from "./icons.js";
@@ -302,10 +303,22 @@ function signatureBox(level: TranscriptionSummary): HTMLElement {
  *
  * The moment the check comes back is about the clock and the count, not about
  * what key the piece was in; that is what the box is for the rest of the time.
+ *
+ * An assisted solve says so above its own clock, in assist mode's blue and at
+ * the size of the word under it — the qualification on the figure belongs
+ * where the figure is read, not only in the sentence further down. Set upright
+ * rather than italic: "Flawless!" is an exclamation and this is a condition.
  */
 function resultBox(progress: PlayProgress | undefined): HTMLElement {
   const panel = document.createElement("div");
   panel.className = "level-fact level-result";
+
+  if (progress?.assisted === true) {
+    const stamp = document.createElement("p");
+    stamp.className = "level-result-assist";
+    stamp.textContent = ASSIST_STAMP;
+    panel.append(stamp);
+  }
 
   const time = document.createElement("p");
   time.className = "level-result-time";
@@ -337,6 +350,14 @@ function doings(
   for (const piece of line ?? []) {
     if (typeof piece === "string") {
       words.append(piece);
+    } else if ("assist" in piece) {
+      // Assist mode's own blue, upright: an aside about how the tune was
+      // transcribed, not a word to lean on. A `span` rather than the accent's
+      // `em`, since nothing here is being emphasised.
+      const said = document.createElement("span");
+      said.className = "level-modal-assist";
+      said.textContent = piece.assist;
+      words.append(said);
     } else {
       // The one word in the box the accent picks out, and it is picked out
       // because it is the whole of what that sentence is saying.

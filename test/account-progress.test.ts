@@ -20,6 +20,7 @@ const PROGRESS: PlayProgress = {
   elapsedMs: 252_000,
   checkCount: 3,
   solvedAt: undefined,
+  assisted: false,
   pitches: [{ index: 0, midi: 60 }],
   judged: [{ index: 0, midi: 60, correct: true }],
 };
@@ -122,9 +123,18 @@ describe("createAccountProgressStore().write()", () => {
     assert.equal(init.keepalive, true);
     assert.deepEqual(JSON.parse(init.body!), {
       elapsedMs: PROGRESS.elapsedMs,
+      assisted: PROGRESS.assisted,
       pitches: PROGRESS.pitches,
       judged: PROGRESS.judged,
     });
+  });
+
+  it("sends the assist mark, which is the page's to send and the row's to keep", async () => {
+    const { store, calls } = accountStore({ status: 204 });
+
+    await store.write({ ...PROGRESS, assisted: true });
+
+    assert.equal(JSON.parse(calls[0]!.init.body!).assisted, true);
   });
 
   it("sends nothing the server owns: neither the check count nor the solved time", async () => {

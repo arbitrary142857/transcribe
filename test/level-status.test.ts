@@ -8,6 +8,7 @@ const record = (over: Partial<PlayProgress> = {}): PlayProgress => ({
   elapsedMs: 1000,
   checkCount: 0,
   solvedAt: undefined,
+  assisted: false,
   pitches: [],
   judged: [],
   ...over,

@@ -8,11 +8,12 @@
  * docs/progress.md, which says the same thing in a table.
  *
  * The rule in one sentence: **one record wins whole, and the other gives only
- * its verdicts.** A score is a pair -- these checks, in this time -- and
- * taking the fewer checks from one solve and the shorter clock from another
- * would describe a sitting nobody had. So the winner's pitches, count, clock
- * and solve travel together, and the loser contributes the one thing that is
- * a fact rather than a score: what each of its guesses was told.
+ * what is a fact rather than a score.** A score is a pair -- these checks, in
+ * this time -- and taking the fewer checks from one solve and the shorter
+ * clock from another would describe a sitting nobody had. So the winner's
+ * pitches, count, clock and solve travel together, and the loser contributes
+ * the two things no score is made of: what each of its guesses was told, and
+ * whether it ever unlocked assist mode.
  *
  * Who wins: a solve over an attempt, whichever side holds it; between two
  * solves the fewer checks, then the shorter clock; between two attempts the
@@ -22,6 +23,10 @@
  * Before any of that, a browser's record is held against the answer. Local
  * storage is the player's own to edit, so a claimed solve is kept only when
  * every pitch earns it, and every verdict is recomputed rather than believed.
+ * The one thing taken at its word is the assist mark: there is nothing on this
+ * side of the wire to check it against, and claiming it only ever costs the
+ * claimant -- an assisted solve is left out of the public medians.
+ *
  * Nothing this file does touches the DOM or the Workers runtime; it is the
  * Worker that calls it.
  */
@@ -98,6 +103,7 @@ export function regradeProgress(answer: Melody, record: PlayProgress): Regraded 
       elapsedMs: whole(record.elapsedMs),
       checkCount: Math.max(solved ? 1 : 0, whole(record.checkCount)),
       solvedAt: solved ? whole(record.solvedAt!) : undefined,
+      assisted: record.assisted,
       pitches,
       judged,
     },
@@ -135,6 +141,13 @@ function beats(a: Regraded, b: Regraded): boolean {
  * `rememberVerdicts` second: after regrading the two sides cannot disagree
  * about a guess, but "the winner's word last" is the rule that needs nothing
  * to be true, and the argument order is where it lives.
+ *
+ * The assist mark comes from *either* side, like the verdicts and unlike
+ * everything else. It is a fact about which tools were unlocked rather than
+ * half of a score, so there is nothing for it to describe a sitting nobody had
+ * with; and taking it from either side is what keeps "once activated, it
+ * cannot be deactivated" true across a sign-in, where the browser's copy may
+ * well be the older one.
  */
 export function mergeProgress(
   answer: Melody,
@@ -154,5 +167,9 @@ export function mergeProgress(
     ),
   ).sort(byIndexThenMidi);
 
-  return { ...winner.progress, judged };
+  return {
+    ...winner.progress,
+    judged,
+    assisted: winner.progress.assisted || loser.progress.assisted,
+  };
 }

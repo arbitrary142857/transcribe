@@ -3,9 +3,11 @@
  * routes under /api/progress, with this browser's local store behind it.
  *
  * The account is the keeper, and the page is only ever a page: it sends the
- * three fields that are its to send — the clock, the pitches, the verdicts —
- * and never the check count or the solve, which the server counts and stamps
- * for itself on `/check` (docs/progress.md). A read hands back whatever the
+ * four fields that are its to send — the clock, the pitches, the verdicts and
+ * the assist mark — and never the check count or the solve, which the server
+ * counts and stamps for itself on `/check` (docs/progress.md). The mark is
+ * the one the row will only ever raise, so a save that arrives out of order
+ * cannot unsay it. A read hands back whatever the
  * server holds, the count included, which is how the page learns the server's
  * number after a reload.
  *
@@ -105,6 +107,7 @@ export function createAccountProgressStore(options: {
           headers: { "content-type": "application/json", accept: "application/json" },
           body: JSON.stringify({
             elapsedMs: progress.elapsedMs,
+            assisted: progress.assisted,
             pitches: progress.pitches,
             judged: progress.judged,
           }),

@@ -28,6 +28,7 @@ const PROGRESS: PlayProgress = {
   elapsedMs: 252_000,
   checkCount: 3,
   solvedAt: undefined,
+  assisted: false,
   pitches: [{ index: 0, midi: 60 }],
   judged: [{ index: 0, midi: 60, correct: true }],
 };

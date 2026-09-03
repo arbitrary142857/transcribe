@@ -24,7 +24,9 @@ import type { KeySignature } from "../music/key-signature.js";
 import { formatElapsed } from "../puzzle/stopwatch.js";
 import { attemptsLabel } from "../puzzle/verdicts.js";
 import type { TranscriptionDetails } from "../shared/transcription.js";
+import { ASSIST_ACTIVATED, ASSIST_OFFER, type AssistPlan } from "./assist.js";
 import { createDetailsFields } from "./details-panel.js";
+import { lockClosedIcon, lockOpenIcon } from "./icons.js";
 import { keyLabel } from "./key-label.js";
 import { renderKeyPanel } from "./key-panel.js";
 import { openInfoModal } from "./modal.js";
@@ -55,10 +57,18 @@ export type PanelActionsState = {
      */
     justSolved: boolean;
   };
+  /**
+   * Puzzle only: what assist mode's own row says, or that it says nothing.
+   *
+   * See `assist.ts` for when each of the three is the answer.
+   */
+  assist?: AssistPlan;
 };
 
 export type PanelActionsHandlers = {
   onSubmit: () => void;
+  /** Puzzle only: the offer was taken, so the box that asks should open. */
+  onAssist?: () => void;
   /** Editor only. Given together or not at all; a puzzle gives neither. */
   onKey?: (key: KeySignature) => void;
   onDetails?: (details: TranscriptionDetails) => void;
@@ -157,6 +167,71 @@ export function createPanelActions(
   top.append(hold);
 
   elements.submit.append(top);
+
+  // ---- under that: assist mode, on the puzzle page only -------------------
+
+  /**
+   * The one row that is not about this tune but about how it is being played.
+   *
+   * A row of its own under the clock and Check, full width, because it is
+   * neither of those things: it does not end the sitting and it does not
+   * measure it. Its blue is not the site's accent — nothing else on the page
+   * wears it — which is the whole of how a reader knows the two tools it opens
+   * are a different kind of thing from every other control here.
+   *
+   * One button drawn both ways rather than two elements swapped. Once the
+   * offer has been taken it can never be offered again, so what is left is a
+   * statement, and a statement is what a button with nothing to do is: the
+   * padlock opens, the words change, and the press stops being taken.
+   */
+  let assistRow: HTMLElement | undefined;
+  let assistButton: HTMLButtonElement | undefined;
+  let assistWords: HTMLElement | undefined;
+  let assistLock: HTMLElement | undefined;
+
+  if (handlers.onAssist) {
+    const onAssist = handlers.onAssist;
+
+    assistRow = document.createElement("div");
+    assistRow.className = "panel-row";
+
+    assistButton = document.createElement("button");
+    assistButton.type = "button";
+    assistButton.className = "assist-button panel-cell";
+
+    assistWords = document.createElement("span");
+    assistWords.className = "assist-button-label";
+
+    assistLock = document.createElement("span");
+    assistLock.className = "assist-button-lock";
+    // Drawn beside the words rather than in a corner: here it is part of the
+    // label — the padlock a sentence ends with — and not a sticker stuck on a
+    // control the way the two tools' own are.
+    assistLock.setAttribute("aria-hidden", "true");
+
+    assistButton.append(assistWords, assistLock);
+    assistButton.addEventListener("click", onAssist);
+
+    assistRow.append(assistButton);
+    elements.submit.append(assistRow);
+  }
+
+  /** Draw the row for what the plan says, or take it off the page. */
+  function showAssist(plan: AssistPlan | undefined): void {
+    if (!assistRow || !assistButton || !assistWords || !assistLock) return;
+
+    const row = plan?.row;
+    assistRow.hidden = row === undefined;
+    if (row === undefined) return;
+
+    const taken = row === "activated";
+    assistWords.textContent = taken ? ASSIST_ACTIVATED : ASSIST_OFFER;
+    assistLock.innerHTML = taken ? lockOpenIcon() : lockClosedIcon();
+    assistButton.classList.toggle("is-activated", taken);
+    // Nothing left to press, and nothing left to tab to: the box it used to
+    // open asks a question that has been answered.
+    assistButton.disabled = taken;
+  }
 
   // ---- the second row: the two boxes, in the editor only -----------------
 
@@ -283,6 +358,8 @@ export function createPanelActions(
           }
         }
       }
+
+      showAssist(state.assist);
 
       if (keyValue && state.key) keyValue.textContent = keyLabel(state.key);
       if (detailsValue && state.details) {

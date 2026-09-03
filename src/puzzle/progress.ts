@@ -37,6 +37,22 @@ export type PlayProgress = {
   checkCount: number;
   /** When it was solved, or nothing while it is not. */
   solvedAt: number | undefined;
+  /**
+   * Whether the player unlocked assist mode on this tune.
+   *
+   * The two tools that let you *hear* what you are transcribing -- the piano
+   * sounding each key you press, and your own transcription played along with
+   * the video -- are locked until they are asked for in so many words, and
+   * this is the asking. It only ever goes one way: nothing here or on the
+   * server lowers it, which is what "once activated, it cannot be
+   * deactivated" means in practice, and an assisted solve is left out of the
+   * public medians.
+   *
+   * A boolean rather than a moment, because nothing shows when the tools were
+   * unlocked and a stamp would be one more number the merge had to choose
+   * between for no reader's sake.
+   */
+  assisted: boolean;
   /** The pitches written down, keyed by event index as the melody indexes. */
   pitches: { index: number; midi: number }[];
   /**
@@ -167,6 +183,13 @@ export function readProgress(value: unknown, levelId: string): PlayProgress | un
   // Absent is allowed, because records written before this existed have none
   // and are otherwise perfectly good progress. Present and broken is not: the
   // rest of the record cannot be trusted either.
+  // Absent is allowed, and reads as no: every record written before assist
+  // mode existed was made without the tools, there having been none to use.
+  // Present and not a boolean is refused like any other broken field.
+  if (value.assisted !== undefined && typeof value.assisted !== "boolean") {
+    return undefined;
+  }
+
   const judged: PlayProgress["judged"] = [];
   if (value.judged !== undefined) {
     if (!Array.isArray(value.judged)) return undefined;
@@ -190,6 +213,7 @@ export function readProgress(value: unknown, levelId: string): PlayProgress | un
     elapsedMs: value.elapsedMs,
     checkCount: value.checkCount,
     solvedAt: value.solvedAt,
+    assisted: value.assisted ?? false,
     pitches,
     judged,
   };

@@ -42,6 +42,8 @@ import { createEditor, type Editor, type EditorElements } from "./editor.js";
 import { keepingScroll } from "./score-overlay.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
 import { arrivedCold } from "./arrival.js";
+import { assistPlan, type AssistPlan } from "./assist.js";
+import { openAssistModal } from "./assist-modal.js";
 import type { BoxOpening } from "./level-box.js";
 import { openLevelModal } from "./level-modal.js";
 import { createPanelActions, type PanelActions } from "./panel-actions.js";
@@ -139,6 +141,20 @@ export function createPlayPage(
    * rebuilds from nothing on every edit.
    */
   let sound = false;
+
+  /**
+   * Whether assist mode has been unlocked on this tune.
+   *
+   * Kept with the rest of the progress rather than here alone, so it survives
+   * a reload and follows the player between machines — and, being progress, it
+   * is what the tune's box reads to say a transcription was assisted. It only
+   * ever goes one way; nothing below sets it back to false, and the save on
+   * the far end could not lower it if it did (`assist.ts`, `progress.md`).
+   */
+  let assisted = restored?.assisted ?? false;
+
+  /** What assist mode is doing right now: the two tools, and the row. */
+  const assist = (): AssistPlan => assistPlan({ activated: assisted, solved });
 
   // ---- what was left here last time --------------------------------------
 
@@ -251,6 +267,7 @@ export function createPlayPage(
     elapsedMs: elapsed(),
     checkCount,
     solvedAt: solved ? (restored?.solvedAt ?? Date.now()) : undefined,
+    assisted,
     pitches: [...attemptOf(melody)].map(([index, midi]) => ({ index, midi })),
     judged: judgedOf(verdicts),
   });
@@ -300,6 +317,7 @@ export function createPlayPage(
       // the button is grey is that you are still fixing them.
       message: checking ? "" : (report ?? problem ?? ""),
       clock: { elapsedMs: elapsed(), checkCount, solved, justSolved },
+      assist: assist(),
     });
   }
 
@@ -323,6 +341,9 @@ export function createPlayPage(
       // rests, and this is what takes those controls off the page.
       pitchOnly: true,
       sound,
+      // Read afresh on every rebuild, which is what carries an unlocking
+      // through to the switch: activating assist mode mounts the score again.
+      assist: { locked: !assist().unlocked },
       onSound: (next) => {
         sound = next;
       },
@@ -446,6 +467,10 @@ export function createPlayPage(
       if (answered.solved) {
         solved = true;
         justSolved = true;
+        // Nothing is left to find, so nothing is left to give away: the tools
+        // open on the solve without anybody having to ask. `mount()` below
+        // hands the same fact to the piano's switch.
+        unlockAssist();
         watch = pauseStopwatch(watch, performance.now());
         finalMs = readStopwatch(watch, performance.now());
         report = undefined;
@@ -514,7 +539,11 @@ export function createPlayPage(
     // The marks are part of the level here rather than part of the work, so
     // there is no timing panel and no way to move them. Moving them would move
     // where every note falls, which is most of the answer.
-    { canRetime: false },
+    //
+    // Hearing the transcription against the video is the other half of assist
+    // mode, so the toggle that does it arrives locked unless this tune has
+    // already opened it.
+    { canRetime: false, assist: { locked: !assist().unlocked } },
   );
 
   // ---- the bar -----------------------------------------------------------
@@ -552,12 +581,41 @@ export function createPlayPage(
     });
   }
 
+  /**
+   * Open the two tools, once the box that explains them has been read.
+   *
+   * The clock stops while the box is up, as it does under every other box:
+   * reading what a tool does is not transcribing. Saved at once rather than on
+   * the debounce, because this is the one piece of progress the player cannot
+   * make again — it is the answer to a question that will not be asked twice.
+   */
+  async function offerAssist(): Promise<void> {
+    if (assisted) return;
+    holdClock();
+    const yes = await openAssistModal();
+    releaseClock();
+    if (!yes) return;
+
+    assisted = true;
+    unlockAssist();
+    // The switch beside the piano is built by the editor, which reads the lock
+    // as it draws: the score is mounted again so that it does.
+    mount();
+    save();
+  }
+
+  /** Let the playback panel's half of assist mode through, if it may. */
+  function unlockAssist(): void {
+    if (assist().unlocked) playback?.unlockAssist();
+  }
+
   // No rhythm switch and no Key or Details: the rhythm and the key are the
   // level's, and the words are its author's. What is left in the panel is the
-  // clock and the one button that asks whether you are right.
+  // clock, the one button that asks whether you are right, and assist mode's
+  // own row under them.
   actions = createPanelActions(
     { boxes: elements.panelActions, submit: elements.panelSubmit },
-    { onSubmit: () => void check() },
+    { onSubmit: () => void check(), onAssist: () => void offerAssist() },
   );
   // The (i) rides the title on the sheet, as a footnote mark does: the box it
   // opens is about the piece, so it belongs with the piece's name.
@@ -597,6 +655,11 @@ export function createPlayPage(
     document.removeEventListener("visibilitychange", onVisibility);
     save();
   });
+
+  // A tune that opens solved, or one whose tools were opened on a previous
+  // visit, finds them open: `mount()` below tells the piano's switch, and this
+  // tells the panel beside the video.
+  unlockAssist();
 
   mount();
 

@@ -1,0 +1,32 @@
+-- Whether the player unlocked assist mode on this tune.
+--
+-- Assist mode is the two tools that let you *hear* what you are transcribing
+-- -- the piano sounding each key you press, and your own transcription played
+-- along with the video -- which between them turn finding a pitch by ear into
+-- checking one against a reference. They are locked until the player says, in
+-- so many words, that they want them, and the saying is what this column
+-- records.
+--
+-- It is the page's to write, like the clock and the pitches, and unlike the
+-- count and the solve. The page is the only thing that knows the tools were
+-- asked for; the check route never hears about it, which is why `check` does
+-- not name this column and leaves the default to fill it in on a row it
+-- begins. What the page cannot do is take it back: the save upsert raises
+-- this column and never lowers it (`MAX(assisted, excluded.assisted)`), so a
+-- stale tab, an out-of-order save, or an edited local record cannot unsay it.
+-- That is the whole of "once activated, it cannot be deactivated" as far as
+-- the database is concerned.
+--
+-- What it is for, beyond the words on the tune's box: an assisted solve is
+-- left out of the public medians (`PROGRESS_SQL.solveTimes`), because a time
+-- earned with the answer audible is not the same measurement as one earned
+-- without it, and averaging the two describes nobody's sitting. The rating
+-- blend and the heart count are untouched -- an opinion about how hard a tune
+-- is stays an opinion however it was solved.
+--
+-- Additive, with a default, so it is safe to apply to the live database
+-- before the code that reads it is deployed: every row already there becomes
+-- an unassisted one, which is exactly what those solves were.
+
+ALTER TABLE progress
+  ADD COLUMN assisted INTEGER NOT NULL DEFAULT 0 CHECK (assisted IN (0, 1));

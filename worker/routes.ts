@@ -1321,10 +1321,15 @@ const PROGRESS_PAGE = 1000;
  *
  * Three upserts, one per writer, and what each may touch is the whole of the
  * ownership rule. `check` counts and stamps; it moves the pitches, and writes
- * verdicts only when it begins the row. `save` is the page's: clock, pitches
- * and verdicts, and it names neither the count nor the solve (the `0, NULL`
- * in its VALUES is for a row begun by a save). `merge` writes a row whole,
- * which only the merge route may do, having settled the row itself.
+ * verdicts only when it begins the row. `save` is the page's: clock, pitches,
+ * verdicts and the assist mark, and it names neither the count nor the solve
+ * (the `0, NULL` in its VALUES is for a row begun by a save). `merge` writes a
+ * row whole, which only the merge route may do, having settled the row itself.
+ *
+ * `check` does not name `assisted` at all, in its column list or its SET: the
+ * check route has never heard of assist mode, and the column's DEFAULT 0 is
+ * what fills in a row it begins. `save` may only raise it, never lower it --
+ * see the route's own comment.
  *
  * A solved row is finished. `check` writes nothing to one (the WHERE on its
  * DO UPDATE), so a tab that never heard about the solve cannot add to the
@@ -1345,35 +1350,37 @@ export const PROGRESS_SQL = {
             updated_at  = excluded.updated_at
           WHERE solved_at IS NULL`,
 
-  // bind: user_id, level_id, elapsed_ms, pitches, judged, updated_at
+  // bind: user_id, level_id, elapsed_ms, pitches, judged, assisted, updated_at
   save: `INSERT INTO progress
-           (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, updated_at)
-         VALUES (?, ?, ?, 0, NULL, ?, ?, ?)
+           (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, assisted, updated_at)
+         VALUES (?, ?, ?, 0, NULL, ?, ?, ?, ?)
          ON CONFLICT (user_id, level_id) DO UPDATE SET
            elapsed_ms = excluded.elapsed_ms,
            pitches    = CASE WHEN solved_at IS NULL THEN excluded.pitches ELSE pitches END,
            judged     = excluded.judged,
+           assisted   = MAX(assisted, excluded.assisted),
            updated_at = excluded.updated_at`,
 
   // bind: user_id, level_id, elapsed_ms, check_count, solved_at | null,
-  //       pitches, judged, updated_at
+  //       pitches, judged, assisted, updated_at
   merge: `INSERT INTO progress
-            (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, assisted, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (user_id, level_id) DO UPDATE SET
             elapsed_ms  = excluded.elapsed_ms,
             check_count = excluded.check_count,
             solved_at   = excluded.solved_at,
             pitches     = excluded.pitches,
             judged      = excluded.judged,
+            assisted    = excluded.assisted,
             updated_at  = excluded.updated_at`,
 
   // bind: user_id, level_id
-  read: `SELECT level_id, elapsed_ms, check_count, solved_at, pitches, judged
+  read: `SELECT level_id, elapsed_ms, check_count, solved_at, pitches, judged, assisted
            FROM progress WHERE user_id = ? AND level_id = ?`,
 
   // bind: user_id, limit
-  readAll: `SELECT level_id, elapsed_ms, check_count, solved_at, pitches, judged
+  readAll: `SELECT level_id, elapsed_ms, check_count, solved_at, pitches, judged, assisted
               FROM progress WHERE user_id = ? ORDER BY updated_at DESC LIMIT ?`,
 
   // bind: level_id
@@ -1381,11 +1388,14 @@ export const PROGRESS_SQL = {
 
   // The rows the public medians are worked out from: sharing players'
   // solves of one level, never the author's own -- the author knows the
-  // answer, so their clock says nothing about the level.
+  // answer, so their clock says nothing about the level -- and never one
+  // solved in assist mode, where the pitches were audible and the clock is
+  // therefore measuring a different thing.
   // bind: level_id, owner_id
   solveTimes: `SELECT p.elapsed_ms, p.check_count
                  FROM progress p JOIN users u ON u.id = p.user_id
                 WHERE p.level_id = ? AND p.solved_at IS NOT NULL
+                  AND p.assisted = 0
                   AND u.share_stats = 1 AND p.user_id != ?`,
 } as const;
 
@@ -1397,6 +1407,8 @@ type ProgressRow = {
   solved_at: number | null;
   pitches: string;
   judged: string;
+  /** 0 or 1, by the column's CHECK. */
+  assisted: number;
 };
 
 /**
@@ -1416,6 +1428,7 @@ function progressOf(row: ProgressRow): PlayProgress {
         elapsedMs: row.elapsed_ms,
         checkCount: row.check_count,
         solvedAt: row.solved_at ?? undefined,
+        assisted: row.assisted === 1,
         pitches: JSON.parse(row.pitches),
         judged: JSON.parse(row.judged),
       },
@@ -1453,6 +1466,7 @@ const toProgressRow = (progress: PlayProgress, now: number) => ({
   pitches: JSON.stringify(progress.pitches),
   judged: JSON.stringify(progress.judged),
   solvedAt: progress.solvedAt ?? null,
+  assisted: progress.assisted ? 1 : 0,
   now,
 });
 
@@ -1498,12 +1512,19 @@ api.get("/api/progress/:tuneId", async (c) => {
 });
 
 /**
- * The page's save: the clock, the pitches and the verdicts.
+ * The page's save: the clock, the pitches, the verdicts and the assist mark.
  *
  * What the body says about the check count or the solve is not read, let
  * alone written: those are `/check`'s. The body is held to `readProgress`
  * with those two filled in blank, which also refuses a record filed under
  * another level, however it got there.
+ *
+ * The mark is the page's like the other three -- the page is the only thing
+ * that knows the two tools were asked for -- but unlike them it can only be
+ * raised. The upsert takes `MAX(assisted, excluded.assisted)`, so a stale tab,
+ * a save that overtook another, or a hand-edited local record cannot unsay a
+ * yes. That is where "once activated, it cannot be deactivated" is actually
+ * enforced; the page merely never offers the other direction.
  */
 api.put("/api/progress/:tuneId", async (c) => {
   const id = c.req.param("tuneId");
@@ -1534,6 +1555,7 @@ api.put("/api/progress/:tuneId", async (c) => {
           elapsedMs: body.elapsedMs,
           checkCount: 0,
           solvedAt: undefined,
+          assisted: body.assisted,
           pitches: body.pitches,
           judged: body.judged,
         },
@@ -1550,7 +1572,15 @@ api.put("/api/progress/:tuneId", async (c) => {
 
   const row = toProgressRow(progress, Date.now());
   await c.env.DB.prepare(PROGRESS_SQL.save)
-    .bind(user.id, id, Math.floor(progress.elapsedMs), row.pitches, row.judged, row.now)
+    .bind(
+      user.id,
+      id,
+      Math.floor(progress.elapsedMs),
+      row.pitches,
+      row.judged,
+      row.assisted,
+      row.now,
+    )
     .run();
 
   return c.body(null, 204);
@@ -1646,6 +1676,7 @@ api.post("/api/progress/merge", async (c) => {
         row.solvedAt,
         row.pitches,
         row.judged,
+        row.assisted,
         row.now,
       ),
     );

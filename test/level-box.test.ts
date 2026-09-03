@@ -13,6 +13,7 @@ const progress = (over: Partial<PlayProgress> = {}): PlayProgress => ({
   elapsedMs: SPENT,
   checkCount: 0,
   solvedAt: undefined,
+  assisted: false,
   pitches: [],
   judged: [],
   ...over,
@@ -141,6 +142,47 @@ describe("levelBoxPlan()", () => {
         " in 4:12!",
       ],
     );
+  });
+
+  it("says a solve was assisted, in the tune's own sentence", () => {
+    const assisted = progress({ ...solved, assisted: true });
+    assert.deepEqual(plan({ progress: assisted }).line, [
+      "You transcribed this tune ",
+      { assist: "(with assist mode)" },
+      " in 4:12 using 3 attempts!",
+    ]);
+  });
+
+  it("says it of a flawless assisted solve too, beside the word for the one check", () => {
+    const assisted = progress({ ...flawless, assisted: true });
+    assert.deepEqual(plan({ progress: assisted }).line, [
+      "You transcribed this tune ",
+      { assist: "(with assist mode)" },
+      " ",
+      { marked: "flawlessly" },
+      " in 4:12!",
+    ]);
+  });
+
+  it("says it on the solving box, where the congratulation is", () => {
+    const assisted = progress({ ...solved, assisted: true });
+    assert.deepEqual(
+      plan({ page: "play", opening: "solving", progress: assisted }).line,
+      [
+        "Congratulations! You transcribed this tune ",
+        { assist: "(with assist mode)" },
+        " in 4:12 using 3 attempts!",
+      ],
+    );
+  });
+
+  it("says nothing about assist on an attempt still under way", () => {
+    // The sentence is about a finished transcription. While one is in
+    // progress the tools may still be asked for, and the panel says so.
+    const assisted = progress({ ...started, assisted: true });
+    assert.deepEqual(plan({ progress: assisted }).line, [
+      "This tune is in progress! You have transcribed for 4:12 so far.",
+    ]);
   });
 
   it("draws the solve's own figures where the signature goes, and drops the instructions", () => {

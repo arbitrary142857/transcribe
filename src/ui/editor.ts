@@ -20,6 +20,8 @@ import type {
   RenderMelodyOptions,
 } from "../render/render-melody.js";
 import { createPiano, type Piano } from "../playback/piano.js";
+import { ASSIST_LOCKED } from "./assist.js";
+import { asAssistTool, type AssistTool } from "./assist-tool.js";
 import { createDurationGrid } from "./duration-grid.js";
 import { eraserIcon, pianoHeardIcon, restIcon, tieIcon, untieIcon } from "./icons.js";
 import { createTupletMenu } from "./tuplet-menu.js";
@@ -126,6 +128,19 @@ export function createEditor(
     sound?: boolean;
     /** Said whenever the toggle is pressed, so the page can remember it. */
     onSound?: (sounding: boolean) => void;
+    /**
+     * Assist mode's gate on the sound switch, on the play page.
+     *
+     * Absent in the editor, where hearing a pitch as you write it is simply
+     * how you write one down: the author is transcribing a tune they can
+     * already hear, and there is nothing to be given away. On the play page
+     * the same control is half of assist mode, and locked until it is asked
+     * for -- see `assist.ts`.
+     *
+     * Read once, at build time, which is enough: the editor is torn down and
+     * rebuilt for every edit, and the page rebuilds it on unlocking too.
+     */
+    assist?: { locked: boolean };
   } = {},
 ): Editor {
   const clef = options.clef ?? "treble";
@@ -173,7 +188,10 @@ export function createEditor(
    * editor: it holds an `AudioContext`, and one made outside a gesture arrives
    * suspended.
    */
-  let sounding = options.sound ?? false;
+  // Never sounding behind a locked switch, whatever the page last remembered:
+  // the tools are unlocked in one direction only, but a record restored from
+  // an older build, or from a browser somebody edited, must not open one.
+  let sounding = (options.sound ?? false) && options.assist?.locked !== true;
   let piano: Piano | undefined;
 
   /** Sound a pitch, if the toggle is on. */
@@ -723,11 +741,23 @@ export function createEditor(
   soundButton.setAttribute("aria-pressed", "false");
   soundButton.innerHTML = `<span class="playback-toggle-icon"></span>`;
   soundButton.addEventListener("click", () => {
+    // Refused here rather than in the dressing: a listener added there would
+    // fire in registration order beside this one, and could not be relied on
+    // to go first.
+    if (assist?.locked() === true) {
+      tooltip.say(ASSIST_LOCKED);
+      return;
+    }
     sounding = !sounding;
     showSound();
     options.onSound?.(sounding);
   });
   elements.pitchActions.append(soundButton);
+
+  /** The padlock and the blue, on the play page only. */
+  const assist: AssistTool | undefined =
+    options.assist === undefined ? undefined : asAssistTool(soundButton);
+  assist?.setLocked(options.assist?.locked ?? false);
 
   function showSound(): void {
     soundButton.setAttribute("aria-pressed", String(sounding));

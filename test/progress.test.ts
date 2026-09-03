@@ -11,6 +11,7 @@ const PROGRESS: PlayProgress = {
   elapsedMs: 252_000,
   checkCount: 3,
   solvedAt: undefined,
+  assisted: false,
   pitches: [
     { index: 0, midi: 60 },
     { index: 1, midi: 64 },
@@ -232,6 +233,40 @@ describe("the judged pitches", () => {
       });
       const read = await createLocalProgressStore(storage).read("k3m9x2p7qw4t");
       assert.equal(read, undefined, broken);
+    }
+  });
+});
+
+describe("the assist mark", () => {
+  const stored = (over: Record<string, unknown>) =>
+    JSON.stringify({ ...PROGRESS, ...over });
+
+  const read = (held: string) =>
+    createLocalProgressStore(
+      stubStorage({ "transcribe:progress:k3m9x2p7qw4t": held }).storage,
+    ).read("k3m9x2p7qw4t");
+
+  it("comes back across, which is what keeps the two tools unlocked", async () => {
+    const { storage } = stubStorage();
+    const store = createLocalProgressStore(storage);
+    const assisted = { ...PROGRESS, assisted: true };
+
+    await store.write(assisted);
+
+    assert.deepEqual(await store.read(assisted.levelId), assisted);
+  });
+
+  it("reads as unassisted from a record written before it existed", async () => {
+    // Every solve stored by an older build was earned without the tools,
+    // because there were none to use.
+    const { assisted, ...older } = PROGRESS;
+
+    assert.deepEqual(await read(JSON.stringify(older)), { ...older, assisted: false });
+  });
+
+  it("forgets the whole record when the mark is not a yes or a no", async () => {
+    for (const broken of [stored({ assisted: "yes" }), stored({ assisted: 1 })]) {
+      assert.equal(await read(broken), undefined, broken);
     }
   });
 });

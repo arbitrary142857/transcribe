@@ -81,6 +81,7 @@ const progressRow = (over: Row = {}): Row => ({
   solved_at: null,
   pitches: JSON.stringify([{ index: 1, midi: 64 }]),
   judged: JSON.stringify([{ index: 1, midi: 64, correct: true }]),
+  assisted: 0,
   ...over,
 });
 
@@ -136,6 +137,7 @@ const record = (over: Partial<PlayProgress> = {}): PlayProgress => ({
   elapsedMs: 5000,
   checkCount: 1,
   solvedAt: undefined,
+  assisted: false,
   pitches: [{ index: 1, midi: 64 }],
   judged: [{ index: 1, midi: 64, correct: true }],
   ...over,
@@ -166,6 +168,7 @@ describe("GET /api/progress", () => {
         levelId: ID,
         elapsedMs: 42_000,
         checkCount: 2,
+        assisted: false,
         pitches: [{ index: 1, midi: 64 }],
         judged: [{ index: 1, midi: 64, correct: true }],
       },
@@ -174,6 +177,7 @@ describe("GET /api/progress", () => {
         elapsedMs: 42_000,
         checkCount: 1,
         solvedAt: 7,
+        assisted: false,
         pitches: [{ index: 1, midi: 64 }],
         judged: [{ index: 1, midi: 64, correct: true }],
       },
@@ -235,6 +239,7 @@ describe("GET /api/progress/:tuneId", () => {
       elapsedMs: 42_000,
       checkCount: 2,
       solvedAt: 9,
+      assisted: false,
       pitches: [{ index: 1, midi: 64 }],
       judged: [{ index: 1, midi: 64, correct: true }],
     });
@@ -305,12 +310,13 @@ describe("PUT /api/progress/:tuneId", () => {
     const upsert = asked.at(-1)!;
     assert.match(upsert.sql, /INTO progress/i);
     assert.match(upsert.sql, /ON CONFLICT \(user_id, level_id\)/i);
-    const [userId, levelId, elapsed, pitches, judged, updatedAt] = upsert.values;
+    const [userId, levelId, elapsed, pitches, judged, assisted, updatedAt] = upsert.values;
     assert.equal(userId, OWNER_ID);
     assert.equal(levelId, ID);
     assert.equal(elapsed, 5000);
     assert.deepEqual(JSON.parse(pitches as string), saved.pitches);
     assert.deepEqual(JSON.parse(judged as string), saved.judged);
+    assert.equal(assisted, 0);
     assert.equal(typeof updatedAt, "number");
   });
 
@@ -329,6 +335,37 @@ describe("PUT /api/progress/:tuneId", () => {
     assert.equal(/check_count\s*=/i.test(set), false);
     assert.equal(/solved_at\s*=/i.test(set), false);
     assert.match(upsert.sql, /VALUES \(\?, \?, \?, 0, NULL,/i);
+  });
+
+  it("takes the assist mark, which is the page's to send", async () => {
+    const { response, asked } = await put(
+      { ...saved, assisted: true },
+      [asOwner(), level(rowOf())],
+      SIGNED_IN,
+    );
+
+    assert.equal(response.status, 204);
+    assert.equal(asked.at(-1)!.values[5], 1);
+  });
+
+  it("raises the mark in the row and never lowers it, whatever a later save says", async () => {
+    // The page cannot unsay it, so neither can a stale tab nor an edited
+    // local record: the upsert takes the larger of the two.
+    const { asked } = await put(saved, [asOwner(), level(rowOf())], SIGNED_IN);
+
+    assert.match(asked.at(-1)!.sql, /assisted\s*=\s*MAX\(assisted, excluded\.assisted\)/i);
+  });
+
+  it("refuses a mark that is not a yes or a no, and writes nothing", async () => {
+    for (const mark of ["yes", 1, null]) {
+      const { response, asked } = await put(
+        { ...saved, assisted: mark },
+        [asOwner(), level(rowOf())],
+        SIGNED_IN,
+      );
+      assert.equal(response.status, 400, `accepted ${JSON.stringify(mark)}`);
+      assert.equal(progressStatements(asked).length, 0);
+    }
   });
 
   it("keeps a solved row's pitches, since the page treats them as confirmed", async () => {
@@ -416,7 +453,7 @@ describe("POST /api/progress/merge", () => {
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { taken: [ID] });
     const [write] = inserted(batches);
-    const [userId, levelId, elapsed, checks, solvedAt, pitches, judged, updatedAt] = write!.values;
+    const [userId, levelId, elapsed, checks, solvedAt, pitches, judged, assisted, updatedAt] = write!.values;
     assert.equal(userId, OWNER_ID);
     assert.equal(levelId, ID);
     assert.equal(elapsed, 60_000);
@@ -430,7 +467,33 @@ describe("POST /api/progress/merge", () => {
       { index: 2, midi: 67, correct: true },
       { index: 3, midi: 64, correct: true },
     ]);
+    assert.equal(assisted, 0);
     assert.equal(typeof updatedAt, "number");
+  });
+
+  it("carries the browser's assist mark into the account's row", async () => {
+    const { batches } = await merge(
+      { records: [record({ assisted: true })] },
+      [asOwner(), level(rowOf())],
+      SIGNED_IN,
+    );
+
+    assert.equal(inserted(batches)[0]!.values[7], 1);
+  });
+
+  it("keeps a mark the account holds even where the browser's record wins", async () => {
+    // Once activated, it cannot be deactivated -- across a sign-in too. The
+    // browser has found three more notes and so takes the row whole, and the
+    // mark still comes off the account's, being a fact rather than a score.
+    const { batches } = await merge(
+      { records: [record({ pitches: right })] },
+      [asOwner(), level(rowOf()), held(progressRow({ assisted: 1 }))],
+      SIGNED_IN,
+    );
+
+    const [write] = inserted(batches);
+    assert.deepEqual(JSON.parse(write!.values[5] as string), right);
+    assert.equal(write!.values[7], 1);
   });
 
   it("re-grades the browser's record against the answer before believing a word of it", async () => {

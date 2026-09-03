@@ -247,6 +247,7 @@ const PROGRESS_MIGRATION = "0004_keep_progress_per_account.sql";
 const NAMES_MIGRATION = "0005_name_the_author.sql";
 const RATINGS_MIGRATION = "0006_keep_ratings_per_account.sql";
 const UPVOTES_MIGRATION = "0007_keep_upvotes_per_account.sql";
+const ASSIST_MIGRATION = "0008_note_assist_mode.sql";
 
 /** The database as every migration leaves it, with whatever `seed` puts in it. */
 function current(seed: (db: DatabaseSync) => void = () => {}): DatabaseSync {
@@ -256,6 +257,7 @@ function current(seed: (db: DatabaseSync) => void = () => {}): DatabaseSync {
   db.exec(sqlOf(NAMES_MIGRATION));
   db.exec(sqlOf(RATINGS_MIGRATION));
   db.exec(sqlOf(UPVOTES_MIGRATION));
+  db.exec(sqlOf(ASSIST_MIGRATION));
   seed(db);
   return db;
 }
@@ -340,7 +342,7 @@ describe("migration 0004", () => {
     ]);
     assert.deepEqual(
       rows(db, `PRAGMA table_info(progress)`).map((column) => column.name),
-      ["user_id", "level_id", "elapsed_ms", "check_count", "solved_at", "pitches", "judged", "updated_at"],
+      ["user_id", "level_id", "elapsed_ms", "check_count", "solved_at", "pitches", "judged", "updated_at", "assisted"],
     );
   });
 
@@ -504,6 +506,7 @@ describe("the progress statements the routes run", () => {
       solved_at: null,
       pitches: '[{"index":1,"midi":60}]',
       judged: '[{"index":1,"midi":60,"correct":false}]',
+      assisted: 0,
     });
 
     // A second check counts, moves the pitches, and leaves the verdicts to the
@@ -531,7 +534,7 @@ describe("the progress statements the routes run", () => {
     db.prepare(PROGRESS_SQL.check).run(JASON, LEVEL, null, "[]", "[]", 10);
     db.prepare(PROGRESS_SQL.check).run(JASON, LEVEL, null, "[]", "[]", 20);
 
-    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 5000, '[{"index":1,"midi":60}]', '[{"index":1,"midi":60,"correct":false}]', 25);
+    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 5000, '[{"index":1,"midi":60}]', '[{"index":1,"midi":60,"correct":false}]', 0, 25);
     assert.deepEqual(one(db), {
       level_id: LEVEL,
       elapsed_ms: 5000,
@@ -539,10 +542,11 @@ describe("the progress statements the routes run", () => {
       solved_at: null,
       pitches: '[{"index":1,"midi":60}]',
       judged: '[{"index":1,"midi":60,"correct":false}]',
+      assisted: 0,
     });
 
     db.prepare(PROGRESS_SQL.check).run(JASON, LEVEL, 30, '[{"index":1,"midi":64}]', "[]", 30);
-    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 6000, '[{"index":1,"midi":99}]', '[{"index":1,"midi":64,"correct":true}]', 31);
+    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 6000, '[{"index":1,"midi":99}]', '[{"index":1,"midi":64,"correct":true}]', 0, 31);
     const solved = one(db);
     assert.equal(solved.elapsed_ms, 6000);
     assert.equal(solved.judged, '[{"index":1,"midi":64,"correct":true}]');
@@ -554,7 +558,7 @@ describe("the progress statements the routes run", () => {
   it("begins a row at zero checks and unsolved when the first write is a save", () => {
     const db = played();
 
-    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1500, '[{"index":1,"midi":60}]', "[]", 5);
+    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1500, '[{"index":1,"midi":60}]', "[]", 0, 5);
 
     assert.deepEqual(one(db), {
       level_id: LEVEL,
@@ -563,14 +567,15 @@ describe("the progress statements the routes run", () => {
       solved_at: null,
       pitches: '[{"index":1,"midi":60}]',
       judged: "[]",
+      assisted: 0,
     });
   });
 
   it("writes a merged row whole", () => {
     const db = played();
-    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1500, "[]", "[]", 5);
+    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1500, "[]", "[]", 0, 5);
 
-    db.prepare(PROGRESS_SQL.merge).run(JASON, LEVEL, 9000, 4, 77, '[{"index":1,"midi":64}]', '[{"index":1,"midi":64,"correct":true}]', 80);
+    db.prepare(PROGRESS_SQL.merge).run(JASON, LEVEL, 9000, 4, 77, '[{"index":1,"midi":64}]', '[{"index":1,"midi":64,"correct":true}]', 0, 80);
     assert.deepEqual(one(db), {
       level_id: LEVEL,
       elapsed_ms: 9000,
@@ -578,10 +583,11 @@ describe("the progress statements the routes run", () => {
       solved_at: 77,
       pitches: '[{"index":1,"midi":64}]',
       judged: '[{"index":1,"midi":64,"correct":true}]',
+      assisted: 0,
     });
 
     // And a level the account had not played is simply begun.
-    db.prepare(PROGRESS_SQL.merge).run(JASON, OTHER_LEVEL, 100, 0, null, "[]", "[]", 81);
+    db.prepare(PROGRESS_SQL.merge).run(JASON, OTHER_LEVEL, 100, 0, null, "[]", "[]", 0, 81);
     assert.equal(one(db, JASON, OTHER_LEVEL).check_count, 0);
   });
 
@@ -591,10 +597,10 @@ describe("the progress statements the routes run", () => {
     addUser(db, third, 3);
     // The author solved their own level; two players solved it, one of whom
     // keeps their play out of the figures; a fourth row never solved it.
-    db.prepare(PROGRESS_SQL.merge).run(JASON, LEVEL, 40_000, 1, 5, "[]", "[]", 5);
-    db.prepare(PROGRESS_SQL.merge).run(SOMEBODY, LEVEL, 90_000, 2, 6, "[]", "[]", 6);
-    db.prepare(PROGRESS_SQL.merge).run(third, LEVEL, 60_000, 1, 7, "[]", "[]", 7);
-    db.prepare(PROGRESS_SQL.save).run(SOMEBODY, OTHER_LEVEL, 10_000, "[]", "[]", 8);
+    db.prepare(PROGRESS_SQL.merge).run(JASON, LEVEL, 40_000, 1, 5, "[]", "[]", 0, 5);
+    db.prepare(PROGRESS_SQL.merge).run(SOMEBODY, LEVEL, 90_000, 2, 6, "[]", "[]", 0, 6);
+    db.prepare(PROGRESS_SQL.merge).run(third, LEVEL, 60_000, 1, 7, "[]", "[]", 0, 7);
+    db.prepare(PROGRESS_SQL.save).run(SOMEBODY, OTHER_LEVEL, 10_000, "[]", "[]", 0, 8);
 
     const all = (db.prepare(PROGRESS_SQL.solveTimes).all(LEVEL, JASON) as Row[])
       .map((row) => ({ ...row }));
@@ -612,9 +618,9 @@ describe("the progress statements the routes run", () => {
 
   it("reads one player's rows and nobody else's, most recently touched first", () => {
     const db = played();
-    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1, "[]", "[]", 10);
-    db.prepare(PROGRESS_SQL.save).run(JASON, OTHER_LEVEL, 2, "[]", "[]", 20);
-    db.prepare(PROGRESS_SQL.save).run(SOMEBODY, LEVEL, 3, "[]", "[]", 30);
+    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1, "[]", "[]", 0, 10);
+    db.prepare(PROGRESS_SQL.save).run(JASON, OTHER_LEVEL, 2, "[]", "[]", 0, 20);
+    db.prepare(PROGRESS_SQL.save).run(SOMEBODY, LEVEL, 3, "[]", "[]", 0, 30);
 
     const mine = (db.prepare(PROGRESS_SQL.readAll).all(JASON, 100) as Row[]).map((row) => ({ ...row }));
     assert.deepEqual(
@@ -623,6 +629,123 @@ describe("the progress statements the routes run", () => {
     );
     assert.equal(one(db, SOMEBODY).elapsed_ms, 3);
     assert.equal(db.prepare(PROGRESS_SQL.read).get(SOMEBODY, OTHER_LEVEL), undefined);
+  });
+
+  it("raises the assist mark and never lowers it, whichever save arrives last", () => {
+    // This is where "once activated, it cannot be deactivated" is actually
+    // enforced: a stale tab, a save that overtook another, or a hand-edited
+    // local record can all send a no after a yes, and none of them can unsay
+    // it.
+    const db = played();
+    const save = db.prepare(PROGRESS_SQL.save);
+
+    save.run(JASON, LEVEL, 1000, "[]", "[]", 0, 10);
+    assert.equal(one(db).assisted, 0);
+
+    save.run(JASON, LEVEL, 2000, "[]", "[]", 1, 20);
+    assert.equal(one(db).assisted, 1);
+
+    save.run(JASON, LEVEL, 3000, "[]", "[]", 0, 30);
+    assert.equal(one(db).assisted, 1);
+    // And the rest of the save still landed.
+    assert.equal(one(db).elapsed_ms, 3000);
+  });
+
+  it("begins an assisted row from a save, for a tune unlocked before the first check", () => {
+    const db = played();
+
+    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 500, "[]", "[]", 1, 5);
+
+    assert.equal(one(db).assisted, 1);
+  });
+
+  it("leaves the mark to the page, the check route never having heard of it", () => {
+    const db = played();
+    const check = db.prepare(PROGRESS_SQL.check);
+
+    // A row a check begins is unassisted, by the column's default.
+    check.run(JASON, LEVEL, null, "[]", "[]", 10);
+    assert.equal(one(db).assisted, 0);
+
+    // And a check over an assisted row leaves the mark standing.
+    db.prepare(PROGRESS_SQL.save).run(JASON, LEVEL, 1000, "[]", "[]", 1, 20);
+    check.run(JASON, LEVEL, 30, "[]", "[]", 30);
+    assert.equal(one(db).assisted, 1);
+    assert.equal(one(db).check_count, 2);
+  });
+
+  it("carries the mark through a merge, which writes a row whole", () => {
+    const db = played();
+
+    db.prepare(PROGRESS_SQL.merge).run(JASON, LEVEL, 9000, 1, 77, "[]", "[]", 1, 80);
+
+    assert.equal(one(db).assisted, 1);
+  });
+
+  it("leaves an assisted solve out of the public medians", () => {
+    // A time earned with the answer audible is not the same measurement as
+    // one earned without it, and averaging the two describes nobody's sitting.
+    const db = played();
+    const third = "3c5e7g9i1k2m";
+    addUser(db, third, 3);
+    db.prepare(PROGRESS_SQL.merge).run(SOMEBODY, LEVEL, 90_000, 2, 6, "[]", "[]", 0, 6);
+    db.prepare(PROGRESS_SQL.merge).run(third, LEVEL, 20_000, 1, 7, "[]", "[]", 1, 7);
+
+    assert.deepEqual(
+      (db.prepare(PROGRESS_SQL.solveTimes).all(LEVEL, JASON) as Row[]).map((row) => ({ ...row })),
+      [{ elapsed_ms: 90_000, check_count: 2 }],
+    );
+  });
+});
+
+// ---- 0008 -----------------------------------------------------------------
+
+describe("migration 0008", () => {
+  /** Everything up to 0007, a played level, then 0008 over it. */
+  const upgraded = (): DatabaseSync => {
+    const db = before();
+    db.exec(sqlOf(MIGRATION));
+    db.exec(sqlOf(PROGRESS_MIGRATION));
+    db.exec(sqlOf(NAMES_MIGRATION));
+    db.exec(sqlOf(RATINGS_MIGRATION));
+    db.exec(sqlOf(UPVOTES_MIGRATION));
+    addUser(db, JASON, 1);
+    addOwnedLevel(db, LEVEL, JASON);
+    db.prepare(
+      `INSERT INTO progress
+         (user_id, level_id, elapsed_ms, check_count, solved_at, pitches, judged, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(JASON, LEVEL, 40_000, 1, 5, "[]", "[]", 5);
+    db.exec(sqlOf(ASSIST_MIGRATION));
+    return db;
+  };
+
+  it("reads every solve made before it as the unassisted solve it was", () => {
+    assert.deepEqual(rows(upgraded(), `SELECT assisted FROM progress`), [
+      { assisted: 0 },
+    ]);
+  });
+
+  it("adds the column and nothing else, leaving the row it found alone", () => {
+    const db = upgraded();
+
+    assert.deepEqual(
+      rows(db, `PRAGMA table_info(progress)`).map((column) => column.name),
+      ["user_id", "level_id", "elapsed_ms", "check_count", "solved_at", "pitches", "judged", "updated_at", "assisted"],
+    );
+    assert.deepEqual(rows(db, `SELECT elapsed_ms, check_count, solved_at FROM progress`), [
+      { elapsed_ms: 40_000, check_count: 1, solved_at: 5 },
+    ]);
+  });
+
+  it("holds a yes or a no and nothing else", () => {
+    const db = upgraded();
+    const mark = (value: number | null) =>
+      db.prepare(`UPDATE progress SET assisted = ? WHERE user_id = ?`).run(value, JASON);
+
+    assert.throws(() => mark(2), /CHECK/);
+    assert.throws(() => mark(null), /NOT NULL/);
+    assert.doesNotThrow(() => mark(1));
   });
 });
 
