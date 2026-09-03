@@ -201,7 +201,7 @@ export function createWorkFilters(options: {
   const element = document.createElement("div");
   element.className = "work-filters";
   element.setAttribute("role", "group");
-  element.setAttribute("aria-label", "Which of your transcriptions to show");
+  element.setAttribute("aria-label", "Which of your tunes to show");
   element.append(
     ...statusSwitches(WORK_STATUSES, options.statuses, options.onChange),
   );

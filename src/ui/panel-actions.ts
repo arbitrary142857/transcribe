@@ -318,7 +318,7 @@ export function createPanelActions(
         fill() {
           const heading = document.createElement("h2");
           heading.className = "modal-title";
-          heading.textContent = "Name your transcription";
+          heading.textContent = "Name your tune";
 
           const fields = createDetailsFields(onDetails);
           if (shown?.details) fields.update(shown.details);

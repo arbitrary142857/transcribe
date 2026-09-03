@@ -91,7 +91,7 @@ const MERGE_ABOUT =
   "We detected progress on public tunes from your browser that this account does not have. If you merge this progress into your account, your progress on each public tune will be set to the furthest recorded progress between your account and your browser.";
 
 const DELETE_ABOUT =
-  "All of your published transcriptions, private transcriptions, and progress on public tunes will be permanently removed from the database. This decision is irreversible.";
+  "All of your published tunes, private tunes, and progress on public tunes will be permanently removed from the database. This decision is irreversible.";
 
 // ---- the page -------------------------------------------------------------
 

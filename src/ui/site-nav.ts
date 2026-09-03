@@ -1,9 +1,9 @@
 /**
  * The bar along the top of every page, built once from one list.
  *
- * Every page offers the same places — the levels, a new transcription, and
- * your own transcriptions once you are somebody — with the one you are on
- * marked rather than missing. It was markup copied into each page once, and
+ * Every page offers the same places — the public tunes, a new tune, and your
+ * own tunes once you are somebody — with the one you are on marked rather
+ * than missing. It was markup copied into each page once, and
  * each copy left out a different link; a list written here is the only way
  * five pages agree.
  *
@@ -45,10 +45,10 @@ export const cornerLabel = (user: UserSummary): string =>
  * The nav's own pages, and whether this is one of them.
  *
  * Two links either way, and which the second is depends on who is looking.
- * Signed in, it is your own list — where "+ Create Transcription" already
- * sits, so a second way to the editor in the bar beside it would be the same
+ * Signed in, it is your own list — which carries its own button to the
+ * editor, so a second way there in the bar beside it would be the same
  * invitation twice. Signed out there is no such list, so the invitation is
- * the nav's to make, and it is worded as the button words it.
+ * the nav's to make.
  *
  * Home is not among them. The wordmark to the left of this row is the door
  * to it — on every page, so it is already the one thing in the bar that is
@@ -59,10 +59,10 @@ export function planNav(pathname: string, signedIn: boolean): NavLink[] {
   // The dev server answers `/edit` with `/edit/`; the two are one page.
   const here = pathname.length > 1 ? pathname.replace(/\/$/u, "") : pathname;
   return [
-    { href: "/tunes", label: "Tunes", current: here === "/tunes" },
+    { href: "/tunes", label: "Public Tunes", current: here === "/tunes" },
     signedIn
-      ? { href: "/mine", label: "My Transcriptions", current: here === "/mine" }
-      : { href: "/edit", label: "Create Transcription", current: here === "/edit" },
+      ? { href: "/mine", label: "My Tunes", current: here === "/mine" }
+      : { href: "/edit", label: "Create Tune", current: here === "/edit" },
   ];
 }
 

@@ -89,7 +89,7 @@ export type BoxFacts = {
 const WAY_IN = {
   unplayed: "Start Transcribing! →",
   started: "Continue Transcribing! →",
-  solved: "View Transcription",
+  solved: "View Tune",
 } as const;
 
 /** What the way back is called, on the page it would return to. */

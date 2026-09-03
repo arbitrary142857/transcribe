@@ -5,7 +5,7 @@ import { saveButton } from "../dist/ui/save-button.js";
 describe("saveButton()", () => {
   it("offers to save the whole thing when there is no row for it yet", () => {
     assert.deepEqual(saveButton({ saving: false, saved: false, stored: false }), {
-      label: "Save Transcription and Exit",
+      label: "Save Tune and Exit",
       disabled: false,
     });
   });
@@ -32,7 +32,7 @@ describe("saveButton()", () => {
         stored: false,
         problem: "A title is needed.",
       }),
-      { label: "Save Transcription and Exit", disabled: true },
+      { label: "Save Tune and Exit", disabled: true },
     );
     assert.deepEqual(
       saveButton({

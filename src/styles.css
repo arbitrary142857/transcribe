@@ -478,7 +478,10 @@ main.editor-main {
      YouTube asks embedders for rather than the page being held to the video. */
   max-width: 76rem;
   margin: 0 auto;
-  padding: 1.6rem 1.5rem 2rem;
+  /* 3.25rem down from the bar, which is where a list's name stands: the tunes
+     page's `main.page` gives 0.5rem and its `.page-head` 2.75rem more. The two
+     pages are entered one from the other and their headings should not step. */
+  padding: 3.25rem 1.5rem 2rem;
   /* The section box's two columns, named here because three rules need them to
      agree: each column's own width, and the width of the region around the box
      — which cannot be left to the content, since the line of advice under the
@@ -488,13 +491,16 @@ main.editor-main {
   --section-gap: 1rem;
 }
 
-/* Top left, and the size a page's name is: the one thing here that says what
-   all of this is for. */
+/* Centred over the page, and the size a page's name is: the one thing here
+   that says what all of this is for. It stretches the full column — `#setup`
+   aligns its children to stretch — so centring the text centres it on the
+   page. */
 .setup-title {
   margin: 0;
   font-size: 1.85rem;
   font-weight: 700;
   line-height: 1.15;
+  text-align: center;
   color: var(--ink);
 }
 
@@ -3869,30 +3875,47 @@ textarea.details-input {
 
 /* ---- The home page ----
 
-   The mark and the name, once, in the middle of an empty page. Everything
-   else the site can do is a link in the bar above it; this page's whole job
-   is to say what the place is called.
+   The mark and the name at the top, one paragraph under them saying what the
+   place is, and then the three demos: a picture of one part of the app with
+   its name and a paragraph beside it, three times down the page.
 
-   `main` is `flex: 1 0 auto` in a body that is a flex column, so it holds
-   whatever height the nav and the footer leave; centring inside it puts the
-   mark between them rather than in the middle of the document, which on a
-   window short enough to scroll are two different places.
+   The mark used to stand in the middle of an empty window, and `home-main`
+   centred it there. There is a page under it now, so it sits at the top like
+   the head of one; what centring is left is horizontal, which `main` already
+   does for every page.
 
-   One size drives both halves. The icon's is the clamp and the words are a
-   fraction of it, so the pair keeps its proportion at every width instead of
-   two clamps drifting apart and leaving the words taller than the mark on
-   some phone. 0.7 is where the lowercase "tune up" comes to about the height
-   of the square beside it — the letters have no capitals to measure against,
-   so this is set by eye and not by a cap height. The nav's small lockup is
-   set at the same 0.7, so the two are one thing at two sizes. */
+   One size drives both halves of the lockup. The icon's is the clamp and the
+   words are a fraction of it, so the pair keeps its proportion at every width
+   instead of two clamps drifting apart and leaving the words taller than the
+   mark on some phone. 0.7 is where "Tune Up" comes to about the height of the
+   square beside it: set by eye against the whole word rather than off a cap
+   height, since the ascender on the T and the descender on the p are what the
+   eye actually measures the block of letters by. The nav's small lockup is set
+   at the same 0.7, so the two are one thing at two sizes. */
 
 body.home-page {
   background: var(--page-bg);
 }
 
+/* Wider at the edges than the 1.5rem every other page stands on. Those pages
+   hold boxes and lists, which can sit near the edge; this one holds pictures
+   of a whole app, and a picture that nearly touches the window reads as the
+   window's own contents rather than as a picture in a page. Spelled as one
+   `padding` rather than as `padding-inline` beside the base rule's shorthand,
+   so there is no question of which of the two is setting the sides. */
 main.home-main {
-  justify-content: center;
-  padding-bottom: 4rem;
+  padding: 0 clamp(1.5rem, 5vw, 5rem) 5rem;
+}
+
+/* The head: lockup over blurb, centred, with air above it and a good deal
+   more below — the gap is what says the demos are a second thing rather than
+   a fourth line of the paragraph. */
+.home-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4rem;
+  margin: 4.5rem 0 5.5rem;
 }
 
 .home-mark {
@@ -3919,6 +3942,231 @@ main.home-main {
   letter-spacing: -0.02em;
   color: var(--note-selected);
 }
+
+/* The two ways in, side by side under the sentence: pick something somebody
+   has already written down, or go and write one. The first is the accent
+   because it is what the site asks a newcomer to press; the second is the
+   site's quiet button — the same white, rule and hover the account page's
+   pair use — because it is the larger undertaking of the two and should not
+   be competing for a first-time visitor's eye.
+
+   They wrap rather than shrink: two long labels on a phone become two rows of
+   button, which is better than two columns of broken words. */
+.home-cta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.85rem;
+}
+
+.home-cta-button {
+  padding: 0.72rem 1.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.home-cta-button.is-accent {
+  color: #fffaf4;
+  background: var(--note-selected);
+  border-color: var(--note-selected);
+}
+
+.home-cta-button.is-accent:hover {
+  background: #b0570d;
+  border-color: #b0570d;
+}
+
+.home-cta-button.is-quiet {
+  color: var(--ink);
+  background: #fffdf9;
+  border-color: var(--rule);
+}
+
+.home-cta-button.is-quiet:hover {
+  background: #f5efe4;
+}
+
+.home-cta-button:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: 2px;
+}
+
+/* The sentence under the mark. Wider than the lockup and narrower than the
+   demos: a line of about sixty characters, centred, in the grey the ledes on
+   the other pages use. */
+.home-blurb {
+  max-width: 34rem;
+  margin: 0;
+  font-size: 1.3rem;
+  line-height: 1.5;
+  text-align: center;
+  color: #6c6459;
+}
+
+/* ---- The three demos ----
+
+   A column of two-column rows, and the picture gets the bigger column: these
+   are whole screens of an app, shrunk, and half a 1440-pixel window is not
+   enough of one to make out a stave in. The words want less room than that
+   anyway — a paragraph reads better at sixty characters than at ninety. */
+.home-demos {
+  display: flex;
+  flex-direction: column;
+  gap: 4.5rem;
+  width: 100%;
+  max-width: 1600px;
+}
+
+/* The side the picture sits on alternates down the page, and the wide column
+   goes with it. Placed by naming the column rather than by `order`, which is
+   what this did when the halves were equal: `order` only shuffles items
+   through the columns in turn, so on the mirrored rows the picture would take
+   whichever column came first — the narrow one — and the two would trade
+   sizes down the page. Naming both keeps the ratio put and lets the sides
+   swap, which `order` cannot do at once.
+
+   The markup stays the same shape throughout, words first: a section says its
+   name before it shows you anything, which is the order it wants reading
+   aloud in. */
+.home-demo {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  align-items: center;
+  gap: clamp(2rem, 4vw, 3.5rem);
+}
+
+.home-demo-words {
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.home-demo:nth-of-type(even) {
+  grid-template-columns: 1fr 2fr;
+}
+
+.home-demo:nth-of-type(even) .home-demo-media {
+  grid-column: 2;
+}
+
+/* The words sit against the picture, whichever side they are on: ranged left
+   when the picture is to their left, ranged right when it is to their right.
+   The ragged edge goes to the outside of the row and the straight one to the
+   middle, so the gap between the two halves stays a clean line down the page
+   instead of a fringe. */
+.home-demo:nth-of-type(even) .home-demo-words {
+  grid-column: 1;
+  text-align: right;
+}
+
+.home-demo-title {
+  margin: 0;
+  font-size: clamp(1.7rem, 3vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.home-demo-body {
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.6;
+  color: #4a443c;
+}
+
+/* The peppers, quoted in a sentence rather than printed on a card. Sized off
+   the paragraph instead of the 1.05rem `.difficulty` sets for itself, so the
+   row is the height of the words it stands among; nudged down because an
+   inline-flex sits on its own baseline and the peppers would otherwise ride
+   high against the line. Drawn from `pepperGlyphs` like every other row of
+   them — see the note at the top of `ui/difficulty.ts`. */
+.home-peppers {
+  font-size: 1em;
+  vertical-align: -0.16em;
+}
+
+/* The frame around a demo. A hairline and a soft lift, so a screenshot of
+   this app on a page of this app still reads as a picture of it rather than
+   as more of it — the recordings are full of the same greys, and without an
+   edge the app appears to run off into the page.
+
+   The ratio is the recordings' own, 2880×1800, and it is spelled here as well
+   as in the elements' width and height attributes: the videos are handed
+   their address only when they are scrolled to, and a box that got its shape
+   from a file it has not got yet would be a box of no height until it did —
+   the page would jump under the pointer as each one arrived. */
+.home-demo-media {
+  grid-row: 1;
+  grid-column: 1;
+  margin: 0;
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+  background: var(--band);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgb(28 26 23 / 8%);
+}
+
+.home-demo-video,
+.home-demo-shot {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Between the two: still side by side, but the picture gives back some of its
+   advantage. At 1.5 to 1 a window this wide leaves the paragraph a column of
+   about forty characters, which is a newspaper column and not a paragraph. */
+@media (max-width: 78rem) {
+  .home-demo {
+    grid-template-columns: 1.4fr 1fr;
+  }
+
+  .home-demo:nth-of-type(even) {
+    grid-template-columns: 1fr 1.4fr;
+  }
+}
+
+/* Narrow enough that half a row is no longer a column of words at all: the
+   two stack, words first. Both are put back in the one column by name — the
+   mirrored rows would otherwise keep the picture in a second column that no
+   longer exists, and grid would make one for it. */
+@media (max-width: 60rem) {
+  .home-demo,
+  .home-demo:nth-of-type(even) {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .home-demo-media,
+  .home-demo:nth-of-type(even) .home-demo-media {
+    grid-row: 2;
+    grid-column: 1;
+  }
+
+  .home-demo-words,
+  .home-demo:nth-of-type(even) .home-demo-words {
+    grid-row: 1;
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .home-demos {
+    gap: 3.5rem;
+  }
+
+  .home-intro {
+    margin: 3rem 0 4rem;
+  }
+}
+
 
 
 /* ---- Pages that are documents rather than control surfaces ----
@@ -3952,6 +4200,16 @@ main.page {
   align-items: center;
   gap: 0.85rem;
   margin: 2.75rem 0 1.9rem;
+}
+
+/* A line under the name of the list, saying what to do with it. Pulled up
+   against the heading: `.page-head`'s own gap is set for the controls below,
+   and a subtitle wants to belong to the title rather than float between the
+   two. */
+.page-head-lede {
+  margin: -0.4rem 0 0;
+  font-size: 1.15rem;
+  color: #6c6459;
 }
 
 .page-head .page-title {
@@ -5436,7 +5694,9 @@ main.account-page {
   }
 
   #setup {
-    padding: 1.25rem 0.75rem 1.5rem;
+    /* The sides tighten; the head does not. The tunes page holds its name
+       3.25rem down at every width, and these two are meant to match. */
+    padding: 3.25rem 0.75rem 1.5rem;
     gap: 0.85rem;
   }
 

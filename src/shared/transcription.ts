@@ -132,7 +132,7 @@ export type TranscriptionSummary = {
   status: LevelStatus;
   /** The moment it went public, or nothing while it is a draft. */
   publishedAt: number | undefined;
-  /** Moved by every write, including publishing; what "my transcriptions" sorts by. */
+  /** Moved by every write, including publishing; what "my tunes" sorts by. */
   updatedAt: number;
   createdAt: number;
 };

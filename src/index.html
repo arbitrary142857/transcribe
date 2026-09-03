@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>tune up</title>
+    <title>Tune Up</title>
     <!-- The mark, at every size a browser wants one: an svg scales, so there
          is one file rather than a ladder of pngs. It lives in `src/public`,
          which Vite copies to the output root untouched, so this address is
@@ -14,8 +14,9 @@
   </head>
   <!-- Plain ground, not one of the patterned ones. The patterns say which
        kind of page you are on — globes for the catalog, notes for your own,
-       a pencil for the editor — and home is not one kind among them; the
-       mark in the middle wants nothing behind it. -->
+       a pencil for the editor — and home is not one kind among them. It is
+       also the page with pictures of the others on it, and a patterned ground
+       behind those would be two textures arguing. -->
   <body class="home-page">
     <nav class="site-nav">
       <!-- The logo is the door home, as it is on every other page, and one
@@ -26,7 +27,7 @@
            are. -->
       <a class="site-logo" href="/">
         <img class="site-logo-mark" src="/tune-up-icon.svg" alt="" width="450" height="450" />
-        <span class="site-logo-name">tune up</span>
+        <span class="site-logo-name">Tune Up</span>
       </a>
       <div id="site-nav" class="site-links">
         <!-- Filled in by home.ts, as on every page. Nothing in the row is
@@ -35,9 +36,141 @@
     </nav>
 
     <main class="home-main">
-      <div class="home-mark">
-        <img src="/tune-up-icon.svg" alt="" width="450" height="450" />
-        <p class="home-wordmark">tune up</p>
+      <!-- The head of the page: the mark, the name, and one paragraph saying
+           what the place is. It stands at the top rather than in the middle
+           of the window, because there is now a page under it to scroll. -->
+      <div class="home-intro">
+        <div class="home-mark">
+          <img src="/tune-up-icon.svg" alt="" width="450" height="450" />
+          <p class="home-wordmark">Tune Up</p>
+        </div>
+        <p class="home-blurb">
+          An ear-training website for transcribing real music.
+        </p>
+        <!-- The two places the nav offers, said as invitations. Plain links,
+             not buttons: they go somewhere, and a visitor should be able to
+             open either in a new tab the way they can any other link here. -->
+        <div class="home-cta">
+          <a class="home-cta-button is-accent" href="/tunes">Start Transcribing</a>
+          <a class="home-cta-button is-quiet" href="/edit">Transcribe My Own Tune</a>
+        </div>
+      </div>
+
+      <!-- The three demos. Each is a picture of one part of the app with its
+           name and a paragraph beside it, and the side the picture sits on
+           alternates down the page — see `.home-demo` in the stylesheet,
+           which does the alternating; the markup is the same shape every
+           time, words first.
+
+           The videos carry `data-demo` where a `src` would go. They are the
+           weight of this page and nothing fetches them until they are nearly
+           in view; `home-demos.ts` hands each its address then. Nothing here
+           says `autoplay` for the same reason — and because somebody who has
+           asked for less motion gets the first frame held instead. -->
+      <div class="home-demos">
+        <section class="home-demo">
+          <div class="home-demo-words">
+            <h2 class="home-demo-title">
+              Isolate tricky sections and listen closer
+            </h2>
+            <p class="home-demo-body">
+              Need to take a closer listen
+              to a particularly tricky section?
+              You can loop any section of the music
+              you'd like by simply selecting
+              a range of notes straight off the staff.
+            </p>
+            <p class="home-demo-body">
+              Keep listening until you've got the music in your head,
+              then get to transcribing!
+            </p>
+          </div>
+          <figure class="home-demo-media">
+            <video
+              class="home-demo-video"
+              data-demo="/loop-section-demo.mp4"
+              width="2880"
+              height="1800"
+              muted
+              loop
+              playsinline
+              preload="none"
+              aria-label="A passage being marked off and played round as a loop."
+            ></video>
+          </figure>
+        </section>
+
+        <section class="home-demo">
+          <div class="home-demo-words">
+            <h2 class="home-demo-title">
+              Check your work, receive feedback,
+              and try again
+            </h2>
+            <p class="home-demo-body">
+              Once you've worked out a pitch for every note,
+              check your work against an answer key.
+              Receive feedback on what you got right,
+              and learn which notes still need fixing.
+            </p>
+            <p class="home-demo-body">
+              No worries if you made a few mistakes!
+              Check your work as many times as you need
+              until you've got everything just right.
+            </p>
+          </div>
+          <figure class="home-demo-media">
+            <video
+              class="home-demo-video"
+              data-demo="/check-answer-demo.mp4"
+              width="2880"
+              height="1800"
+              muted
+              loop
+              playsinline
+              preload="none"
+              aria-label="A tune being checked, note by note."
+            ></video>
+          </figure>
+        </section>
+
+        <section class="home-demo">
+          <div class="home-demo-words">
+            <h2 class="home-demo-title">
+              Challenge yourself with
+              a wide variety of tunes
+            </h2>
+            <p class="home-demo-body">
+              Anyone can publish a tune they've made
+              for anyone else to challenge themselves with.
+            </p>
+            <p class="home-demo-body">
+              Pick out just the right tunes to train your ear with
+              by searching for tunes that match your ideal spiciness level.
+              <!-- Filled in by home.ts through `pepperGlyphs`, the one place
+                   the shape of a pepper is decided. Decorative here — the
+                   sentence has already said what they mean — so it is hidden
+                   from anybody being read to. -->
+              <span id="home-peppers" class="difficulty home-peppers" aria-hidden="true"></span>
+            </p>
+            <p class="home-demo-body">
+              Train your ear on tunes spanning
+              a variety of artists and genres&mdash;whether
+              it's a track you've had on repeat for years,
+              or a style you're hearing for the very first time.
+            </p>
+          </div>
+          <figure class="home-demo-media">
+            <img
+              class="home-demo-shot"
+              src="/level-select-demo.png"
+              width="2880"
+              height="1800"
+              loading="lazy"
+              decoding="async"
+              alt="The catalog of tunes, as a grid of cards with difficulty ratings and filters."
+            />
+          </figure>
+        </section>
       </div>
     </main>
 

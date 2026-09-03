@@ -1,5 +1,5 @@
 /**
- * My transcriptions: one author's drafts and published levels.
+ * My tunes: one author's drafts and published levels.
  *
  * The same list as the catalog, drawn from `/api/mine` instead, with the
  * pencil, the move between draft and published, and the trash on every card —

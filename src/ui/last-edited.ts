@@ -95,6 +95,6 @@ export function sinceWords(then: number, now: number): string {
   return dateWords(then);
 }
 
-/** The line a card on "my transcriptions" carries. */
+/** The line a card on "my tunes" carries. */
 export const lastEdited = (updatedAt: number, now: number): string =>
   `Last edited ${sinceWords(updatedAt, now)}`;

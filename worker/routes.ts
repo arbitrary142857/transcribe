@@ -473,13 +473,13 @@ function derive(melody: Melody): Derived | { problem: string } {
   const noteCount = countSoundingNotes(melody);
   if (noteCount < LIMITS.noteCount.min) {
     return {
-      problem: `A transcription needs at least two notes before it is worth saving.`,
+      problem: `A tune needs at least two notes before it is worth saving.`,
     };
   }
 
   const measures = measureCountOf(melody);
   if (measures < 1 || measures > MEASURES_MAX) {
-    return { problem: `A transcription runs from 1 to ${MEASURES_MAX} bars.` };
+    return { problem: `A tune runs from 1 to ${MEASURES_MAX} bars.` };
   }
 
   // fifths() is unbounded -- it counts seven per accidental, so B-sharp major
@@ -522,7 +522,7 @@ type Music = { melody: Melody; json: MelodyJson };
 async function readBody(request: Request): Promise<Body | Refused> {
   const text = await request.text();
   if (text.length > MAX_BODY_BYTES) {
-    return { status: 413, problem: "That transcription is too large to store." };
+    return { status: 413, problem: "That tune is too large to store." };
   }
 
   let body: unknown;
@@ -532,7 +532,7 @@ async function readBody(request: Request): Promise<Body | Refused> {
     return { status: 400, problem: "The request was not JSON." };
   }
   if (!isObject(body)) {
-    return { status: 400, problem: "The request was not a transcription." };
+    return { status: 400, problem: "The request was not a tune." };
   }
 
   const problem = detailsProblem(
@@ -586,7 +586,7 @@ api.post("/api/tunes", async (c) => {
   // anonymous sender wrote gets parsed.
   const user = await sessionUserOf(c);
   if (user === undefined) {
-    return c.json({ error: "Sign in to save a transcription." }, 401);
+    return c.json({ error: "Sign in to save a tune." }, 401);
   }
 
   const read = await readSubmission(c.req.raw);
@@ -799,7 +799,7 @@ api.put("/api/tunes/:id", async (c) => {
   }
   if (derived.measures !== row.measures) {
     return c.json(
-      { error: "An edit cannot change how many bars a transcription is." },
+      { error: "An edit cannot change how many bars a tune is." },
       400,
     );
   }
@@ -1017,7 +1017,7 @@ api.post("/api/tunes/:id/unpublish", async (c) => {
  * so only an author previewing their own unfinished draft can hear this.
  */
 const UNFINISHED =
-  "That transcription is not finished, so there is nothing to play yet.";
+  "That tune is not finished, so there is nothing to play yet.";
 
 /** Room for an attempt at a melody's worth of notes and nothing like more. */
 const MAX_ATTEMPT_BYTES = 64 * 1024;

@@ -41,7 +41,7 @@ export function saveButton({
   if (saving) return { label: "Saving…", disabled: true };
   if (saved) return { label: "Exit (No Changes)", disabled: false };
   return {
-    label: stored ? "Save Changes and Exit" : "Save Transcription and Exit",
+    label: stored ? "Save Changes and Exit" : "Save Tune and Exit",
     disabled: problem !== undefined,
   };
 }

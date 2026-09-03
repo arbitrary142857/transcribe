@@ -22,11 +22,11 @@ describe("planNav()", () => {
   });
 
   it("asks a visitor who is nobody to create a transcription, in those words", () => {
-    // The button on "my transcriptions" says the same thing; somebody signed
-    // out has no such page, so the nav is where the invitation lives.
+    // Somebody signed out has no list of their own, so the nav is where the
+    // invitation to make one lives; signed in it is that list's own button.
     assert.deepEqual(
       planNav("/tunes", false).map((link) => link.label),
-      ["Tunes", "Create Transcription"],
+      ["Public Tunes", "Create Tune"],
     );
   });
 
@@ -39,7 +39,7 @@ describe("planNav()", () => {
     );
     assert.deepEqual(
       planNav("/tunes", true).map((link) => link.label),
-      ["Tunes", "My Transcriptions"],
+      ["Public Tunes", "My Tunes"],
     );
   });
 

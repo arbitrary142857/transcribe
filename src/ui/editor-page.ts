@@ -654,7 +654,7 @@ export function createEditorPage(
     await openChoiceModal({
       title: "Sign in to save",
       body: [
-        "Transcriptions are saved to an account, and nobody is signed in.",
+        "Tunes are saved to an account, and nobody is signed in.",
         "Your work is kept on this device while you sign in, and saved the moment you are back.",
       ],
       cancel: "Not now",

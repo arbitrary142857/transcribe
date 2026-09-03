@@ -1,3 +1,3 @@
-# tune up
+# Tune Up
 
 a musical transcription game

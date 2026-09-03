@@ -201,7 +201,7 @@ export function createSetupPage(
 
   const title = document.createElement("h1");
   title.className = "setup-title";
-  title.textContent = "Set Up Your Transcription";
+  title.textContent = "Set Up Your Tune";
 
   // ---- the link box and its Submit --------------------------------------
 
@@ -610,7 +610,7 @@ export function createSetupPage(
           ".",
         ],
         [
-          "Your transcription will consist of ",
+          "Your tune will consist of ",
           marked(bars),
           " of ",
           marked(meterLabel(chosen.meter)),

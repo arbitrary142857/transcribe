@@ -4,7 +4,7 @@
  * Two pages hold one: the catalog at /tunes, which lists what is published and
  * offers nothing to anybody but an admin (for whom every card carries the
  * pencil, Unpublish and the trash — the site's moderation, such as it is),
- * and "my transcriptions", which lists one author's drafts and published
+ * and "my tunes", which lists one author's drafts and published
  * levels and offers the pencil, the move across the line between the two,
  * and the trash. Everything but which of those a card carries is the same on
  * both, so it lives here once, and the page says only which page it is.
@@ -233,14 +233,14 @@ export function createLevelList(options: LevelListOptions): LevelList {
     }
     const start = document.createElement("a");
     start.href = "/edit";
-    start.textContent = "Start a transcription";
+    start.textContent = "Start a tune";
     drawNote(["Nothing yet. ", start]);
   }
 
   /** Your own list, with nobody signed in: the way to change that. */
   function askToSignIn(): void {
     const words = document.createElement("span");
-    words.textContent = "Sign in to see your transcriptions.";
+    words.textContent = "Sign in to see your tunes.";
     note.replaceChildren(words, googleButton({ next: "/mine" }));
     note.classList.add("is-asking");
   }
@@ -364,7 +364,7 @@ export function createLevelList(options: LevelListOptions): LevelList {
    * One card, wired to what this page lets the viewer do with it.
    *
    * The progress goes to the box as well as to the status word: the way in
-   * reads "Start", "Continue" or "View Transcription" by how far it has got.
+   * reads "Start", "Continue" or "View Tune" by how far it has got.
    */
   function cardFor(
     level: TranscriptionSummary,

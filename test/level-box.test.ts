@@ -52,7 +52,7 @@ describe("levelBoxPlan()", () => {
     assert.equal(label(undefined), "Start Transcribing! →");
     assert.equal(label(progress()), "Start Transcribing! →");
     assert.equal(label(started), "Continue Transcribing! →");
-    assert.equal(label(solved), "View Transcription");
+    assert.equal(label(solved), "View Tune");
   });
 
   it("closes rather than travels, from either list", () => {
