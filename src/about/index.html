@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>About · tune up</title>
+    <title>About · Tune Up</title>
     <link rel="icon" href="/tune-up-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
@@ -11,75 +11,247 @@
     <nav class="site-nav">
       <a class="site-logo" href="/">
         <img class="site-logo-mark" src="/tune-up-icon.svg" alt="" width="450" height="450" />
-        <span class="site-logo-name">tune up</span>
+        <span class="site-logo-name">Tune Up</span>
       </a>
       <div id="site-nav" class="site-links">
         <!-- Filled in by site-nav.ts, as on every page. -->
       </div>
     </nav>
 
-    <!-- Prose, written out rather than drawn by a script, like /privacy.
-         This page is meant to be written in by hand: a section is an <h2>
-         and some <p> paragraphs, nothing more. Add sections, reorder them,
-         rewrite them — no script needs to know. The one section that should
-         stay truthful to the code is "The difficulty rating", which
-         describes how the peppers are worked out; change it when the model
-         changes. -->
-    <main class="page prose-page">
-      <h1 class="page-title">About</h1>
-      <p class="page-lede">
-        What this site is, and how some of its numbers are arrived at.
-      </p>
+    <main class="page faq-page">
+      <div class="page-head">
+        <h1 class="page-title">About This Site</h1>
+        <p class="page-head-lede faq-lede">
+          Note: This page explains only the technical, nerdy details of this
+          site. It is not an explanation of how this site is fundamentally
+          meant to be used.
+        </p>
+      </div>
 
-      <h2>This site</h2>
-      <p>
-        <!-- Yours to write: what tune up is, why it exists, whatever you
-             want said. This paragraph is a placeholder. -->
-        tune up is a small site for writing down music by ear: somebody
-        transcribes a passage from a video and publishes it as a tune, and
-        everybody else tries to hear it note by note.
-      </p>
+      <!-- ═══════════════════════════════════════════════════════════════
+           HOW TO ADD A QUESTION
 
-      <h2>The difficulty rating</h2>
-      <p>
-        Every tune shows its difficulty as five chili peppers, from half a
-        pepper to five. The figure starts as the author's own rating, which
-        counts as if a few players had voted it. Each player who solves the
-        tune can then rate it, one vote each, changeable at any time — and
-        the figure shown is the average of all the votes, rounded to the
-        nearest half.
-      </p>
-      <p>
-        Whose votes count is decided fresh every time the figure is read,
-        never stored. If you turn off <em>“Count my play in public
-        statistics”</em> on your account page, your ratings leave every
-        figure at once — past ratings included — and deleting your account
-        does the same. Unpublishing a tune erases all of its ratings: if it
-        is published again, it starts over from the author's word, since the
-        music may have changed.
-      </p>
+           Copy this, put it anywhere in the box below, and you are done.
+           Nothing registers a question anywhere: no script reads this page,
+           no list needs a new line in it, and the order on screen is the
+           order the blocks are written in here.
 
-      <h2>Hearts and play figures</h2>
-      <p>
-        A solver who liked a tune can give it a heart, once, and take it
-        back by pressing again; the card shows how many hearts a tune
-        holds. Beside the hearts, each tune counts the players who have
-        solved it, and its box shows the median completion time — overall,
-        and for flawless runs (solved on the first check). A median appears
-        only once at least three players' solves are behind it; before
-        that, the box shows a dash rather than publishing one or two
-        players' own times. The author's playthroughs of their own tune
-        never count in the play figures, and everything above obeys the
-        same switch as the ratings: turn off <em>“Count my play in public
-        statistics”</em> and your hearts and playthroughs leave every
-        figure at once.
-      </p>
+               <details class="faq-item" name="faq">
+                 <summary class="faq-question">Your question?</summary>
+                 <div class="faq-answer">
+                   <p>Your answer.</p>
+                 </div>
+               </details>
 
-      <h2>Questions</h2>
-      <p>
-        This site is run by one person. Write to
-        <a href="mailto:jmao142857@gmail.com">jmao142857@gmail.com</a>.
-      </p>
+           Two things worth keeping right:
+
+           • `name="faq"` is what makes the list an accordion. Every question
+             shares the one name, and a browser closes whichever question of
+             that name was open when you open another. Leave it off a block
+             and that one question stops taking its turn — it will sit open
+             beside whatever else is open.
+
+           • The answer is ordinary markup. Several <p> paragraphs, a <ul>,
+             a <a href="…">link</a>, an <em>emphasis</em> — all of it works,
+             and all of it is styled already.
+           ═══════════════════════════════════════════════════════════════ -->
+      <div class="panel faq-box">
+        <details class="faq-item" name="faq">
+          <summary class="faq-question">
+            How was this site made?
+          </summary>
+          <div class="faq-answer">
+            <p>
+              This site was built by Claude Code. 😔
+            </p>
+            <p>
+              All sheet music is rendered on the webpage
+              using <a href="https://www.vexflow.com/">VexFlow</a>,
+              an open-source music notation rendering library.
+            </p>
+            <p>
+              The icons on this site come from four places.
+            </p>
+            <ul>
+              <li>
+                Most generic icons come from
+                <a href="https://phosphoricons.com">Phosphor Icons</a>,
+                a free icon family under the MIT licence.
+              </li>
+              <li>
+                Icons that are plain musical notation
+                come from Bravura, the reference font for SMuFL
+                (Standard Music Font Layout).
+              </li>
+              <li>
+                The favicon was drawn by myself in Adobe Illustrator.
+              </li>
+              <li>
+                The rest of the icons were drawn by Claude Code.
+              </li>
+            </ul>
+            <p>
+              You can find the GitHub repo
+              containing all of the code for this site
+              <a href="https://github.com/arbitrary142857/transcribe">here</a>.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item" name="faq">
+          <summary class="faq-question">How does the difficulty system work?</summary>
+          <div class="faq-answer">
+            <p>
+              There is no well-defined meaning to
+              a difficulty of 2.5, say;
+              the difficulty scale is mostly vibe-based.
+              As a rough guideline,
+            </p>
+            <ul>
+              <li>
+                A difficulty of 0.5
+                is the easiest possible transcription
+                that is not completely trivial.
+              </li>
+              <li>
+                A difficulty of 5.0
+                is the hardest possible transcription
+                that is reasonably human-feasible.
+              </li>
+              <li>
+                Now interpret all of the difficulties in between
+                via linear interpolation.
+              </li>
+            </ul>
+            <p>
+              Due to the subjectivity of the difficulty system,
+              each tune's difficulty is set to
+              a weighted average of all suggested difficulties for that tune.
+            </p>
+            <p>
+              Specifically, the author's suggested difficulty counts as four votes,
+              and every other suggestion counts as one.
+              This weighted average is then rounded
+              to the nearest multiple of 0.5.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item" name="faq">
+          <summary class="faq-question">
+            How is median completion time calculated?
+          </summary>
+          <div class="faq-answer">
+            <p>
+              A completion does not contribute toward
+              the median completion time statistics
+              if it was the author's completion,
+              if assist mode was used,
+              or if the user has opted out of
+              contributing to public statistics.
+              A median time only appears after
+              three qualifying completions.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item" name="faq">
+          <summary class="faq-question">Where is my progress saved?</summary>
+          <div class="faq-answer">
+            <p>
+              If you're signed out,
+              then your progress on a tune is stored
+              in your own browser's local storage.
+              Notably, nothing you do while signed out
+              is ever recorded in a database.
+              You can tamper with your stored progress
+              using DevTools if you'd like.
+            </p>
+            <p>
+              If you're signed in,
+              then your progress on any given tune
+              is stored in its own individual row
+              in a database.
+              (Deleting your account
+              will delete all database rows
+              associated with your account.)
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item" name="faq">
+          <summary class="faq-question">How does browser progress merge with account progress?</summary>
+          <div class="faq-answer">
+            <p>
+              Whenever you sign in on a browser
+              that already has some progress stored within its
+              local storage, the site will give you the option
+              to merge the progress stored in local storage
+              with the progress stored in the database.
+            </p>
+            <p>
+              If you do choose to merge,
+              here is how the site decides
+              whether to use the browser's progress
+              or the database's progress
+              for each tune.
+            </p>
+            <ul>
+              <li>
+                A solved tune always wins over an unsolved tune.
+              </li>
+              <li>
+                An unfinished tune always wins over a not-started tune.
+              </li>
+              <li>
+                Between two solves,
+                the one with fewer checks wins,
+                then the shorter clock,
+                and then the account by default.
+              </li>
+              <li>
+                Between two unfinished attempts,
+                the one with more correct pitches wins,
+                then the one with more pitches written,
+                and then the account by default.
+              </li>
+              <li>
+                If assist mode usage was recorded
+                in either the browser's progress
+                or the database's progress,
+                the merge will also record assist mode usage.
+              </li>
+              <li>
+                The merge takes written pitches,
+                number of checks, clock, and solve
+                from the winner's data.
+                The only other thing carried over from the loser
+                is its verdicts;
+                that is, all of the feedback received
+                from the answer-checker, both
+                in the browser and the database,
+                is combined in the merge.
+              </li>
+            </ul>
+            <p>
+              Merging only affects
+              user progress on public tunes.
+              It always preserves your account's tunes,
+              your upvotes, and your difficulty suggestions.
+            </p>
+          </div>
+        </details>
+
+        <details class="faq-item" name="faq">
+          <summary class="faq-question">Who runs this site?</summary>
+          <div class="faq-answer">
+            <p>
+              Just one person. Contact me via
+              <a href="mailto:jasonmao@mit.edu">jasonmao@mit.edu</a>.
+            </p>
+          </div>
+        </details>
+      </div>
     </main>
 
     <footer class="site-foot"><a href="/about" aria-current="page">About</a> · <a href="/privacy">Privacy</a></footer>

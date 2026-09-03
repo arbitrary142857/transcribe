@@ -5470,6 +5470,231 @@ main.account-page {
   font-size: 0.9em;
 }
 
+/* ---- A page of questions: the about page ----
+
+   One box, narrower than the page, holding a row for each question. It is the
+   `<details>` element doing all of the work, and doing it with no script at
+   all: the shared `name` on the blocks is what makes the list an accordion,
+   since a browser closes whichever sibling of that name was open when another
+   is opened. So a question is six lines of markup that nothing has to be told
+   about, and the page still reads with nothing running — which is the same
+   bargain /privacy makes, for the same reason. */
+
+main.faq-page {
+  /* Wider than the prose page's 42rem, because a question is a headline and
+     wants to sit on one or two lines rather than three, and narrower than the
+     1320 `.page` gives a grid of cards. */
+  max-width: 46rem;
+}
+
+/* The note under the heading, which says what kind of page this is. Narrower
+   than the box below it and centred on its own axis: `.page-head` centres the
+   paragraph as a block, but a block as wide as the box leaves the words
+   ranged left under a centred heading, which reads as a mistake. `balance`
+   is what keeps the two lines near enough the same length to look set rather
+   than merely wrapped. */
+.faq-lede {
+  max-width: 34rem;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* No padding of its own — every row carries its own, so that a question's
+   click target, and the hover that says it is one, runs the full width of the
+   box rather than stopping short of its edge. Overriding `.panel`, which is
+   the surface this shares with the account box and the editor's tools; both
+   are single-class selectors, so this wins by standing later in the file.
+
+   `overflow` is what keeps those full-width rows inside the rounded corners. */
+.faq-box {
+  padding: 0;
+  overflow: hidden;
+  /* What lets a closed answer grow open smoothly: `auto` is a keyword rather
+     than a length, and without this a transition towards it has nothing to
+     interpolate and the answer simply appears. Set on the box rather than on
+     `:root` — the property inherits, and no other transition on the site
+     asked for it. */
+  interpolate-size: allow-keywords;
+}
+
+/* A hairline between rows, and none above the first or below the last: the
+   box's own border already draws those two. */
+.faq-item + .faq-item {
+  border-top: 1px solid var(--rule);
+}
+
+/* The question: the width of the box, the weight of a heading, and a chevron
+   held against the right edge. `list-style: none` is what takes the browser's
+   own triangle away, and WebKit wants that said in its own spelling too. */
+.faq-question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.05rem 1.35rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.faq-question::-webkit-details-marker {
+  display: none;
+}
+
+/* The whole row lights, not the words: the row is the button. The accent on
+   the words is the navbar's rule — orange is the invitation — and the wash
+   under them is neutral, so an offer to open is not mistaken for the thing
+   already open below. */
+.faq-question:hover {
+  color: var(--note-selected);
+  background: #f7f4ee;
+}
+
+/* The open question, in the accent.
+
+   This is what parts the question from its answer. Left alone the two shared
+   one white field and read as a single tall box with a heading in it; the
+   wash gives the question an edge of its own, and the answer stands on the
+   box's own paper below it — two things, not one.
+
+   The pair is the site's existing "this one is on": accent ink on the pale
+   accent ground, the same as a funnel that is cutting the catalog. Not the
+   navbar's black bar, which says *where you are* among places; an open
+   question is a thing switched on, and it is the only one, since the blocks
+   shut each other. The rule under it is the seam the wash would otherwise
+   have to draw on its own. */
+.faq-item[open] > .faq-question {
+  color: var(--note-selected);
+  background: #fdf3e9;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* Still a button while it is open — pressing it again shuts it — so the
+   pointer gets an answer here too, a step deeper into the same wash. */
+.faq-item[open] > .faq-question:hover {
+  background: #fbecdc;
+}
+
+/* Inside the edge rather than outside it, since the row runs to the box's
+   border and a ring drawn outwards would be clipped by `overflow`. */
+.faq-question:focus-visible {
+  outline: 2px solid var(--note-selected);
+  outline-offset: -2px;
+}
+
+/* The chevron, drawn out of two borders on a square turned forty-five
+   degrees rather than fetched as a shape. It is the one mark on this page
+   that is pure decoration — the row already announces itself as open or shut
+   to anything being read aloud — so it costs nothing but four lines here, and
+   it turns to point down-then-up as the answer opens. */
+.faq-question::after {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.15em;
+  /* Drawn in its own colour rather than the row's, so it stays quieter than
+     the words when the question is shut — and takes the accent with them when
+     it is open or under the pointer. */
+  color: #8d8378;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-0.15em) rotate(45deg);
+  transition: transform 220ms ease;
+}
+
+.faq-question:hover::after,
+.faq-item[open] > .faq-question::after {
+  color: var(--note-selected);
+}
+
+.faq-item[open] > .faq-question::after {
+  transform: translateY(0.08em) rotate(-135deg);
+}
+
+/* The answer's own padding: one inset, equal on all four sides, so the words
+   sit in the middle of their box rather than pressed against the question
+   above them. The figure is the question's own horizontal inset, which is
+   what lines the answer's first character up under the first letter of the
+   question.
+
+   It lives on this inner box rather than on the row `::details-content`
+   draws, because that row is what collapses to nothing, and padding on a
+   thing of no height still shows. */
+.faq-answer {
+  padding: 1.35rem;
+  color: #4a443c;
+  line-height: 1.55;
+}
+
+.faq-answer p {
+  margin: 0 0 0.7rem;
+}
+
+/* A path or an identifier quoted inside an answer. The face is the browser's
+   monospace and the size a step down, since a mono face at the same nominal
+   size reads larger than the words around it. */
+.faq-answer code {
+  font-size: 0.9em;
+}
+
+.faq-answer p:last-child {
+  margin-bottom: 0;
+}
+
+/* A list inside an answer, at the same inset the prose page gives one: enough
+   to hang the markers off the text's left edge without pushing the items far
+   from the paragraph that introduced them. */
+.faq-answer ul {
+  margin: 0 0 0.7rem;
+  padding-left: 1.2rem;
+}
+
+.faq-answer li {
+  margin: 0.35rem 0;
+}
+
+.faq-answer > :last-child {
+  margin-bottom: 0;
+}
+
+/* The opening itself. `::details-content` is the box a browser wraps around
+   everything after the summary, and it is the only handle there is on it: the
+   answer is inside that box, not the same as it. Closed it is nothing tall
+   with its overflow cut off; open it is as tall as the answer, and the
+   keyword above is what makes the distance between the two a distance.
+
+   `content-visibility` has to travel with it — a browser hides the content of
+   a shut `<details>` with that property, and hidden content has no height to
+   animate from — and it steps rather than slides, which is what
+   `allow-discrete` is for. A browser that has none of this simply opens the
+   answer at once, which is the plain behaviour of the element and a perfectly
+   good page. */
+.faq-item::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 260ms ease,
+    content-visibility 260ms;
+  transition-behavior: allow-discrete;
+}
+
+.faq-item[open]::details-content {
+  block-size: auto;
+}
+
+/* With less movement asked for, the answer still arrives — it just arrives
+   rather than travels, and the chevron is where it is going to be. */
+@media (prefers-reduced-motion: reduce) {
+  .faq-item::details-content,
+  .faq-question::after {
+    transition: none;
+  }
+}
+
 /* ---- Compact: the same cards without their pictures ----
 
    The picture is not hidden, it is never built — so the four sharper sizes are
