@@ -3,12 +3,17 @@
 
   // The Worker's own name, and nothing else's: it decides how the script is
   // listed in the dashboard and what its workers.dev URL would be called. No
-  // code reads it, and it need not match the repo or the database.
+  // code reads it, and it need not match the repo, the database, or the
+  // address — which is now the case, and deliberately so.
   //
-  // Named for where it lives rather than where it came from: the site is
-  // transcribe.jasonmao.me, and renaming a Worker after a deploy creates a
-  // second Worker and leaves the first one serving, so the name was chosen
-  // once, before the first deploy, and stays.
+  // It was named after the address when the two agreed. They no longer do:
+  // the site moved to tuneup.jasonmao.me and this stayed "transcribe",
+  // because renaming a Worker after a deploy does not rename it — it creates
+  // a second one and leaves the first serving. There is a second reason now
+  // as well. The build writes its generated config to `dist-web/<this
+  // name>/wrangler.json`, and package.json's `deploy` script names that path
+  // literally, so a rename here breaks the release until package.json is
+  // changed to match. Nobody ever sees this name. It stays.
   "name": "transcribe",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-08-07",
@@ -40,7 +45,22 @@
   // so that deploying is enough — Cloudflare writes the DNS record and issues
   // the certificate itself. The jasonmao.me zone has to be on Cloudflare DNS
   // for that to work, and it is.
-  "routes": [{ "pattern": "transcribe.jasonmao.me", "custom_domain": true }],
+  //
+  // It was transcribe.jasonmao.me until the site took the name it goes by.
+  // One line, because nothing else in the codebase knows the address:
+  // `redirect_uri` is built from whatever origin the request arrived on (see
+  // worker/auth.ts), so the move needed no code change — only the new
+  // callback added to the Google console's list, which is the one place
+  // outside this repo that has to agree.
+  //
+  // This list is declarative for custom domains, which is the opposite of
+  // what is easy to assume. Deploying with only this address in it detached
+  // transcribe.jasonmao.me by itself: the dashboard entry went, the DNS
+  // record went with it, and the hostname stopped resolving altogether. So
+  // this is the set of addresses the Worker answers on, not a set of
+  // additions to it -- dropping one from here switches that hostname off at
+  // the next deploy.
+  "routes": [{ "pattern": "tuneup.jasonmao.me", "custom_domain": true }],
 
   // One door, on purpose. The workers.dev hostname is closed so that the site
   // has exactly one origin — the one on Google's redirect allowlist. (Wrangler

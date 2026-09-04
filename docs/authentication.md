@@ -121,7 +121,7 @@ users table can tell who is who.
 
 **The return address is derived, not configured.** `redirect_uri` is built
 from the origin of the incoming request, so `localhost` and
-`transcribe.jasonmao.me` both work with no per-environment config —
+`tuneup.jasonmao.me` both work with no per-environment config —
 *provided* each origin's callback URL is on the Google console's allowed
 list (see the runbook below). Google enforces exact matches on that list,
 which is what stops an attacker pointing the redirect somewhere of their
@@ -419,7 +419,7 @@ is written for everyone else.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
    type *Web application*. Authorized redirect URIs — exact strings:
    - `http://localhost:5173/api/auth/callback`
-   - `https://transcribe.jasonmao.me/api/auth/callback`
+   - `https://tuneup.jasonmao.me/api/auth/callback`
 
    Nothing else. The `workers.dev` hostname is switched off (see below), so
    it does not belong on this list; every entry is an origin whose sign-in
@@ -494,10 +494,10 @@ wrangler d1 execute transcribe --remote --command "DELETE FROM sessions"
 
 ### The domain, and why there is only one door
 
-The site is served at `transcribe.jasonmao.me`, declared in `wrangler.jsonc`:
+The site is served at `tuneup.jasonmao.me`, declared in `wrangler.jsonc`:
 
 ```jsonc
-"routes": [{ "pattern": "transcribe.jasonmao.me", "custom_domain": true }],
+"routes": [{ "pattern": "tuneup.jasonmao.me", "custom_domain": true }],
 "workers_dev": false,
 "preview_urls": false,
 ```
@@ -509,6 +509,27 @@ config rather than in the dashboard means deploying is enough — Cloudflare
 writes the DNS record and issues the certificate itself (the `jasonmao.me`
 zone is on Cloudflare DNS, which is the one prerequisite). The Worker needed
 no change to move here: the return address is derived from each request.
+
+It was `transcribe.jasonmao.me` first, and moving was one line in
+`wrangler.jsonc` plus one entry in Google's console — which is the whole of
+what "derived, not configured" buys. Two things did *not* move with it, both
+deliberately. The Worker is still named `transcribe`: renaming one after a
+deploy creates a second Worker rather than renaming the first, and the build
+writes its config to `dist-web/<worker name>/wrangler.json`, a path
+package.json names literally. The D1 database is still named `transcribe`
+too, because D1 cannot rename and there is nothing to gain from copying a
+database to change a label. Neither name is ever seen by a visitor.
+
+Retiring the old address took no step at all, and the reason is worth knowing
+for the next move: **`routes` is declarative for custom domains.** Deploying
+with only `tuneup.jasonmao.me` in the list detached `transcribe.jasonmao.me`
+on its own — the dashboard entry went, the DNS record went with it, and the
+hostname stopped resolving. Nothing was removed by hand.
+
+The corollary is the half worth remembering: this list is the set of addresses
+the Worker answers on, not a set of additions to it. Dropping a route from it
+switches that hostname off at the next deploy, whether or not that was
+intended.
 
 `workers_dev: false` closes the `transcribe.<subdomain>.workers.dev`
 hostname on purpose, so the site has exactly one origin and Google's

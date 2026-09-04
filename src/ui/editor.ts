@@ -7,7 +7,6 @@ import {
   undivideTuplet,
   writeAt,
 } from "../editor/operations.js";
-import { eventPositions } from "../editor/position.js";
 import type { Duration } from "../music/duration.js";
 import type { KeySignature } from "../music/key-signature.js";
 import type { Melody } from "../music/melody.js";
@@ -245,38 +244,6 @@ export function createEditor(
         onDivide: (tuplet) => runEdit((index) => divideIntoTuplet(melody, index, tuplet)),
         onUndivide: () => runEdit((index) => undivideTuplet(melody, index)),
       });
-
-  // ---- status ----------------------------------------------------------
-
-  function describeSelection(): string {
-    const anchor = view.getAnchor();
-    if (anchor === undefined) {
-      return "Select a note or a rest to change it.";
-    }
-    const position = eventPositions(melody)[anchor];
-    if (!position) {
-      return "";
-    }
-    const beat =
-      Math.floor(
-        (position.offset.num * melody.timeSignature.beatUnit) /
-          position.offset.den,
-      ) + 1;
-    const remaining = countUnpitched();
-    const todo =
-      remaining === 0
-        ? ""
-        : ` · ${remaining} note${remaining === 1 ? "" : "s"} still without a pitch`;
-    return `Bar ${position.bar + 1}, beat ${beat}${todo}`;
-  }
-
-  function countUnpitched(): number {
-    let count = 0;
-    for (let i = 0; i < melody.eventCount; i++) {
-      if (melody.getEvent(i) instanceof UnpitchedNote) count += 1;
-    }
-    return count;
-  }
 
   /**
    * Put a reason beside the pointer, or take it away.
@@ -828,9 +795,6 @@ export function createEditor(
   view.onSelectionChange((anchor) => {
     syncControls();
     options.onSelect?.(anchor);
-    // Useful while working on the editor, not worth a permanent line of the
-    // panel: the stave already says where the selection is.
-    console.log(describeSelection());
   });
   window.addEventListener("keydown", onKeyDown);
 

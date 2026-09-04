@@ -250,14 +250,14 @@ describe("foreignWrite", () => {
     ({
       req: {
         method,
-        url: "https://transcribe.jasonmao.me/api/tunes",
+        url: "https://tuneup.jasonmao.me/api/tunes",
         header: (name: string) => headers[name],
       },
     }) as never;
 
   it("lets a write from this very site through", () => {
     assert.equal(
-      foreignWrite(asked("POST", { Origin: "https://transcribe.jasonmao.me" })),
+      foreignWrite(asked("POST", { Origin: "https://tuneup.jasonmao.me" })),
       false,
     );
   });
