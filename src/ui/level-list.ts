@@ -23,14 +23,13 @@
  */
 
 import { progressStoreFor } from "../puzzle/account-progress.js";
-import { mergeIntoAccount } from "../puzzle/handoff.js";
 import {
   createLocalProgressStore,
   type ListableStorage,
   type PlayProgress,
   type ProgressStore,
 } from "../puzzle/progress.js";
-import { ANONYMOUS, type UserSummary } from "../shared/session.js";
+import type { UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { editDetails } from "./details-modal.js";
 import { googleButton } from "./google-button.js";
@@ -59,11 +58,6 @@ import {
 import { createCatalogFilters, createWorkFilters } from "./level-filters.js";
 import { openLevelModal } from "./level-modal.js";
 import { playStatus, workStatus } from "./level-status.js";
-import {
-  createHandoffLine,
-  offerMergeOnArrival,
-  offerToForget,
-} from "./merge-offer.js";
 import { openModal } from "./modal.js";
 import { browserFetch } from "./page-boot.js";
 import { createSwitch } from "./switch.js";
@@ -129,7 +123,6 @@ export function createLevelList(options: LevelListOptions): LevelList {
    * on the catalog, with somebody signed in, and only while records remain.
    * The standing line under the list offers them.
    */
-  let held: PlayProgress[] = [];
 
   function render(): void {
     list.classList.toggle("is-compact", compact);
@@ -199,28 +192,24 @@ export function createLevelList(options: LevelListOptions): LevelList {
   }
 
   /**
-   * The sentence about the list, and under it the line about this browser's
-   * records when there is one. Everything the note says goes through here, so
-   * the line is never lost under a later sentence.
+   * The sentence about the list, and nothing else.
+   *
+   * It used to carry two standing lines as well: one offering this browser's
+   * signed-out progress to the account, and one on your own page saying the
+   * name on your bylines was picked for you. Both are gone from here, along
+   * with the question that used to open on arrival. Neither was about the list
+   * somebody came to read, and both appeared in the first moments after
+   * signing in — which is the worst time to be told a thing, because it is the
+   * one moment the reader is looking for something else.
+   *
+   * Both live on the profile page now, where somebody has gone *to* settle
+   * things about their account: the browser's progress is a row with Merge
+   * Progress and Forget It in it, and the name is the field at the top. They
+   * are discovered rather than announced.
    */
   function drawNote(sentence: readonly (Node | string)[]): void {
     note.classList.remove("is-asking");
-    const parts: (Node | string)[] = [...sentence];
-    if (held.length > 0) {
-      parts.push(
-        createHandoffLine({
-          count: held.length,
-          onBringIn: () => void bringIn(),
-          onForget: () => void forget(),
-        }),
-      );
-    }
-    // On the author's own page, while their name is one the site picked:
-    // every card here says it, so this is where to say it was picked.
-    if (page === "mine" && user !== undefined && !user.choseUsername) {
-      parts.push(pickedNameLine(user));
-    }
-    note.replaceChildren(...parts);
+    note.replaceChildren(...sentence);
   }
 
   const say = (text: string): void => drawNote(text === "" ? [] : [text]);
@@ -270,13 +259,10 @@ export function createLevelList(options: LevelListOptions): LevelList {
       user = await viewer;
       store = progressStoreFor(user, { fetch: browserFetch, local });
 
-      // The question about this browser's records, and the one about this
-      // account's hearts, are asked while the levels are on their way.
-      const [response, trouble, hearts] = await Promise.all([
+      // The question about this account's hearts is asked while the levels are
+      // on their way.
+      const [response, hearts] = await Promise.all([
         fetch(SOURCE[page], { headers: { accept: "application/json" } }),
-        page === "tunes"
-          ? offerMergeOnArrival({ user, storage, local, fetch: browserFetch })
-          : undefined,
         readHearts(),
       ]);
       if (response.status === 401 && page === "mine") {
@@ -294,12 +280,10 @@ export function createLevelList(options: LevelListOptions): LevelList {
       // account, one local read per level for a browser.
       const progress = await store.readMany(levels.map((level) => level.id));
       showing = levels.map((level) => ({ level, progress: progress.get(level.id) }));
-      held = page === "tunes" && user !== undefined ? await local.readAll() : [];
       hearted = hearts;
 
       drawControls();
       render();
-      if (trouble !== undefined) say(trouble);
     } catch (error) {
       // The sentence is the only thing on the page at this point, so it says
       // what happened rather than "something went wrong".
@@ -309,36 +293,6 @@ export function createLevelList(options: LevelListOptions): LevelList {
           : "The tunes could not be loaded.",
       );
       console.error(error);
-    }
-  }
-
-  /** One line, once: the name on these cards was picked, and where to change it. */
-  function pickedNameLine(who: UserSummary): HTMLElement {
-    const line = document.createElement("span");
-    line.className = "note-handoff";
-    const choose = document.createElement("a");
-    choose.href = "/account";
-    choose.className = "note-action";
-    choose.textContent = "Choose your own";
-    line.append(`Your tunes say by ${who.username ?? ANONYMOUS}, a name picked for you. `, choose);
-    return line;
-  }
-
-  /** The standing line's first way out: the records go to the account, and the list is read again. */
-  async function bringIn(): Promise<void> {
-    const outcome = await mergeIntoAccount({ fetch: browserFetch, local, records: held });
-    if ("trouble" in outcome) {
-      say(outcome.trouble);
-      return;
-    }
-    await load();
-  }
-
-  /** The other way out: the records are dropped, behind the question. */
-  async function forget(): Promise<void> {
-    if (await offerToForget(local, held)) {
-      held = [];
-      render();
     }
   }
 
@@ -468,11 +422,20 @@ export function createLevelList(options: LevelListOptions): LevelList {
       {
         title: "Publish this tune?",
         body: [
-          `“${level.title}” goes into the list for everybody to play.`,
-          "The music and the timing marks freeze. Only the title, subtitle, instructions and difficulty can change afterwards; unpublishing takes it back.",
+          `“${level.title}” will become viewable to all users.`,
+          // "its music" rather than a list of what the music is made of: the
+          // server compares the whole encoded melody, so the key signature and
+          // the meter are frozen alongside the rhythms and the pitches, and a
+          // list that named only those two would be a promise the save breaks.
+          // "Start and End" are what the timing panel calls the two marks.
+          "While it is published, its music and its Start and End marks become uneditable. You will only be able to edit its title, subtitle, instructions, and difficulty.",
+          // The round trip is lossy, and this is where somebody deciding to
+          // publish can still take that into account. See `unpublishLevel`,
+          // which is where it actually happens.
+          "You may unpublish it at any time, but doing so will permanently delete every player's progress, difficulty rating, and upvote status on this tune."
         ],
         confirm: "Publish",
-        cancel: "Not yet",
+        cancel: "Do Not Publish",
       },
       "publish",
     );
@@ -483,11 +446,19 @@ export function createLevelList(options: LevelListOptions): LevelList {
       {
         title: "Unpublish this tune?",
         body: [
-          `“${level.title}” leaves the list and becomes a draft again.`,
-          "It gets a new address, and anybody's progress on it is lost.",
+          `“${level.title}” will become a draft again.`,
+          // The consequence rather than the mechanism. The draft really does
+          // get a new id — that is the whole point of the route, so that old
+          // progress cannot meet new music — but what an author needs to know
+          // is that the address they may have shared stops working.
+          "It will get a new address, so any existing links to it will stop working.",
+          // All three, because the unpublish route deletes all three in one
+          // batch: the progress, the ratings and the upvotes. Saying only
+          // "progress" left the two an author would most miss unmentioned.
+          "Every player's progress on it, every difficulty rating, and every upvote will be permanently deleted. This cannot be undone."
         ],
         confirm: "Unpublish",
-        cancel: "Keep it up",
+        cancel: "Keep Published",
       },
       "unpublish",
     );

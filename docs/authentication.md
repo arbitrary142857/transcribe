@@ -361,8 +361,13 @@ that pair is taken (`src/shared/names.ts`; the callback tries a few and then
 leaves the row unnamed, to be named next time, rather than fail a sign-in
 over a word) — so the corner of every page shows a name from the first
 moment. `chose_username` records whether the person has since picked their
-own; until they do, `/mine` and the profile page say once, quietly, that the
-name was picked for them. A chosen name is held to `usernameProblem`
+own. Nothing says so any more: `/mine` used to carry a quiet line under the
+list — "Your tunes say by <name>, a name picked for you" — and it is gone,
+because it appeared in the first moments after signing in, which is the one
+moment the reader came for something else. The column is still written (the
+PATCH that sets a name sets it too) and still travels on `UserSummary`; it
+simply drives no drawing. The profile page's Username field is where a name
+is changed, found rather than announced. A chosen name is held to `usernameProblem`
 (`src/shared/session.ts`, shared with the page): 2–24 characters, letters and
 digits of any script plus `_` and `-`, not
 `anonymous`/`admin`/`transcribe`/`tuneup`/`tune-up`,

@@ -29,14 +29,15 @@ describe("readMeter()", () => {
     }
   });
 
-  it("counts from one to thirty-one over the beat unit", () => {
+  it("counts from one to thirty-two over the beat unit", () => {
     assert.equal(readMeter("1", "4").meter?.beats, 1);
     assert.equal(readMeter("31", "4").meter?.beats, 31);
+    assert.equal(readMeter("32", "4").meter?.beats, 32);
   });
 
-  it("refuses a count of nought, or of thirty-two and up", () => {
+  it("refuses a count of nought, or of thirty-three and up", () => {
     assert.deepEqual(readMeter("0", "4"), { wrong: ["top"] });
-    assert.deepEqual(readMeter("32", "4"), { wrong: ["top"] });
+    assert.deepEqual(readMeter("33", "4"), { wrong: ["top"] });
     assert.deepEqual(readMeter("64", "4"), { wrong: ["top"] });
   });
 

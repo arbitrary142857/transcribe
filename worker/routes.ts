@@ -9,6 +9,12 @@
 import { Hono, type Context } from "hono";
 import { auth, sessionUserOf, type GoogleSignIn } from "./auth.js";
 import {
+  bodyTextOf,
+  foreignWrite,
+  rateLimit,
+  type RateLimits,
+} from "./limits.js";
+import {
   decode,
   encode,
   parseMelodyJson,
@@ -91,7 +97,19 @@ export type Database = {
  * environment has no credentials, which the auth routes answer with a
  * sentence rather than a broken redirect.
  */
-export type ApiEnv = { DB: Database; google?: GoogleSignIn };
+export type ApiEnv = {
+  DB: Database;
+  google?: GoogleSignIn;
+  /**
+   * The buckets requests are counted into, or nothing.
+   *
+   * Optional in the same spirit as `google`: a run without the bindings --
+   * every route test, and a local server started before the config caught up
+   * -- limits nothing rather than refusing to serve. worker/limits.ts is the
+   * whole of the policy.
+   */
+  limits?: RateLimits;
+};
 
 /**
  * How many levels one listing hands back.
@@ -254,9 +272,37 @@ export const api = new Hono<{ Bindings: ApiEnv }>();
 // Every answer from here is data. Saying so, and saying not to guess
 // otherwise, costs one header and closes the gap where a browser decides for
 // itself what it has been handed.
+//
+// Outermost of the three on purpose, so that the refusals below carry it as
+// well: a 429 is an answer, and it is JSON like every other.
 api.use("*", async (c, next) => {
   await next();
   c.header("X-Content-Type-Options", "nosniff");
+});
+
+// How often one caller may ask, before anything else looks at the request --
+// no session query, no body read, no statement. Every path under /api is
+// charged to a bucket, including the ones that name no route; see
+// worker/limits.ts, where the policy is one function and the reason it is
+// written as a classification rather than as a call per handler.
+api.use("*", rateLimit);
+
+/**
+ * A write that came from another site, refused.
+ *
+ * Second only, and worth saying plainly: `SameSite=Lax` on the session cookie
+ * is what actually prevents this, because another site's fetch arrives here
+ * without the cookie and so as nobody, and every route that changes anything
+ * is a POST, PUT, PATCH or DELETE rather than a navigation. This catches the
+ * case that rule would not -- a route added later that does not fit that
+ * shape -- and nothing else. See `foreignWrite` for why a request with no
+ * Origin at all is let through.
+ */
+api.use("*", async (c, next) => {
+  if (foreignWrite(c)) {
+    return c.json({ error: "That request did not come from this site." }, 403);
+  }
+  return next();
 });
 
 // ---- who is asking --------------------------------------------------------
@@ -394,7 +440,12 @@ api.get("/api/mine", async (c) => {
 // What is left, and so what a request genuinely supplies, is the four things
 // no melody can imply: the video, the two marks, and the clef.
 
-/** Room for a melody at its limit plus the text that travels beside it. */
+/**
+ * Room for a melody at its limit plus the text that travels beside it.
+ *
+ * Bytes, and counted as bytes -- see `bodyTextOf`, which is also what refuses
+ * an over-large body on its declared size before any of it is read.
+ */
 const MAX_BODY_BYTES = LIMITS.melodyBytes + 8 * 1024;
 
 /** The 11 characters YouTube names a video by. */
@@ -520,8 +571,8 @@ type Music = { melody: Melody; json: MelodyJson };
  * the two together for the routes that want both.
  */
 async function readBody(request: Request): Promise<Body | Refused> {
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) {
+  const text = await bodyTextOf(request, MAX_BODY_BYTES);
+  if (text === undefined) {
     return { status: 413, problem: "That tune is too large to store." };
   }
 
@@ -1155,8 +1206,8 @@ api.post("/api/tunes/:id/check", async (c) => {
     return c.json({ error: NO_LEVEL }, 404);
   }
 
-  const text = await c.req.raw.text();
-  if (text.length > MAX_ATTEMPT_BYTES) {
+  const text = await bodyTextOf(c.req.raw, MAX_ATTEMPT_BYTES);
+  if (text === undefined) {
     return c.json({ error: "That attempt is too large to read." }, 413);
   }
 
@@ -1537,8 +1588,8 @@ api.put("/api/progress/:tuneId", async (c) => {
     return c.json({ error: SIGN_IN_TO_PLAY }, 401);
   }
 
-  const text = await c.req.raw.text();
-  if (text.length > MAX_PROGRESS_BYTES) {
+  const text = await bodyTextOf(c.req.raw, MAX_PROGRESS_BYTES);
+  if (text === undefined) {
     return c.json({ error: "That progress is too large to keep." }, 413);
   }
   let body: unknown;
@@ -1609,8 +1660,8 @@ api.post("/api/progress/merge", async (c) => {
   }
 
   const TOO_MUCH = "That is too much progress to merge at once.";
-  const text = await c.req.raw.text();
-  if (text.length > MAX_MERGE_BYTES) {
+  const text = await bodyTextOf(c.req.raw, MAX_MERGE_BYTES);
+  if (text === undefined) {
     return c.json({ error: TOO_MUCH }, 413);
   }
   let body: unknown;
@@ -1791,8 +1842,8 @@ api.put("/api/tunes/:id/rating", async (c) => {
     return c.json({ error: SIGN_IN_TO_RATE }, 401);
   }
 
-  const text = await c.req.raw.text();
-  if (text.length > MAX_RATING_BYTES) {
+  const text = await bodyTextOf(c.req.raw, MAX_RATING_BYTES);
+  if (text === undefined) {
     return c.json({ error: "That is too much to be a rating." }, 413);
   }
   let body: unknown;

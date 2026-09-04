@@ -36,6 +36,7 @@ import {
   usernameProblem,
   type UserSummary,
 } from "../src/shared/session.js";
+import { bodyTextOf } from "./limits.js";
 import type { ApiEnv } from "./routes.js";
 
 // ---- what Google is, as far as this file is concerned ---------------------
@@ -454,7 +455,7 @@ const SIGN_IN_FIRST = "Sign in to change your account.";
 
 const NAME_TAKEN = "That username is taken.";
 
-/** Room for a name and two yes-or-nos, and nothing like more. */
+/** Room for a name and two yes-or-nos, and nothing like more. Bytes; see `bodyTextOf`. */
 const MAX_ACCOUNT_BYTES = 4 * 1024;
 
 /**
@@ -511,8 +512,8 @@ auth.patch("/api/me", async (c) => {
     return c.json({ error: SIGN_IN_FIRST }, 401);
   }
 
-  const text = await c.req.raw.text();
-  if (text.length > MAX_ACCOUNT_BYTES) {
+  const text = await bodyTextOf(c.req.raw, MAX_ACCOUNT_BYTES);
+  if (text === undefined) {
     return c.json({ error: "That is too much to change at once." }, 413);
   }
   let body: unknown;

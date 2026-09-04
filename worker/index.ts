@@ -13,6 +13,7 @@
  */
 
 import { googleSignInOf, type TokenFetch } from "./auth.js";
+import { rateLimitsOf } from "./limits.js";
 import { api, type Database } from "./routes.js";
 
 export default {
@@ -38,7 +39,24 @@ export default {
         exchange,
       );
 
-      return api.fetch(request, { DB: database, google }, ctx);
+      // The six rate-limit bindings from wrangler.jsonc, fitted to the shape
+      // limits.ts describes -- the same check the other two get: if a binding
+      // ever stops having `limit`, the Worker stops compiling rather than the
+      // tests going on passing against a stand-in that no longer resembles it.
+      //
+      // All six or none. An environment missing one limits nothing rather
+      // than answering 500 to whichever class it was, which is the bargain
+      // `google` is offered above; see `rateLimitsOf`.
+      const limits = rateLimitsOf({
+        check: env.RL_CHECK,
+        auth: env.RL_AUTH,
+        heavy: env.RL_HEAVY,
+        list: env.RL_LIST,
+        write: env.RL_WRITE,
+        read: env.RL_READ,
+      });
+
+      return api.fetch(request, { DB: database, google, limits }, ctx);
     }
 
     return env.ASSETS.fetch(request);

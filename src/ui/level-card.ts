@@ -241,7 +241,26 @@ function say(control: HTMLElement, message: string): void {
   pageTooltip().say(message, { x: box.left + box.width / 2, y: box.top });
 }
 
-/** The two glyph-and-number pairs every card ends on. */
+/**
+ * Whether a card ends on the figures it has earned.
+ *
+ * Only a published tune has earned any, and a draft's are not merely zero but
+ * unaskable: the rating and upvote routes refuse a tune that is not published,
+ * and the solve count is over players who cannot reach it. So a draft's card
+ * drawing "0 hearts, solved by 0 players" reports the result of a question
+ * nobody has been asked — on your own work, on the one page that is all your
+ * own work, which reads as a verdict rather than as a blank.
+ *
+ * Left out rather than zeroed. `.level-tools` is pushed right by its own
+ * `margin-left: auto` and `.level-foot` carries a `min-height`, so a card
+ * without the figures is exactly as tall as one with them and its tools do
+ * not move.
+ */
+export const showsFigures = (
+  level: Pick<TranscriptionSummary, "status">,
+): boolean => level.status === "published";
+
+/** The two glyph-and-number pairs a published card ends on. */
 function figuresOf(level: TranscriptionSummary, hearted: boolean): HTMLElement {
   const figures = document.createElement("span");
   figures.className = "level-figures";
@@ -407,7 +426,9 @@ export function createLevelCard(
   // the level instead.
   const foot = document.createElement("div");
   foot.className = "level-foot";
-  foot.append(figuresOf(level, options.hearted === true));
+  if (showsFigures(level)) {
+    foot.append(figuresOf(level, options.hearted === true));
+  }
 
   const tools = document.createElement("div");
   tools.className = "level-tools";

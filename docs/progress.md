@@ -5,7 +5,8 @@ it, how a browser's progress becomes an account's, and what the catalog does
 with it. The code lives in `src/puzzle/progress.ts` (the shape, and the
 local-storage store), `src/puzzle/merge.ts` (the merge rule),
 `src/puzzle/account-progress.ts` (the account-backed store),
-`src/puzzle/handoff.ts` (offering a browser's records to an account),
+`src/puzzle/handoff.ts` (taking a browser's records into an account, or
+dropping them),
 `worker/routes.ts` (the `progress` section, and `/check`'s write),
 `migrations/0004_keep_progress_per_account.sql` and
 `migrations/0008_note_assist_mode.sql`. Tests: `test/merge.test.ts`,
@@ -184,17 +185,20 @@ Nothing moves from a browser to an account without a yes, because two people
 may share a browser: A plays signed in, signs out, B plays signed out, A signs
 in again -- and a silent merge would hand B's records to A.
 
-The question is asked when an account is **new to this machine**:
-`localStorage["transcribe:viewer"]` holds the id of the last account this
-browser was asked about, and when `/api/me` answers with a different one and
-the browser holds at least one readable record, `/tunes` and `/play` open a modal
--- bring it in, or leave it here. Either answer writes the marker, so the
-question is asked once per account per machine. While somebody is signed in
-and records remain in the browser, the catalog's note line offers the same
-two ways out without asking again: bring it into your account, or forget it
-(which asks first, and deletes nothing silently). The modal is for arrival;
-the line is for everything after. The profile page, when phase 4 builds it,
-gets a button for the same.
+The question is **never asked unprompted**. It is a row on the profile page --
+"Merge browser progress?", with Merge Progress and Forget It in it -- drawn
+only while the browser holds at least one readable record, and gone again once
+it holds none. Forgetting asks first and deletes nothing silently.
+
+That is a change. There used to be a modal on arrival at `/tunes` and `/play`,
+asked once per account per machine off a `localStorage["transcribe:viewer"]`
+marker, and a standing line under the catalog offering the same two ways out
+for everything after. Both are gone, along with the marker and the
+`isNewHere`/`markSeenHere`/`handoffFor` machinery behind them: being told
+about your own stored progress in the first seconds after signing in is being
+told at the one moment the reader came for something else. Nothing is lost
+meanwhile -- the records sit in local storage, and the profile row appears
+whenever there are any.
 
 After a successful merge the browser removes **every record it sent**, not
 only the ones the server reports as taken: the server has answered for the
@@ -203,7 +207,7 @@ merge could take either.
 
 The account store falls back to the browser when a request fails -- a session
 that ran out under the page, a server that could not be reached -- so a save
-is never lost; it sits in local storage until the standing line offers it.
+is never lost; it sits in local storage until the profile page's row offers it.
 A 404 on a save (the level is gone) is dropped rather than filed, since it
 could never be taken.
 

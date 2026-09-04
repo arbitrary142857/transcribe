@@ -216,13 +216,18 @@ export function createPlayPage(
   }
 
   /**
-   * Whether a box is standing over the puzzle.
+   * Whether a box that stops the clock is standing over the puzzle.
    *
-   * The clock does not run under one. Reading what the tune is, or what its
-   * author wants known, is not transcribing it — the same reason the clock
-   * stops when the tab goes away, and the same admission: this is a clock kept
-   * by the page for the player's own interest, and it will move behind the
-   * check route on the day times are compared between people.
+   * Most boxes stop it, for the reason the tab going away stops it — this is
+   * a clock kept by the page for the player's own interest, and it will move
+   * behind the check route on the day times are compared between people.
+   *
+   * The (i) is the exception, and that is a reversal of what this used to do.
+   * Re-reading what the author wanted known is part of transcribing rather
+   * than a pause from it — it is the same words the sheet would carry if
+   * there were room for them — and a clock that stopped for it made
+   * consulting the tune's own notes feel like leaving the work. See
+   * `openAbout`.
    */
   let reading = false;
 
@@ -566,10 +571,22 @@ export function createPlayPage(
    * The same box the lists open, opened three ways from here: by arriving at a
    * puzzle without having come through a list, by the (i) beside the title,
    * and by the check that solved it. `levelBoxPlan` knows what each offers;
-   * all this page adds is that the clock stops while any of them is up.
+   * what this page adds is what the clock does under each.
+   *
+   * It stops under two of the three. Arriving cold, the box is the room in
+   * which somebody decides whether to play at all, and the work has not begun;
+   * the solve has already frozen the clock, so nothing there is held either
+   * way.
+   *
+   * It keeps running under the (i) — the one a player opens *while* working,
+   * on purpose, to re-read the instructions. That is not a break from
+   * transcribing, it is the part of transcribing where you check the notes,
+   * and stopping the clock for it made the honest thing the thing that paused
+   * your own timer.
    */
   function openAbout(opening: BoxOpening): void {
-    holdClock();
+    const stopsClock = opening !== "info";
+    if (stopsClock) holdClock();
     openLevelModal({
       level: record,
       instructions: record.instructions,
@@ -577,7 +594,9 @@ export function createPlayPage(
       opening,
       viewer,
       progress: boxProgress(),
-      onClose: releaseClock,
+      // Nothing to release where nothing was held: `releaseClock` would resume
+      // a clock the visibility rule had paused for its own reasons.
+      onClose: stopsClock ? releaseClock : undefined,
     });
   }
 

@@ -8,57 +8,25 @@
  * signed out, A signs in again, and a merge that simply happened would hand
  * B's records to A. So the records are *offered*, and move only on a yes.
  *
- * When to offer, unprompted: when this account is new to this machine.
- * `transcribe:viewer` holds the id of the last account this browser was asked
- * about. A different answer from /api/me, with at least one readable record
- * held, is the moment — the levels that said "Transcribed" a minute ago have
- * just gone back to "Not Started", and a question explains why. Either answer
- * writes the marker, so the question comes once per account per machine. It
- * is not cleared on sign-out, so records made signed-out afterwards by the
- * same person never raise the question again; the catalog's standing line is
- * what catches those. The modal is for arrival; the line is for everything
- * after.
+ * Nothing here offers unprompted any more. There used to be a question on
+ * arrival — asked once per account per machine, off a `transcribe:viewer`
+ * marker — and a standing line under the catalog for everything after. Both
+ * are gone: being told about your own stored progress in the first seconds
+ * after signing in is being told at the one moment you came for something
+ * else. The offer lives on the profile page instead, as a row somebody meets
+ * when they have gone there to settle their account. Nothing is lost while
+ * they have not: the records stay in the browser, and the row appears
+ * whenever there are any.
+ *
+ * So what is left is the two acts themselves — take them into the account, or
+ * drop them — and the words for asking about each.
  *
  * Pure but for the ports handed in — storage, the local store, fetch — so the
  * decisions are tested in plain Node, and `ui/merge-offer.ts` does only the
  * drawing. The wording lives here for the same reason.
  */
 
-import type { Fetch, LocalProgressStore, PlayProgress, Storage } from "./progress.js";
-
-export const VIEWER_KEY = "transcribe:viewer";
-
-/**
- * Whether this account has yet to be seen on this machine: the marker is
- * absent, or names somebody else. A storage that refuses reads as nobody
- * having been seen, which errs towards asking.
- */
-export function isNewHere(storage: Storage, userId: string): boolean {
-  try {
-    return storage.getItem(VIEWER_KEY) !== userId;
-  } catch {
-    return true;
-  }
-}
-
-export function markSeenHere(storage: Storage, userId: string): void {
-  try {
-    storage.setItem(VIEWER_KEY, userId);
-  } catch {
-    // A storage that will not keep the marker asks again next time, which is
-    // the lesser wrong.
-  }
-}
-
-/** What this browser holds that an account could take, and whether to ask about it unprompted. */
-export async function handoffFor(
-  storage: Storage,
-  local: LocalProgressStore,
-  userId: string,
-): Promise<{ records: PlayProgress[]; ask: boolean }> {
-  const records = await local.readAll();
-  return { records, ask: records.length > 0 && isNewHere(storage, userId) };
-}
+import type { Fetch, LocalProgressStore, PlayProgress } from "./progress.js";
 
 export type MergeOutcome = { taken: string[] } | { trouble: string };
 
@@ -131,19 +99,6 @@ export type Question = {
   cancel: string;
 };
 
-export function mergeQuestion(count: number): Question {
-  return {
-    title: "Bring this browser's progress into your account?",
-    body: [
-      `This browser holds progress on ${tunes(count)} played without signing in.`,
-      "Your account keeps whichever side is further along on each tune — a solve over an attempt, the better solve over the other, more found notes over fewer — and the verdicts from both.",
-      "Afterwards the records leave this browser. This cannot be undone.",
-    ],
-    confirm: "Bring it in",
-    cancel: "Leave it here",
-  };
-}
-
 export function forgetQuestion(count: number): Question {
   return {
     title: "Forget this browser's progress?",
@@ -154,9 +109,4 @@ export function forgetQuestion(count: number): Question {
     confirm: "Forget it",
     cancel: "Keep it",
   };
-}
-
-/** The standing line under the catalog, while records remain. */
-export function handoffSentence(count: number): string {
-  return `This browser also holds progress on ${tunes(count)} played without signing in.`;
 }

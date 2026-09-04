@@ -7,6 +7,7 @@ import {
   countLeft,
   keyName,
   publishBlock,
+  showsFigures,
 } from "../dist/ui/level-card.js";
 import type { UserSummary } from "../dist/shared/session.js";
 import type { TranscriptionSummary } from "../dist/shared/transcription.js";
@@ -197,6 +198,16 @@ describe("bylineOf()", () => {
     const me = viewer({ id: "7k2m9x4p3qwt", isAdmin: true });
 
     assert.equal(bylineOf(level({ authorIsAdmin: true }), me).mark, "admin");
+  });
+});
+
+describe("showsFigures()", () => {
+  it("shows the hearts and solvers of a published tune", () => {
+    assert.equal(showsFigures({ status: "published" }), true);
+  });
+
+  it("shows none on a draft, whose figures nobody has been asked for", () => {
+    assert.equal(showsFigures({ status: "draft" }), false);
   });
 });
 

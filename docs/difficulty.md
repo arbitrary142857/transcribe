@@ -28,8 +28,11 @@ Everything is stored in halves — an integer 1–10 — in two places only:
   it (`POST /api/tunes/:id/publish` refuses without it), a published
   level's details edit may move but not clear it, and migration 0006 gave
   the middle of the scale (5 halves) to any level published before the
-  rule. The editor starts every new level at 2.5, so an unrated draft is a
-  legacy case, drawn as nothing.
+  rule. The editor starts every new level with **no** difficulty at all --
+  it used to start at 2.5, which was the page making the author's judgement
+  for them and then showing it back as though they had made it -- so an
+  unrated draft is the ordinary case, drawn as nothing, and the draft's card
+  says "Set a difficulty first!" in place of Publish until one is given.
 - `ratings` (migration 0006): one row per (player, level) — user_id,
   level_id, half, created_at, updated_at, PK (user_id, level_id). The
   upsert (`RATING_SQL.rate`) moves `half` and `updated_at` and keeps

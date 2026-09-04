@@ -161,6 +161,29 @@
   display: none !important;
 }
 
+/* Notation is not text to be selected.
+
+   Every drawing on this site is an inline <svg>: the score VexFlow renders,
+   and every icon in `icons.ts` — which is the same file, so the same rule
+   covers both. Dragging across one of them used to raise a selection over its
+   glyphs, and because those glyphs are <text> nodes set at a stave's height,
+   the highlight came out as tall blue bars standing over the music with
+   nothing legible in them. Nobody has ever wanted to copy a notehead.
+
+   Scoped to <svg> and nothing else, deliberately. The titles, the subtitles,
+   the bylines, the instructions and every box on every page stay selectable,
+   because those are words somebody wrote and copying them is a reasonable
+   thing to want.
+
+   `.meter-field-numeral` joins them as the one exception that is not an svg:
+   the setup panel writes its time signature as Bravura glyphs in ordinary
+   HTML text, so it is notation by every measure except the tag it is in. */
+svg,
+.meter-field-numeral {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 html {
   /* A drag past the top or bottom stays inside the page rather than reloading
      it — this is an editor, and a lost melody is not a refresh worth having. */
@@ -1246,11 +1269,17 @@ main.editor-main {
   width: 100%;
 }
 
-/* Under the button and against the panel's right edge, so a long sentence
-   grows leftwards into the panel rather than off the side of the window. */
+/* Above the button and against the panel's right edge, so a long sentence
+   grows leftwards into the panel rather than off the side of the window.
+
+   Above, not below. This button is the last thing in the panel and the panel
+   runs to the foot of the window, so a note under it opened downwards into no
+   space at all and was clipped — worst on the shortest windows, which is
+   where a greyed Save is most likely to be the thing you are asking about.
+   There is a whole panel of room in the other direction. */
 .panel-note {
   position: absolute;
-  top: calc(100% + 0.4rem);
+  bottom: calc(100% + 0.4rem);
   right: 0;
   z-index: 4;
   width: max-content;
@@ -4533,28 +4562,6 @@ main.page {
   color: inherit;
   font: inherit;
   font-size: 0.95rem;
-}
-
-/* The line about records still in this browser, under whatever the note
-   says; and a way out drawn as words in a sentence, like the sign-out. */
-.note-handoff {
-  display: block;
-  margin-top: 0.4rem;
-}
-
-.note-action {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: #6c6459;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
-  cursor: pointer;
-}
-
-.note-action:hover {
-  color: var(--ink);
 }
 
 /* Four across.

@@ -126,18 +126,27 @@ async function hydrate(
   // server has answered who is looking at it.
   host.replaceChildren(...planNav(window.location.pathname, false).map(pageLink));
 
+  // A corner that cannot find out draws the way in, because not knowing and
+  // being nobody come to the same thing everywhere else on the page: `viewer`
+  // resolves to undefined either way, so /mine already says "Sign in to see
+  // your tunes" and the editor already offers the trip to sign in. The nav
+  // used to be the one part that disagreed — it returned here and kept the
+  // links it had drawn for nobody, with no Sign In among them — so a failed
+  // /api/me left a signed-out visitor with no door at all and nothing to say
+  // why. The asymmetry decides it: offering the door to somebody already
+  // signed in costs them a click and lands them back where they were, and
+  // that is much the smaller wrong.
+  //
+  // A 429 from the rate limiter is now one of the ways this can fail, which is
+  // what made a latent dead end reachable.
   let user: UserSummary | undefined;
   try {
     const response = await fetch("/api/me", {
       headers: { accept: "application/json" },
     });
-    // A corner that cannot find out stays empty. It is decoration on every
-    // page it appears on; the page's own trouble-reporting belongs to the
-    // page's own requests.
-    if (!response.ok) return undefined;
-    user = readMe(await response.json());
+    if (response.ok) user = readMe(await response.json());
   } catch {
-    return undefined;
+    // Unreadable and unreachable both read as nobody, and fall through.
   }
 
   const links = planNav(window.location.pathname, user !== undefined).map(pageLink);

@@ -96,10 +96,14 @@ const EMPTY_DETAILS: TranscriptionDetails = {
   title: "",
   subtitle: "",
   instructions: "",
-  // The middle of the scale from the first moment, so a level is never
-  // saved unrated and publishing never has to refuse for it. The author
-  // adjusts it in the details panel; the stepper cannot say "none".
-  difficulty: 2.5,
+  // Nothing, and the picker draws nothing: a difficulty is a judgement about
+  // music that does not exist yet, and a row opening at the middle of the
+  // scale is the page making that judgement on the author's behalf and then
+  // showing it back to them as though they had. It once opened at 2.5 so that
+  // publishing could never be refused for want of one; publishing refuses for
+  // want of one instead, which the draft's card says before the press ("Set a
+  // difficulty first!" — see `publishBlock`).
+  difficulty: undefined,
 };
 
 /**
@@ -350,9 +354,8 @@ export function createEditorPage(
       title: record.title,
       subtitle: record.subtitle ?? "",
       instructions: record.instructions ?? "",
-      // A draft from before difficulty was defaulted opens at the middle,
-      // and its next save carries it: the quiet backfill for local drafts.
-      difficulty: record.authorDifficulty ?? 2.5,
+      // Whatever the author said, or nothing at all if they have not said.
+      difficulty: record.authorDifficulty,
     };
     markSaved();
     mount();
@@ -392,7 +395,7 @@ export function createEditorPage(
       title: draft.details.title,
       subtitle: draft.details.subtitle ?? "",
       instructions: draft.details.instructions ?? "",
-      difficulty: draft.details.difficulty ?? 2.5,
+      difficulty: draft.details.difficulty,
     };
     mount();
     // Only when Save is what the visitor pressed: a sign-in from the corner

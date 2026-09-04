@@ -24,7 +24,6 @@ import {
   isTranscriptionId,
   type TranscriptionRecord,
 } from "../shared/transcription.js";
-import { offerMergeOnArrival } from "../ui/merge-offer.js";
 import {
   browserFetch,
   fetchLevel,
@@ -67,9 +66,16 @@ async function readLevel(): Promise<
 }
 
 /**
- * Who is looking, whether this browser has anything to hand them, and then —
- * only then — what was left on this level, from wherever their progress is
- * kept.
+ * Who is looking, and what was left on this level, from wherever their
+ * progress is kept.
+ *
+ * It used to ask, first, whether this browser's signed-out records should go
+ * to the account — a question in the face of somebody who had come here to
+ * play a particular tune. That offer is the profile page's now, in a row
+ * somebody finds when they are settling their account rather than when they
+ * are opening a puzzle. The records are not lost meanwhile: they stay in the
+ * browser, and this page reads its own progress from wherever the viewer's
+ * is kept, exactly as before.
  */
 async function readProgress(
   viewer: Promise<UserSummary | undefined>,
@@ -80,16 +86,6 @@ async function readProgress(
   user: UserSummary | undefined;
 }> {
   const user = await viewer;
-  const trouble = await offerMergeOnArrival({
-    user,
-    storage: window.localStorage,
-    local,
-    fetch: browserFetch,
-  });
-  // The records are still in this browser, and the catalog offers them
-  // again; this page has nowhere to say so.
-  if (trouble !== undefined) console.error(trouble);
-
   const store = progressStoreFor(user, { fetch: browserFetch, local });
   const asked = askedLevelId();
   return {

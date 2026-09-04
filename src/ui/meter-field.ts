@@ -16,12 +16,15 @@ export const BEAT_UNITS: readonly number[] = [2, 4, 8, 16];
 /**
  * The most beats a bar may hold.
  *
- * Two digits, and under the thirty-two a bar of thirty-second notes would
- * imply. Past this it is not a meter anybody counts; the codec's own ceiling
- * is higher still and is a guard against nonsense rather than a limit on
- * meters.
+ * Thirty-two: the count a bar of thirty-second notes implies, and so the
+ * largest that names a bar rather than a mistake. It was thirty-one, which
+ * stopped one short of the number the reasoning arrived at — a ceiling of
+ * "under thirty-two" reads as thirty-two being the first refused, and there
+ * is no meter between them to be the real boundary. Two digits either way, so
+ * the boxes are unchanged; the codec's own ceiling is sixty-four and is a
+ * guard against nonsense rather than a limit on meters.
  */
-export const BEATS_MAX = 31;
+export const BEATS_MAX = 32;
 
 /**
  * What the two boxes say, and which of them is wrong for saying it.

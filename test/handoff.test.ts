@@ -1,15 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  VIEWER_KEY,
   forgetLocalProgress,
   forgetQuestion,
-  handoffFor,
-  handoffSentence,
-  isNewHere,
-  markSeenHere,
   mergeIntoAccount,
-  mergeQuestion,
 } from "../dist/puzzle/handoff.js";
 import {
   createLocalProgressStore,
@@ -61,71 +55,6 @@ async function browserWith(...records: PlayProgress[]) {
   for (const record of records) await local.write(record);
   return { storage, held, local };
 }
-
-describe("isNewHere()", () => {
-  it("calls an account new here when nothing has been written", () => {
-    assert.equal(isNewHere(stubStorage().storage, ME), true);
-  });
-
-  it("calls an account new here when the marker names somebody else", () => {
-    const { storage } = stubStorage({ [VIEWER_KEY]: "2b4d6f8h0j1k" });
-
-    assert.equal(isNewHere(storage, ME), true);
-  });
-
-  it("calls an account known here once markSeenHere has named it", () => {
-    const { storage } = stubStorage();
-
-    markSeenHere(storage, ME);
-
-    assert.equal(isNewHere(storage, ME), false);
-    assert.equal(isNewHere(storage, "2b4d6f8h0j1k"), true);
-  });
-
-  it("reads a storage that refuses as nobody having been seen, and lets the marking pass", () => {
-    assert.equal(isNewHere(refusingStorage, ME), true);
-    assert.doesNotThrow(() => markSeenHere(refusingStorage, ME));
-  });
-});
-
-describe("handoffFor()", () => {
-  it("asks when the account is new here and there is something to bring", async () => {
-    const { storage, local } = await browserWith(PROGRESS, OTHER_PROGRESS);
-
-    const handoff = await handoffFor(storage, local, ME);
-
-    assert.equal(handoff.ask, true);
-    assert.deepEqual(handoff.records.map((record) => record.levelId).sort(), [OTHER, ID]);
-  });
-
-  it("does not ask when there is nothing to bring, though the account is new here", async () => {
-    const { storage, local } = await browserWith();
-
-    const handoff = await handoffFor(storage, local, ME);
-
-    assert.equal(handoff.ask, false);
-    assert.deepEqual(handoff.records, []);
-  });
-
-  it("does not ask again once the account has been seen here, though the records remain", async () => {
-    const { storage, local } = await browserWith(PROGRESS);
-    markSeenHere(storage, ME);
-
-    const handoff = await handoffFor(storage, local, ME);
-
-    assert.equal(handoff.ask, false);
-    assert.deepEqual(handoff.records, [PROGRESS]);
-  });
-
-  it("never counts a record that cannot be read", async () => {
-    const { storage, local } = await browserWith();
-    storage.setItem(`transcribe:progress:${ID}`, "not json");
-
-    const handoff = await handoffFor(storage, local, ME);
-
-    assert.equal(handoff.ask, false);
-  });
-});
 
 describe("mergeIntoAccount()", () => {
   it("posts every record as one request", async () => {
@@ -204,22 +133,14 @@ describe("forgetLocalProgress()", () => {
 
 describe("the hand-off wording", () => {
   it("counts one tune in the singular", () => {
-    assert.match(mergeQuestion(1).body.join(" "), /1 tune played/);
-    assert.match(mergeQuestion(3).body.join(" "), /3 tunes played/);
     assert.match(forgetQuestion(1).body.join(" "), /1 tune/);
-    assert.match(handoffSentence(1), /1 tune played/);
-    assert.match(handoffSentence(2), /2 tunes played/);
+    assert.match(forgetQuestion(2).body.join(" "), /2 tunes/);
   });
 
-  it("says the records leave this browser and that it cannot be undone", () => {
-    const merge = mergeQuestion(2);
-    assert.match(merge.body.join(" "), /leave this browser/);
-    assert.match(merge.body.join(" "), /cannot be undone/);
-    assert.equal(merge.confirm, "Bring it in");
-    assert.equal(merge.cancel, "Leave it here");
-
+  it("says forgetting cannot be undone", () => {
     const forget = forgetQuestion(2);
     assert.match(forget.body.join(" "), /cannot be undone/);
     assert.equal(forget.confirm, "Forget it");
+    assert.equal(forget.cancel, "Keep it");
   });
 });

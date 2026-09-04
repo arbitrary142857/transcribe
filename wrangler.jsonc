@@ -63,6 +63,43 @@
     }
   ],
 
+  // How often one caller may ask. Six buckets rather than one, because what a
+  // request costs here varies by two orders of magnitude: see worker/limits.ts,
+  // which holds the policy and the reasoning, and is the only place that needs
+  // reading to know what is limited.
+  //
+  // `period` may be 10 or 60 and nothing else, so every window here is a
+  // minute. The counts are kept per data centre rather than globally --
+  // Cloudflare calls the whole thing "permissive, eventually consistent" — so
+  // these are a brake on scripted abuse, not a quota, and a caller spread
+  // across the world gets more than the number says.
+  //
+  // The namespace ids are arbitrary and only have to differ from each other;
+  // renumbering one empties its counts, which costs nothing but a minute.
+  "ratelimits": [
+    // The answer oracle: roughly forty of these can pin one note, and it is
+    // the one write that takes no session at all. Tightest by a long way,
+    // and still well above a real player, who checks every ten seconds or so.
+    { "name": "RL_CHECK", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+    // The sign-in dance. Two requests per sign-in, and the callback spends an
+    // outbound call to Google.
+    { "name": "RL_AUTH", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } },
+    // Making a tune, moving one across the publish line, throwing one away,
+    // deleting an account, and the merge — whose loop is two statements per
+    // record, for up to a hundred records.
+    { "name": "RL_HEAVY", "namespace_id": "1003", "simple": { "limit": 10, "period": 60 } },
+    // The two listings: a hundred rows with five correlated subselects each,
+    // which is the most expensive read here. A page a second is generous for
+    // somebody browsing and holds the query to a page a second for anybody
+    // else.
+    { "name": "RL_LIST", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
+    // Ordinary writes. Not tighter than this because the play page saves
+    // progress about once a second while somebody is actually playing.
+    { "name": "RL_WRITE", "namespace_id": "1005", "simple": { "limit": 120, "period": 60 } },
+    // Every remaining read. A play page opens with six of these.
+    { "name": "RL_READ", "namespace_id": "1006", "simple": { "limit": 240, "period": 60 } }
+  ],
+
   // Google sign-in. The client id is public by nature — it travels in every
   // sign-in redirect — so it can live here in the open. The client secret
   // must not: it is `wrangler secret put GOOGLE_CLIENT_SECRET` for the

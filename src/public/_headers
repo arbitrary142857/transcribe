@@ -1,0 +1,52 @@
+# What every page carries, beyond what it says.
+#
+# Read by Cloudflare's asset server, which is what answers every request the
+# Worker never sees -- that is, every page. It does *not* reach anything under
+# /api: those are the Worker's own answers, and the one header they want
+# (X-Content-Type-Options) is set there, in worker/routes.ts, as middleware.
+#
+# This file is copied verbatim into the built assets because src/public is
+# Vite's public directory; it is never served as a page itself.
+#
+# Limits worth knowing: a hundred rules, two thousand characters to a line.
+
+/*
+  # Where a page may load anything from. Everything is this site's own except
+  # three things, and each is here for one reason:
+  #
+  #   script-src www.youtube.com  -- the page loads YouTube's iframe_api, which
+  #     in turn injects the widget script from the same host.
+  #   frame-src  www.youtube.com  -- the video itself, at /embed/<id>.
+  #   img-src    i.ytimg.com      -- the still on every tune card.
+  #
+  # The two that are not hosts:
+  #
+  #   font-src data:  -- VexFlow 5 carries Bravura and Academico inside its own
+  #     bundle as base64 data URIs and registers them with the FontFace API.
+  #     Without this the score draws in a fallback face and every glyph is
+  #     wrong. (It has a jsDelivr fallback it never reaches, because the fonts
+  #     are passed to it explicitly; nothing here is fetched from a CDN.)
+  #   style-src 'unsafe-inline'  -- the score, the playhead and the tooltips
+  #     are positioned by writing to element.style, and VexFlow writes style
+  #     attributes of its own onto the SVG it draws. This is the one relaxation
+  #     here, and it is the ordinary one.
+  #
+  # 'unsafe-eval' is deliberately absent, and so is any inline script: Vite
+  # emits <script type="module" src=...> and nothing else, so script-src is
+  # 'self' with no hash or nonce needed. object-src and frame-ancestors are
+  # 'none' -- nothing here is a plugin, and no page of this site belongs in
+  # anybody's frame.
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://www.youtube.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.ytimg.com; font-src 'self' data:; media-src 'self'; connect-src 'self'; frame-src https://www.youtube.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+  # Said twice on purpose: frame-ancestors is the rule browsers actually
+  # follow now, and this is what the ones that do not follow it read instead.
+  X-Frame-Options: DENY
+
+  # The origin and no more, to anywhere but here. Not `no-referrer`: a YouTube
+  # embed can be restricted by its uploader to particular domains, and the
+  # Referer is how that is judged -- sending nothing would break exactly the
+  # videos somebody took the trouble to restrict.
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # A page is a page. The Worker says the same of its own answers.
+  X-Content-Type-Options: nosniff
