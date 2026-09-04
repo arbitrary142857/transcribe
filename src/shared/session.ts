@@ -70,6 +70,18 @@ export function readMe(value: unknown): UserSummary | undefined {
 /** What a byline says of an author with no name to show. */
 export const ANONYMOUS = "Anonymous";
 
+/**
+ * What a byline says of the site's own tunes, in place of any name.
+ *
+ * A word rather than an account: the fact worth carrying is that the tune came
+ * from the site, and the person behind the admin account is not a byline. It is
+ * in `RESERVED_USERNAMES` below for the same reason, so no ordinary account can
+ * wear it. The substitution is the server's — `LEVEL_COLUMNS` declines to read
+ * an admin's username at all — and this is only what the pages print in its
+ * place.
+ */
+export const ADMIN = "Admin";
+
 /** The byline, as every place a level is named prints it. */
 export const authorLabel = (author: string | undefined): string =>
   `by ${author ?? ANONYMOUS}`;

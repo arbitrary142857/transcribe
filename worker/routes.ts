@@ -135,9 +135,16 @@ const LEVELS_PAGE = 100;
  * spliced into a statement. Every value goes through `bind`.
  *
  * The last columns read other tables: the author's name, as they would have
- * it shown, or nothing when they have asked to be Anonymous; and the two
- * figures the displayed difficulty is blended from, a count and a sum of
- * the level's ratings. Correlated subselects rather than JOINs, so that
+ * it shown, or nothing when they have asked to be Anonymous -- or when they
+ * are an admin, whose byline reads "Admin" rather than any name. That second
+ * case is here rather than in the drawing for the reason the melody is: a
+ * name this query hands over is a name anybody can read out of the response,
+ * whatever the page then chooses to print, so the substitution is only worth
+ * anything if it happens before the value leaves the database. The
+ * `author_is_admin` flag beside it is what the byline is drawn from.
+ *
+ * And the two figures the displayed difficulty is blended from, a count and a
+ * sum of the level's ratings. Correlated subselects rather than JOINs, so that
  * every statement this is spliced into stays `FROM transcriptions` and `id`
  * keeps meaning the level's. A rename in users renames every byline, which
  * is the point of the name living there.
@@ -158,7 +165,8 @@ export const LEVEL_COLUMNS = `
   measures, clef, meter_beats, meter_unit,
   key_fifths, key_mode, note_count, unpitched_count, difficulty_half,
   owner_id, status, published_at, updated_at, created_at,
-  (SELECT CASE WHEN u.anonymous_author = 1 THEN NULL ELSE u.username END
+  (SELECT CASE WHEN u.anonymous_author = 1 OR u.is_admin = 1
+               THEN NULL ELSE u.username END
      FROM users u WHERE u.id = transcriptions.owner_id) AS author,
   (SELECT u.is_admin FROM users u WHERE u.id = transcriptions.owner_id)
     AS author_is_admin,
@@ -247,7 +255,11 @@ const toSummary = (row: LevelRow): TranscriptionSummary => ({
   noteCount: row.note_count,
   unpitchedCount: row.unpitched_count,
   ownerId: row.owner_id,
-  author: row.author ?? undefined,
+  // Never an admin's name, whatever the row holds. The query above already
+  // declines to read it; this is the second gate, in the spirit of what this
+  // function's own note says about the melody -- a SELECT widened later
+  // should still find nowhere here to put it.
+  author: row.author_is_admin ? undefined : (row.author ?? undefined),
   // Absent rather than false for everybody else: the byline's ordinary case
   // is an ordinary author, and it sends nothing.
   authorIsAdmin: row.author_is_admin ? true : undefined,

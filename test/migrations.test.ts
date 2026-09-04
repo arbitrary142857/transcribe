@@ -1269,6 +1269,40 @@ describe("the level columns the listings splice", () => {
     assert.equal(row!.upvote_count, 1);
   });
 
+  it("never lets an admin's username out of the database, whoever is asking", () => {
+    // The byline for the site's own tunes reads "Admin", and that has to be
+    // the whole truth rather than a substitution the page makes: a name the
+    // query hands over is a name anybody can read out of the response, however
+    // the page chooses to draw it.
+    const db = current((db) => {
+      addUser(db, JASON, 1);
+      db.prepare(`UPDATE users SET username = ?, is_admin = 1 WHERE id = ?`).run(
+        "jason-the-admin",
+        JASON,
+      );
+      addOwnedLevel(db, LEVEL, JASON);
+    });
+
+    const [level] = listed(db);
+    assert.equal(level!.author, null);
+    assert.equal(level!.author_is_admin, 1);
+  });
+
+  it("still names an ordinary author, so the rule above is about admins alone", () => {
+    const db = current((db) => {
+      addUser(db, SOMEBODY, 1);
+      db.prepare(`UPDATE users SET username = ? WHERE id = ?`).run(
+        "quiet-heron",
+        SOMEBODY,
+      );
+      addOwnedLevel(db, LEVEL, SOMEBODY);
+    });
+
+    const [level] = listed(db);
+    assert.equal(level!.author, "quiet-heron");
+    assert.equal(level!.author_is_admin, 0);
+  });
+
   it("counts solvers who share their play, and never the level's own author", () => {
     const db = current((db) => {
       addUser(db, JASON, 1);

@@ -8,7 +8,7 @@
  */
 
 import { displayedDifficulty } from "../shared/difficulty.js";
-import { ANONYMOUS, type UserSummary } from "../shared/session.js";
+import { ADMIN, ANONYMOUS, type UserSummary } from "../shared/session.js";
 import type { TranscriptionSummary } from "../shared/transcription.js";
 import { createDifficulty, createUnratedDifficulty } from "./difficulty.js";
 import { flagIcon, heartFillIcon, heartIcon, pencilIcon, trashIcon } from "./icons.js";
@@ -181,7 +181,7 @@ export function bylineOf(
   level: TranscriptionSummary,
   viewer: UserSummary | undefined,
 ): Byline {
-  if (level.authorIsAdmin === true) return { name: "Admin", mark: "admin" };
+  if (level.authorIsAdmin === true) return { name: ADMIN, mark: "admin" };
   const name = level.author ?? ANONYMOUS;
   return viewer !== undefined && viewer.id === level.ownerId
     ? { name, mark: "you" }

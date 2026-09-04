@@ -37,7 +37,7 @@ import {
   firstSoundingNote,
   type TranscriptionRecord,
 } from "../shared/transcription.js";
-import { ANONYMOUS, type UserSummary } from "../shared/session.js";
+import type { UserSummary } from "../shared/session.js";
 import { createEditor, type Editor, type EditorElements } from "./editor.js";
 import { keepingScroll } from "./score-overlay.js";
 import { createScoreEffects, EFFECT_MS } from "./score-effects.js";
@@ -45,6 +45,7 @@ import { arrivedCold } from "./arrival.js";
 import { assistPlan, type AssistPlan } from "./assist.js";
 import { openAssistModal } from "./assist-modal.js";
 import type { BoxOpening } from "./level-box.js";
+import { bylineOf } from "./level-card.js";
 import { openLevelModal } from "./level-modal.js";
 import { createPanelActions, type PanelActions } from "./panel-actions.js";
 import { CHECKING_MS, stillToWait } from "./pacing.js";
@@ -306,10 +307,14 @@ export function createPlayPage(
     head?.update({
       title: record.title,
       subtitle: record.subtitle,
-      // The level's author, never the player's: the server has already put
-      // this to NULL for an author who asked to be anonymous, which is what
-      // ANONYMOUS then stands in for.
-      credit: record.author ?? ANONYMOUS,
+      // The level's author, never the player's, and read through the same
+      // rule a card's byline is: the site's own tunes are credited to "Admin"
+      // rather than to whoever holds the account, an author who asked to be
+      // anonymous is Anonymous, and everybody else is their name. This page
+      // printed `record.author ?? ANONYMOUS` and so knew about only two of
+      // those three, which is how the same tune came to be credited to
+      // "Admin" on its card and to a person over its score.
+      credit: bylineOf(record, viewer).name,
     });
     const problem = solved ? undefined : checkProblem(melody);
     actions?.update({

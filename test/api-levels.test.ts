@@ -334,6 +334,20 @@ describe("GET /api/tunes", () => {
     assert.equal(level!.authorIsAdmin, true);
   });
 
+  it("drops an admin's name even from a row that somehow carries one", async () => {
+    // The query already refuses to read it; this is the second gate, in the
+    // spirit of the one that keeps the melody off a card. A widened SELECT
+    // should still have nowhere to put an admin's username.
+    const { response } = await get("/api/tunes", [
+      list([{ ...ROW, author: "jason-the-admin", author_is_admin: 1 }]),
+    ]);
+
+    const [level] = (await response.json()) as Record<string, unknown>[];
+    assert.equal("author" in level!, false);
+    assert.equal(level!.authorIsAdmin, true);
+    assert.equal(JSON.stringify(level).includes("jason-the-admin"), false);
+  });
+
   it("says nothing at all about an ordinary author, rather than false", async () => {
     const { response } = await get("/api/tunes", [
       list([{ ...ROW, author: "quiet-heron", author_is_admin: 0 }]),

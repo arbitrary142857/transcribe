@@ -29,7 +29,7 @@ import { createPanelActions, type PanelActions } from "./panel-actions.js";
 import { saveButton } from "./save-button.js";
 import { createSheetHead, type SheetHead } from "./sheet-head.js";
 import { createSideTools, type SideTools } from "./side-tools.js";
-import { ANONYMOUS } from "../shared/session.js";
+import { ADMIN, ANONYMOUS } from "../shared/session.js";
 import type { SiteNav } from "./site-nav.js";
 import { isTypingTarget } from "./typing-guard.js";
 import { mountVideoPanel } from "./video-panel.js";
@@ -194,11 +194,23 @@ export function createEditorPage(
    * line at all rather than a blank one; an account that has asked to be
    * anonymous is credited as such, and so is one old enough to have no name,
    * because an email address does not belong on the front of a score.
+   *
+   * An admin is "Admin" before either of those, which is the order `bylineOf`
+   * puts them in and the only order that is honest: the site's own tunes
+   * carry that byline everywhere else, so a head printing the account's real
+   * name would be showing the author a preview of a page nobody else will
+   * see. It is read off the session rather than off the level because the
+   * level here is the one being written, and its author is whoever is
+   * writing it.
    */
   let credit: string | undefined;
   void viewer.then((user) => {
     if (user === undefined) return;
-    credit = user.anonymousAuthor ? ANONYMOUS : (user.username ?? ANONYMOUS);
+    credit = user.isAdmin
+      ? ADMIN
+      : user.anonymousAuthor
+        ? ANONYMOUS
+        : (user.username ?? ANONYMOUS);
     showSignatures();
   });
 
