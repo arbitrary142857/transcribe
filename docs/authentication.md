@@ -406,8 +406,9 @@ is written for everyone else.
 1. [console.cloud.google.com](https://console.cloud.google.com) → new project
    (name it anything; the name is only seen in the console, never by visitors).
 2. **APIs & Services → OAuth consent screen**: External; app name, your
-   support email. Scopes: only `openid`, `email`, `profile` — all
-   non-sensitive, so no Google review is needed. Publish the app (in
+   support email. Scopes: only `openid` and `email` — both non-sensitive, so
+   no Google review is needed. `profile` is not among them, because nothing
+   here reads a name or a picture and the username is minted. Publish the app (in
    "Testing" mode only listed test users can sign in and consent expires
    weekly).
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**:

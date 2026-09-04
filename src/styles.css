@@ -5441,15 +5441,67 @@ main.account-page {
   margin-top: 0.2rem;
 }
 
-/* ---- A page of prose: the privacy page ---- */
+/* ---- A page of prose: the privacy page ----
 
-.prose-page {
-  max-width: 42rem;
+   A document rather than a page of boxes: the one place on this site whose
+   body is headings and paragraphs down a single column. What it borrows from
+   everywhere else is the head — the page's name at the size every other page
+   gives its name, centred, standing clear of the bar with its line under it.
+
+   What it keeps of its own is the density. This is a page of definitions and
+   conditions, read closely by somebody after one particular fact, and set as
+   airily as a landing page it would only be longer to scroll. So the type is
+   the body's own size, the leading is tight, and the air is spent on parting
+   one section from the next rather than on the lines within a section. */
+
+main.prose-page {
+  /* `main.page` is a class *and* an element, so a bare `.prose-page` never
+     beat it: the 42rem this asked for had no effect and the prose ran the
+     full 1320, a hundred and fifty characters to the line. Wider than
+     /about's column of questions: this is a document read straight down
+     rather than a row of headings opened one at a time, and the extra width
+     buys back some of the length that nine sections of prose otherwise
+     make. */
+  max-width: 54rem;
 }
 
+/* The document itself, on the same sheet the account page's settings stand
+   on. More padding than that box takes: this one holds nine sections rather
+   than five rows, and prose wants more margin around it than a row of
+   controls does before it reads as text pressed against an edge. */
+.prose-box {
+  padding: 1.9rem 2.1rem;
+}
+
+/* The last paragraph's own bottom margin, against the box's padding, would
+   read as a ragged extra line of space under the text. */
+.prose-box > :last-child {
+  margin-bottom: 0;
+}
+
+/* Centred under a centred heading, and narrower than the column it stands
+   over, so the note reads as a caption on the page rather than as its first
+   paragraph. `balance` evens the lines. */
+.prose-lede {
+  max-width: 36rem;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* A section's name: half again the size of the words under it, where it was a
+   twentieth larger and read as nothing but bold body text. Far more air above
+   than below, which is what makes a heading belong to the section it opens
+   instead of floating between two of them. */
 .prose-page h2 {
-  margin: 1.6rem 0 0.4rem;
-  font-size: 1.05rem;
+  margin: 2.6rem 0 0.75rem;
+  font-size: 1.35rem;
+  line-height: 1.25;
+}
+
+/* The head has already stood the page clear of the bar; the first section
+   under it wants no second gap of its own. */
+.prose-page h2:first-of-type {
+  margin-top: 0;
 }
 
 .prose-page p,
@@ -5458,12 +5510,20 @@ main.account-page {
   line-height: 1.55;
 }
 
+/* Stated rather than left to the browser, whose default is a full line's
+   space above and below every paragraph — twice what a tight column wants
+   between two paragraphs of one section. */
+.prose-page p {
+  margin: 0 0 0.9rem;
+}
+
 .prose-page ul {
+  margin: 0 0 0.9rem;
   padding-left: 1.2rem;
 }
 
 .prose-page li {
-  margin: 0.35rem 0;
+  margin: 0.4rem 0;
 }
 
 .prose-page code {

@@ -108,7 +108,8 @@ describe("GET /api/auth/google", () => {
     assert.equal(sent.origin, "https://accounts.google.com");
     assert.equal(sent.searchParams.get("client_id"), CLIENT_ID);
     assert.equal(sent.searchParams.get("response_type"), "code");
-    assert.equal(sent.searchParams.get("scope"), "openid email profile");
+    // `profile` is deliberately absent: see the scope line in auth.ts.
+    assert.equal(sent.searchParams.get("scope"), "openid email");
     assert.equal(sent.searchParams.get("code_challenge_method"), "S256");
     assert.notEqual(sent.searchParams.get("state"), null);
     // The secret is for the token exchange, which happens server to server.

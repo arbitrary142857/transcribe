@@ -23,133 +23,215 @@
          here is a claim about what the code does; when the code changes, this
          changes with it. -->
     <main class="page prose-page">
-      <h1 class="page-title">Privacy</h1>
-      <p class="page-lede">
-        What this site keeps about you, who can see it, and how to take it
-        away. In plain words, because there is not much of it.
-      </p>
+      <div class="page-head">
+        <h1 class="page-title">Privacy Policy</h1>
+        <p class="page-head-lede prose-lede">
+          What this site hears from you
+          and records about you. (tl;dr: not much)
+        </p>
+      </div>
 
-      <h2>Without an account</h2>
-      <p>
-        You can play every published tune without signing in. Your progress
-        on a tune — the pitches you have written, what each check said, how
-        many checks you made, how long the tab was open — is kept in your own
-        browser, under its local storage, and is never sent to this site. The
-        one thing the server sees is each check you make: the pitches you
-        submit, graded and answered, and not recorded.
-      </p>
+      <div class="panel prose-box">
+        <h2>Signed Out</h2>
+        <p>
+          You can play any published tune while signed out,
+          and all of the data about your progress on a tune&mdash;that is,
+          the pitches you've written,
+          your feedback from checks,
+          how many checks you made,
+          how much time you spent,
+          and whether you activated assist mode&mdash;is kept
+          in your own browser's local storage.
+          None of this data is ever stored by the site.
+        </p>
+        <p>
+          In particular, none of your data while signed out
+          ever reaches a database,
+          so nothing you do ever contributes to any statistic
+          publicly displayed on this site.
+          The only data the server receives
+          is the checks that you request
+          (and this data is never recorded).
+        </p>
 
-      <h2>With an account</h2>
-      <p>
-        Signing in uses your Google account. Google tells this site three
-        things: a permanent identifier for your Google account (the
-        <em>subject</em>, a number that means nothing outside Google), your
-        email address, and that Google has verified it. The identifier is how
-        the site recognises you next time; the email is kept so that a person
-        reading the database can tell who is who, and is refreshed each time
-        you sign in. No other Google data is requested, and nothing from
-        Google runs on these pages.
-      </p>
-      <p>Beyond that, an account holds:</p>
-      <ul>
-        <li>
-          <strong>A username.</strong> One is picked for you when the account
-          is made — two plain words — and you can change it on your account
-          page. It is shown beside every tune you publish, unless you choose
-          to be shown as Anonymous, in which case it is kept to yourself.
-        </li>
-        <li>
-          <strong>Your tunes</strong>, drafts and published. Drafts are
-          yours alone. Published tunes are public: their title, subtitle,
-          instructions, difficulty, the video they point at, and your
-          username (or Anonymous) can be seen by anyone.
-        </li>
-        <li>
-          <strong>Your progress</strong> on each tune, the same record the
-          browser kept before, filed under your account so it follows you
-          between browsers. Nobody else can see it.
-        </li>
-        <li>
-          <strong>Two settings</strong>: whether to be shown as Anonymous,
-          and whether your play may count towards the public figures
-          described below.
-        </li>
-      </ul>
-      <p>
-        When you sign in with an account that is new to a browser, the site
-        offers to bring that browser's unsigned-in progress into the account.
-        Nothing moves unless you say yes.
-      </p>
+        <h2>Signing In: Google Access</h2>
+        <p>
+          When you sign in with Google,
+          this site receives the following three things:
+        </p>
+        <ul>
+          <li>
+            Your account's machine-readable ID
+            (a meaningless string of numbers).
+          </li>
+          <li>
+            Your email address.
+          </li>
+          <li>
+            Confirmation that Google has verified your email address.
+          </li>
+        </ul>
+        <p>
+          In particular, this site never receives or stores
+          any information about your Google profile.
+          Although this site does store your email address,
+          this site only uses your email address
+          for distinguishing between users in the database
+          in a human-readable way.
+          This site will never use it to contact you
+          and will never disclose it to third parties.
+        </p>
 
-      <h2>Cookies</h2>
-      <p>
-        Two, both the site's own, neither for tracking. <code>session</code>
-        is what keeps you signed in: a random token that lasts thirty days,
-        extended while you keep visiting, and ended by signing out. The
-        server stores only a hash of it. <code>signin</code> exists for the
-        ten minutes it takes to go to Google and come back, and for nothing
-        else. There are no analytics cookies and no advertising.
-      </p>
+        <h2>Signing In: Account Data</h2>
+        <p>
+          Every account holds the following data,
+          recorded in this site's database:
+        </p>
+        <ul>
+          <li>
+            <strong>Your username.</strong>
+            This site automatically generates a username
+            for your account once it is created.
+            You may change your username at any time.
+            Your username is displayed beside every tune you publish
+            (unless you choose to be shown as Anonymous)&mdash;aside from that,
+            your username is kept to yourself.
+          </li>
+          <li>
+            <strong>Your tunes.</strong>
+            Unpublished tunes are kept to yourself
+            and never publicly accessible.
+            Published tunes are public:
+            their title, subtitle, instructions, difficulty,
+            and associated YouTube video can be seen by anyone.
+            You may unpublish a published tune at any time;
+            doing so will permanently delete all
+            progress, upvotes, and difficulty suggestions
+            on that tune, including your own.
+          </li>
+          <li>
+            <strong>Your progress.</strong>
+            This site stores your account's progress
+            on public tunes and private drafts in a database.
+            No other users can ever see your progress.
+          </li>
+          <li>
+            <strong>Settings.</strong>
+            There are only two:
+            whether your username is shown as Anonymous,
+            and whether your activity on public tunes
+            counts towards any public statistics.
+          </li>
+        </ul>
+        <p>
+          If you sign in to an account for the first time
+          on a browser that has progress stored in its local storage,
+          the site will give you the option
+          to merge your browser's progress into your account.
+        </p>
 
-      <h2>YouTube</h2>
-      <p>
-        Tunes are written out from YouTube videos. The page where a tune
-        is played embeds YouTube's own player, and the list of tunes shows
-        thumbnails fetched from YouTube. Those requests go to YouTube, which
-        sees them as it sees any visit to a YouTube page, under
-        <a href="https://policies.google.com/privacy">Google's privacy policy</a>.
-        This site sends nothing to YouTube beyond what the player and the
-        pictures need.
-      </p>
+        <h2>Cookies</h2>
+        <p>
+          This site uses two cookies.
+        </p>
+        <ul>
+          <li>
+            <code>session</code>.
+            This is a random token that lasts 30 days,
+            is extended as you keep visiting the site,
+            and is deleted when you sign out.
+            The database only ever stores a hash of this token.
+          </li>
+          <li>
+            <code>signin</code>.
+            This token exists for up to ten minutes
+            between when you are directed to sign in with Google
+            and when you return to this site.
+          </li>
+        </ul>
+        <p>
+          There are no analytics cookies and no advertising.
+        </p>
 
-      <h2>Public figures</h2>
-      <p>
-        Each tune shows a difficulty, blended from the author's own rating
-        and the ratings of players who solved it — one vote each, with
-        nobody named. It also shows how many solvers gave it a heart, how
-        many players have solved it, and — once at least three players'
-        solves are in — the median completion time, overall and for
-        flawless runs. All of it is aggregate, with nobody named; the
-        author's own playthroughs of their tune are left out of the play
-        figures entirely. <a href="/about">The about page</a> explains how
-        the figures work.
-      </p>
-      <p>
-        Your account page has a switch, <em>“Count my play in public
-        statistics”</em>, that keeps you out of all of it: while it is off
-        you are not asked to rate or upvote, and your ratings, hearts and
-        playthroughs — past ones included — are left out of every figure.
-        The figures are worked out fresh from the stored rows each time
-        they are shown, so turning the switch off takes effect at once, and
-        nothing derived from your play is kept anywhere.
-      </p>
+        <h2>YouTube</h2>
+        <p>
+          Tunes are transcribed from YouTube videos.
+          This site embeds YouTube's own player onto the page,
+          and the list of tunes displays thumbnails fetched from YouTube.
+          All requests to YouTube are seen as
+          ordinary visits to a YouTube page
+          and operate under
+          <a href="https://policies.google.com/privacy">Google's privacy policy</a>.
+          This site sends nothing to YouTube beyond
+          what the YouTube player and thumbnail-retrieval need.
+        </p>
 
-      <h2>Who can see what</h2>
-      <p>
-        Published tunes and their bylines are public. Drafts, progress,
-        email addresses and the Google identifier are not shown to anyone.
-        The person who runs this site can read its database, and does so to
-        keep it working; the database lives on Cloudflare's infrastructure,
-        which processes it under
-        <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>.
-        No data is sold or shared with anyone else.
-      </p>
+        <h2>Public Statistics</h2>
+        <p>
+          Each tune displays a difficulty estimate,
+          the number of upvotes it has received,
+          median completion times,
+          and the number of signed-in users
+          (besides the author) who have completed it.
+          All of these statistics are aggregate,
+          and no individual accounts are explicitly named
+          in any statistics.
+          Refer to the <a href="/about">About</a> page
+          for further details on how
+          difficulty estimates and median completion times are decided.
+        </p>
+        <p>
+          The account page has a setting
+          <em>“Contribute to public stats?”</em>
+          that, when toggled off,
+          removes all data concerning your upvote history,
+          your difficulty ratings, and your completions of public tunes
+          from the computations of public stats.
+          Note, however, that this data still remains
+          in the database; if you toggle this setting back on,
+          all of this data will be factored
+          back into public stats.
+        </p>
 
-      <h2>Deleting your account</h2>
-      <p>
-        Your account page has a button for it. Deleting your account removes
-        everything: every tune you published (and, with them, other
-        players' progress on them), your drafts, your progress, your
-        settings, your username, your email and the Google identifier. It
-        cannot be undone. If you want a tune kept, it is yours to leave up
-        by keeping the account.
-      </p>
+        <h2>What can the site owner see?</h2>
+        <p>
+          The person who runs this site (hi! 👋) can read
+          all of the data recorded in its database.
+          (Said person will not do so for any reason
+          other than to keep the site functioning.)
+          No data is ever sold or shared with anyone else.
+        </p>
+        <p>
+          The database lives on Cloudflare's infrastructure
+          and consequently under
+          <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare's privacy policy</a>.
+          Every request to this site is served through Cloudflare as well,
+          which sees your IP address the same way any web host would;
+          notably, this site itself
+          never reads, logs, or stores your IP address.
+        </p>
 
-      <h2>Questions</h2>
-      <p>
-        This site is run by one person. Write to
-        <a href="mailto:jasonmao@mit.edu">jasonmao@mit.edu</a>.
-      </p>
+        <h2>Account Deletion</h2>
+        <p>
+          Deleting your account deletes <em>all data</em> associated with it.
+          This includes every tune you've ever published
+          (in addition to other users' progress, upvotes,
+          and difficulty suggestions on them),
+          your drafts, your progress on public tunes and private drafts,
+          your upvotes and difficulty suggestions on public tunes,
+          your settings, your username, your email,
+          and your Google account identifier.
+          Account deletion cannot be undone.
+        </p>
+
+        <h2>Further Information</h2>
+        <p>
+          Refer to the <a href="/about">About</a> page
+          for further information.  You can also
+          contact the site owner via
+          <a href="mailto:jasonmao@mit.edu">jasonmao@mit.edu</a>.
+        </p>
+      </div>
     </main>
 
     <footer class="site-foot"><a href="/about">About</a> · <a href="/privacy" aria-current="page">Privacy</a></footer>

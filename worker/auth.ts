@@ -201,7 +201,14 @@ auth.get("/api/auth/google", async (c) => {
   ask.searchParams.set("client_id", google.clientId);
   ask.searchParams.set("redirect_uri", `${origin}/api/auth/callback`);
   ask.searchParams.set("response_type", "code");
-  ask.searchParams.set("scope", "openid email profile");
+  // Two scopes, not the usual three. `openid` is what makes this an OpenID
+  // Connect request at all and is where `sub` comes from; `email` carries the
+  // address and `email_verified`. `profile` — the name, the picture, the
+  // locale — is deliberately not asked for: nothing here reads any of it, the
+  // username is minted rather than borrowed from Google, and a scope that is
+  // never used is a line on the consent screen asking for something this site
+  // has no business seeing.
+  ask.searchParams.set("scope", "openid email");
   ask.searchParams.set("state", state);
   ask.searchParams.set("code_challenge", challenge);
   ask.searchParams.set("code_challenge_method", "S256");
